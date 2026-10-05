@@ -1,0 +1,8 @@
+{
+  "name": "Remix HippoAnalyse - Analyseur de Courses Geny \u0026 Paris-Turf",
+  "description": "Analyseur intelligent de courses hippiques PMU, Quinté+ et partants à partir de liens officiels geny.com et paristurf.com.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

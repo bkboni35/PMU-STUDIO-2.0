@@ -1,0 +1,41 @@
+{
+  "entities": {
+    "Race": {
+      "title": "Race",
+      "description": "Horse racing data and results",
+      "type": "object",
+      "properties": {
+        "courseData": {
+          "type": "object",
+          "description": "Full race data object"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      }
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile and settings",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "isAdmin": { "type": "boolean" },
+        "analysesCount": { "type": "integer" }
+      }
+    }
+  },
+  "firestore": {
+    "/live_races/{raceId}": {
+      "schema": "Race",
+      "description": "Real-time race updates and archives"
+    },
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User account data"
+    }
+  }
+}

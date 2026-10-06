@@ -659,7 +659,15 @@ app.post('/api/analyze-race', async (req, res) => {
     if (!detectedPartantsCount && !rawPartantsText && !partants) {
       const lowerUrl = trimmedUrl.toLowerCase();
       const existingSample = SAMPLE_RACES.find((r) => {
-        return r.sourceUrl.toLowerCase() === lowerUrl || lowerUrl.includes(r.id.toLowerCase());
+        const rId = (r.id || '').toLowerCase();
+        const rUrl = (r.sourceUrl || '').toLowerCase();
+        const rSlug = (r.prixNom || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '-');
+        return (
+          rUrl === lowerUrl ||
+          lowerUrl.includes(rId) ||
+          (rId.length >= 4 && lowerUrl.includes(rId)) ||
+          (rSlug.length >= 4 && lowerUrl.includes(rSlug))
+        );
       });
 
       if (existingSample) {

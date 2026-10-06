@@ -100,10 +100,23 @@ export function extractGenyRscData(rawHtml: string, targetUrl: string): Extracte
 
   if (fullPayload) {
     if (raceId) {
+      console.log(`[RACE-ID-VERIFY] 🔍 Verifying course ID from URL: ${raceId}`);
       const courseKey = '"course":{"id":' + raceId;
+      const courseKeyAlt = '"id":' + raceId;
       const idx = fullPayload.indexOf(courseKey);
+      const idxAlt = fullPayload.indexOf(courseKeyAlt);
       if (idx > -1) {
         searchIdx = idx;
+        console.log(`[RACE-ID-VERIFY] ✅ Found exact course block for race ID ${raceId} at index ${idx}`);
+      } else if (idxAlt > -1) {
+        searchIdx = idxAlt;
+        console.log(`[RACE-ID-VERIFY] ✅ Found alternative course block for race ID ${raceId} at index ${idxAlt}`);
+      } else {
+        console.warn(`[RACE-ID-VERIFY] ⚠️ Warning: Course ID ${raceId} from URL not explicitly matched in payload chunk. Searching fallback indices.`);
+        const genericIdx = fullPayload.indexOf(raceId);
+        if (genericIdx > -1) {
+          searchIdx = genericIdx;
+        }
       }
     }
 

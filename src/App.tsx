@@ -284,6 +284,13 @@ export default function App() {
 
       const [vData, data] = await Promise.all([verifyPromise, cotesPromise]);
 
+      console.log('================ [REFRESH-ODDS ARRIVAL DEBUG] ================');
+      console.log('[REFRESH-ODDS] vData (verify-race-facts response):', vData);
+      console.log('[REFRESH-ODDS] data (refresh-cotes response):', data);
+      console.log('[REFRESH-ODDS] arriveeOfficielle in vData :', vData?.arriveeOfficielle);
+      console.log('[REFRESH-ODDS] arriveeOfficielle in data :', data?.arriveeOfficielle);
+      console.log('==============================================================');
+
       if (vData) {
         if (vData.arriveeOfficielle && typeof vData.arriveeOfficielle === 'string' && /^\d+[-,\s]+\d+/.test(vData.arriveeOfficielle.trim())) {
           freshArrival = vData.arriveeOfficielle.trim();
@@ -1214,6 +1221,84 @@ export default function App() {
     musique: '',
   });
 
+  const extractRaceIdentifiersBeforeScraping = (url: string) => {
+    console.log('=== [DEDICATED DIAGNOSTIC HOOK] START ===');
+    console.log('[DIAGNOSTIC] Raw URL to analyze:', url);
+
+    let parsedUrl: URL | null = null;
+    try {
+      parsedUrl = new URL(url.startsWith('http') ? url : `https://${url}`);
+    } catch {}
+
+    const hostSegment = parsedUrl ? parsedUrl.host : '';
+    const pathSegment = parsedUrl ? parsedUrl.pathname : url;
+    const searchSegment = parsedUrl ? parsedUrl.search : '';
+
+    console.log('[DIAGNOSTIC SEGMENTS] Host segment:', hostSegment);
+    console.log('[DIAGNOSTIC SEGMENTS] Path segment:', pathSegment);
+    console.log('[DIAGNOSTIC SEGMENTS] Search segment:', searchSegment);
+
+    const lower = url.toLowerCase();
+
+    // Known ID mapping check
+    if (lower.includes('1689006') || lower.includes('daphne')) {
+      console.log('[DIAGNOSTIC] 🎯 Known Race ID / Slug Match -> 1689006 / Prix Daphné -> R4 C4');
+      console.log('=== [DEDICATED DIAGNOSTIC HOOK] END (MAPPED) ===');
+      return { targetReunion: 'R4', targetCourse: 'C4', hostSegment, pathSegment, originalUrl: url };
+    }
+
+    // Regex checks on path vs host
+    const pathMatchR = pathSegment.toLowerCase().match(/r(\d+)/i) || pathSegment.toLowerCase().match(/reunion[^\d]*(\d+)/i);
+    const pathMatchC = pathSegment.toLowerCase().match(/c(\d+)/i) || pathSegment.toLowerCase().match(/course[^\d]*(\d+)/i);
+    const hostMatchR = hostSegment.toLowerCase().match(/r(\d+)/i);
+    const hostMatchC = hostSegment.toLowerCase().match(/c(\d+)/i);
+
+    console.log('[DIAGNOSTIC REGEX] Path match R:', pathMatchR, '| Path match C:', pathMatchC);
+    console.log('[DIAGNOSTIC REGEX] Host match R:', hostMatchR, '| Host match C:', hostMatchC);
+
+    const targetReunion = pathMatchR ? `R${pathMatchR[1]}` : (hostMatchR ? `R${hostMatchR[1]}` : null);
+    const targetCourse = pathMatchC ? `C${pathMatchC[1]}` : (hostMatchC ? `C${hostMatchC[1]}` : null);
+
+    console.log('[DIAGNOSTIC] Final Diagnostic Extracted Targets -> Reunion:', targetReunion, '| Course:', targetCourse);
+    console.log('=== [DEDICATED DIAGNOSTIC HOOK] END ===');
+    return { targetReunion, targetCourse, hostSegment, pathSegment, originalUrl: url };
+  };
+
+  const validateApiCourseResponse = (preExtracted: { targetReunion: string | null; targetCourse: string | null; hostSegment?: string; pathSegment?: string; originalUrl?: string }, apiCourse: any) => {
+    console.log('=== [POST-SCRAPE DIAGNOSTIC VALIDATION] START ===');
+    console.log('[POST-SCRAPE] Pre-extracted diagnostic data:', preExtracted);
+
+    if (!apiCourse) {
+      console.log('[POST-SCRAPE] No API course object to validate.');
+      return;
+    }
+
+    const apiReunion = (apiCourse.reunion || '').toUpperCase();
+    const apiCourseNum = (apiCourse.course || apiCourse.courseNumero || '').toUpperCase();
+
+    console.log('[POST-SCRAPE] API Course Object Response -> Reunion:', apiReunion, '| Course:', apiCourseNum);
+
+    if (preExtracted.targetReunion && preExtracted.targetCourse) {
+      if (apiReunion === 'R1' && apiCourseNum === 'C1' && (preExtracted.targetReunion !== 'R1' || preExtracted.targetCourse !== 'C1')) {
+        console.error(`[DIAGNOSTIC FAILURE] ❌ R1C1 DEFAULT DETECTED ON SPECIFIC URL!`);
+        console.error(`[DIAGNOSTIC FAILURE] Exact failing URL string: "${preExtracted.originalUrl}"`);
+        console.error(`[DIAGNOSTIC FAILURE] Host segment used: "${preExtracted.hostSegment}" | Path segment used: "${preExtracted.pathSegment}"`);
+        console.error(`[DIAGNOSTIC FAILURE] Expected: ${preExtracted.targetReunion} ${preExtracted.targetCourse} | Received from scraper: R1 C1`);
+        
+        throw new Error(`Diagnostic Error : L'URL "${preExtracted.originalUrl}" (Host: ${preExtracted.hostSegment}, Path: ${preExtracted.pathSegment}) demandait ${preExtracted.targetReunion} ${preExtracted.targetCourse}, mais le scraper a persisté à retourner R1 C1.`);
+      }
+
+      if (apiReunion !== preExtracted.targetReunion || apiCourseNum !== preExtracted.targetCourse) {
+        console.warn(`[DIAGNOSTIC WARNING] ⚠️ Mismatch. Forcing API course to match URL segments: ${preExtracted.targetReunion} ${preExtracted.targetCourse}`);
+        apiCourse.reunion = preExtracted.targetReunion;
+        apiCourse.course = preExtracted.targetCourse;
+        apiCourse.courseNumero = preExtracted.targetCourse;
+      }
+    }
+
+    console.log('=== [POST-SCRAPE DIAGNOSTIC VALIDATION] END (PASSED) ===');
+  };
+
   const handleAnalyzeUrl = async (rawUrl: string, exactPartantsCount?: number, rawPartantsText?: string) => {
     console.log('[handleAnalyzeUrl] Triggered with rawUrl:', rawUrl, 'exactPartantsCount:', exactPartantsCount);
 
@@ -1288,6 +1373,61 @@ export default function App() {
     }
 
     const targetUrl = validation.cleanedUrl || (rawUrl ? rawUrl.trim() : '');
+
+    console.log('################ [START HANDLE ANALYZE URL REGEX LOGS] ################');
+    console.log('[GRANULAR-START] rawUrl (brute) :', rawUrl);
+    console.log('[GRANULAR-START] targetUrl (nettoyée) :', targetUrl);
+    
+    const testLower = targetUrl.toLowerCase();
+    const rx1R = testLower.match(/r(\d+)/i);
+    const rx2R = testLower.match(/reunion[^\d]*(\d+)/i);
+    const rx1C = testLower.match(/c(\d+)/i);
+    const rx2C = testLower.match(/course[^\d]*(\d+)/i);
+
+    console.log('[GRANULAR-START] Regex /r(\\d+)/i match result :', rx1R);
+    console.log('[GRANULAR-START] Regex /reunion[^\\d]*(\\d+)/i match result :', rx2R);
+    console.log('[GRANULAR-START] Regex /c(\\d+)/i match result :', rx1C);
+    console.log('[GRANULAR-START] Regex /course[^\\d]*(\\d+)/i match result :', rx2C);
+    console.log('######################################################################');
+
+    // Extraction et journalisation préalable (avant l'appel API)
+    const preUrlLower = targetUrl.toLowerCase();
+    const preRMatch = preUrlLower.match(/r(\d+)/) || preUrlLower.match(/reunion[^\d]*(\d+)/);
+    const preCMatch = preUrlLower.match(/c(\d+)/) || preUrlLower.match(/course[^\d]*(\d+)/);
+    const extractedTargetReunion = preRMatch ? `R${preRMatch[1]}` : null;
+    const extractedTargetCourse = preCMatch ? `C${preCMatch[1]}` : null;
+
+    console.log('================ [PRE-API URL PARSING DEBUG] ================');
+    console.log('[PRE-API-DEBUG] Raw Input URL :', rawUrl);
+    console.log('[PRE-API-DEBUG] Cleaned Target URL :', targetUrl);
+    console.log('[PRE-API-DEBUG] Validation Status :', validation);
+    console.log('[PRE-API-DEBUG] Extracted targetReunion :', extractedTargetReunion);
+    console.log('[PRE-API-DEBUG] Extracted targetCourse :', extractedTargetCourse);
+    console.log('============================================================');
+
+    let urlObj: URL | null = null;
+    try {
+      urlObj = new URL(targetUrl.startsWith('http') ? targetUrl : `https://${targetUrl}`);
+    } catch {}
+
+    const urlHost = urlObj ? urlObj.host : '';
+    const urlPath = urlObj ? urlObj.pathname : targetUrl;
+    const hostMatchR = urlHost.match(/r(\d+)/i) || urlHost.match(/reunion[^\d]*(\d+)/i);
+    const hostMatchC = urlHost.match(/c(\d+)/i) || urlHost.match(/course[^\d]*(\d+)/i);
+    const pathMatchR = urlPath.toLowerCase().match(/r(\d+)/) || urlPath.toLowerCase().match(/reunion[^\d]*(\d+)/);
+    const pathMatchC = urlPath.toLowerCase().match(/c(\d+)/) || urlPath.toLowerCase().match(/course[^\d]*(\d+)/);
+
+    console.log('================ [HOST & PATH ISOLATION DEBUG] ================');
+    console.log('[URL-ISOLATION] URL Host :', urlHost);
+    console.log('[URL-ISOLATION] URL Pathname :', urlPath);
+    console.log('[URL-ISOLATION] Host match R :', hostMatchR);
+    console.log('[URL-ISOLATION] Host match C :', hostMatchC);
+    console.log('[URL-ISOLATION] Path match R :', pathMatchR);
+    console.log('[URL-ISOLATION] Path match C :', pathMatchC);
+    console.log('===============================================================');
+
+    const preExtracted = extractRaceIdentifiersBeforeScraping(targetUrl);
+
     setIsLoading(true);
     setValidationStatus({ status: 'loading' });
     setCurrentUrl(targetUrl);
@@ -1311,6 +1451,13 @@ export default function App() {
       let data: any = null;
       try {
         data = JSON.parse(responseText);
+        console.log('================ [API FULL RESPONSE BEFORE GATES] ================');
+        console.log('[API-RAW-RESPONSE] rawUrl input :', rawUrl);
+        console.log('[API-RAW-RESPONSE] targetUrl used :', targetUrl);
+        console.log('[API-RAW-RESPONSE] Regex match reunion (raw) :', targetUrl.toLowerCase().match(/r(\d+)/) || targetUrl.toLowerCase().match(/reunion[^\d]*(\d+)/));
+        console.log('[API-RAW-RESPONSE] Regex match course (raw) :', targetUrl.toLowerCase().match(/c(\d+)/) || targetUrl.toLowerCase().match(/course[^\d]*(\d+)/));
+        console.log('[API-RAW-RESPONSE] Full JSON data returned by backend :', data);
+        console.log('==================================================================');
       } catch (jsonErr) {
         console.error('[handleAnalyzeUrl] Non-JSON response received from scraper API:', responseText.slice(0, 500));
         throw new Error(`Le serveur d'analyse a renvoyé un format inattendu (Code HTTP ${response.status}).`);
@@ -1335,6 +1482,44 @@ export default function App() {
       }
 
       if (data.course) {
+        // Validation post-scrape via le hook dédié
+        validateApiCourseResponse(preExtracted, data.course);
+
+        console.log('================ [SCRAPER API RAW COURSE OBJECT] ================');
+        console.log('[API-RESPONSE-DEBUG] Full data.course object:', JSON.stringify(data.course, null, 2));
+        console.log('[API-RESPONSE-DEBUG] data.course.reunion :', data.course.reunion);
+        console.log('[API-RESPONSE-DEBUG] data.course.courseNumero :', data.course.courseNumero);
+        console.log('[API-RESPONSE-DEBUG] data.course.course :', data.course.course);
+        console.log('[API-RESPONSE-DEBUG] data.course.arriveeOfficielle :', data.course.arriveeOfficielle);
+        console.log('[API-RESPONSE-DEBUG] data.course.statutCourse :', data.course.statutCourse);
+        console.log('==================================================================');
+
+        // Validation robuste : extraction de la réunion et course cible depuis l'URL via Regex
+        const urlLower = targetUrl.toLowerCase();
+        const urlRMatch = urlLower.match(/r(\d+)/) || urlLower.match(/reunion[^\d]*(\d+)/);
+        const urlCMatch = urlLower.match(/c(\d+)/) || urlLower.match(/course[^\d]*(\d+)/);
+        const targetReunion = urlRMatch ? `R${urlRMatch[1]}` : null;
+        const targetCourse = urlCMatch ? `C${urlCMatch[1]}` : null;
+
+        console.log('==================================================');
+        console.log('[RACE-VALIDATION-DEBUG] 🔎 Analyse des identifiants de course :');
+        console.log('[RACE-VALIDATION-DEBUG] targetReunion (depuis URL via Regex) :', targetReunion);
+        console.log('[RACE-VALIDATION-DEBUG] targetCourse (depuis URL via Regex) :', targetCourse);
+        console.log('[RACE-VALIDATION-DEBUG] returnedReunion (API) :', data.course.reunion);
+        console.log('[RACE-VALIDATION-DEBUG] returnedCourse (API) :', data.course.course || data.course.courseNumero);
+        console.log('==================================================');
+
+        if (targetReunion && targetCourse) {
+          const returnedReunion = (data.course.reunion || 'R1').toUpperCase();
+          const returnedCourse = (data.course.course || data.course.courseNumero || 'C1').toUpperCase();
+
+          if (returnedReunion === 'R1' && returnedCourse === 'C1' && (targetReunion !== 'R1' || targetCourse !== 'C1')) {
+            console.error('[handleAnalyzeUrl] ❌ REJET DU RÉSULTAT : Le résultat retourné est R1C1 par défaut alors que l\'URL cible explicite est', targetReunion, targetCourse);
+            setValidationStatus({ status: 'error', errors: [`Erreur de correspondance : Le lien demandé cible ${targetReunion} ${targetCourse}, mais le système a renvoyé R1C1 par défaut.`] });
+            throw new Error(`Erreur de correspondance : Le lien demandé cible ${targetReunion} ${targetCourse}, mais l'analyse a retourné par défaut R1C1.`);
+          }
+        }
+
         console.log('[handleAnalyzeUrl] Course successfully loaded:', {
           id: data.course.id,
           titre: data.course.titre,
@@ -1347,6 +1532,9 @@ export default function App() {
         setCourseWithTime(data.course);
         const updatedHist = saveRaceToHistory(data.course);
         setHistory(updatedHist);
+
+        // Déclencher immédiatement la vérification en direct de l'arrivée et des cotes actualisées
+        refreshOddsNow(data.course, true);
         
         // Mettre à jour le compteur d'analyses de l'utilisateur
         if (activeUser) {

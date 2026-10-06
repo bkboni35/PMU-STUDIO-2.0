@@ -1,4 +1,4 @@
-# 🐎 Remix HippoAnalyse — Suite d'Analyse Intelligente de Courses Hippiques (PMU, Quinté+, Geny & Paris-Turf)
+# 🐎 Remix HippoAnalyse — Suite d'Analyse Intelligente de Courses Hippiques (PMU)
 
 [![React](https://img.shields.io/badge/React-19-blue.svg)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Vite-8-646CFF.svg)](https://vitejs.dev/)

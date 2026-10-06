@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Globe, AlertTriangle, CheckCircle2, Sparkles, Star, Calendar, ClipboardPaste, History, Lock, X, ShieldAlert, Smartphone, Clock, Zap, ChevronLeft, ChevronRight, RotateCcw, Tv, Monitor, Laptop, Cpu, Sliders, Bell, Volume2, Trophy } from 'lucide-react';
+import { Search, Globe, AlertTriangle, CheckCircle2, Sparkles, Star, Calendar, ClipboardPaste, History, Lock, X, ShieldAlert, Smartphone, Clock, Zap, ChevronLeft, ChevronRight, RotateCcw, Tv, Monitor, Laptop, Cpu, Sliders, Bell, Volume2, Trophy, Crown } from 'lucide-react';
 import { validateTurfUrl } from '../utils/turfUrlValidator';
 import { CourseHippique, PmuMeeting, TurfSource } from '../types/turf';
 import { UserProfile } from '../types/userAuth';
@@ -41,6 +41,7 @@ interface UrlInputHeaderProps {
   onOpenInstallModal?: () => void;
   onOpenAiQuotas?: () => void;
   onOpenNotifications?: () => void;
+  onOpenSubscription?: () => void;
 }
 
 interface UpcomingRaceRef {
@@ -174,6 +175,9 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   onOpenInstallModal,
   onOpenAiQuotas,
   onOpenNotifications,
+  onOpenSubscription,
+  isExpertMode,
+  onToggleExpertMode,
 }) => {
   const [inputUrl, setInputUrl] = useState(currentUrl);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -666,9 +670,15 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
             <div className="relative group shrink-0">
               <div className="absolute -inset-1 bg-gradient-to-r from-amber-500 via-emerald-500 to-amber-500 rounded-3xl blur-xs opacity-75 group-hover:opacity-100 transition duration-300"></div>
               <img
-                src="/src/assets/images/hippoanalyse_pro_logo_1790414725595.jpg"
+                src="/hippoanalyse_pro_logo_1790414725595.jpg"
                 alt="Logo Officiel HippoAnalyse Pro"
                 className="relative w-12 h-12 sm:w-14 sm:h-14 rounded-3xl object-cover border-2 border-amber-400 shadow-xl shadow-amber-500/30"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  if (!target.src.endsWith('/horse-logo.jpg')) {
+                    target.src = '/horse-logo.jpg';
+                  }
+                }}
                 referrerPolicy="no-referrer"
               />
               <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-400 ring-2 ring-slate-900 shadow-sm" />
@@ -746,8 +756,21 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
         <div className="flex flex-col gap-3.5 mb-4 w-full">
           {/* LIGNE 1 : Programme des Courses, Date & Espace Session / Réglages */}
           <div className="flex flex-wrap items-center justify-between gap-3 w-full pb-3 border-b border-slate-800/80">
-            {/* Côté Gauche : Profil & Sélecteur de Date */}
+            {/* Côté Gauche : Profil, Abonnement Mobile Money & Sélecteur de Date */}
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              {/* Bouton Espace Abonnement Mobile Money VIP */}
+              {onOpenSubscription && (
+                <button
+                  type="button"
+                  onClick={onOpenSubscription}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-400 hover:to-orange-400 text-slate-950 border-2 border-amber-300 text-xs font-black transition-all shadow-lg shadow-amber-500/25 active:scale-95 shrink-0"
+                  title="Ouvrir l'Espace Abonnement & Paiement Mobile Money (Orange Money, Wave, MTN, Moov)"
+                >
+                  <Crown className="w-4 h-4 text-slate-950 fill-current" />
+                  <span>Abonnement Mobile Money</span>
+                </button>
+              )}
+
               {/* User Space Connection / Profile Button */}
               {onOpenUserSpace && (
                 <button
@@ -848,6 +871,27 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 </button>
               )}
 
+              {/* 4. Bascule Mode Expert */}
+              {onToggleExpertMode && (
+                <button
+                  type="button"
+                  onClick={onToggleExpertMode}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-black transition-all shadow-md active:scale-95 shrink-0 ${
+                    isExpertMode
+                      ? 'bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white border-purple-400 shadow-purple-500/30 ring-2 ring-purple-300'
+                      : 'bg-slate-900 hover:bg-slate-800 text-purple-300 border-purple-500/40'
+                  }`}
+                  title={
+                    isExpertMode
+                      ? 'Mode Expert Actif : colonnes de données avancées affichées (Gains Cumulés, Record Kilométrique)'
+                      : 'Activer le Mode Expert pour afficher les colonnes avancées (Gains Cumulés & Record Kilométrique)'
+                  }
+                >
+                  <Sliders className={`w-3.5 h-3.5 ${isExpertMode ? 'text-purple-200' : 'text-purple-400'}`} />
+                  <span>Mode Expert : {isExpertMode ? 'ON' : 'OFF'}</span>
+                </button>
+              )}
+
               {/* 4. Sélecteur Thème */}
               <ThemeToggleWidget />
 
@@ -861,80 +905,6 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 >
                   <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
                   <span>Administrateurs</span>
-                </button>
-              )}
-            </div>
-          </div>
-
-          {/* LIGNE 2 : Barre Dédiée des Actions Directes & Flux en Direct (100% visible sans déplacement) */}
-          <div className="w-full bg-slate-900/80 border border-slate-800/90 rounded-2xl p-2 sm:px-3 shadow-md backdrop-blur-md flex flex-wrap items-center justify-between gap-2.5">
-            {/* Indicateur de statut en direct */}
-            <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-300 shrink-0">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-              <span className="text-amber-400 font-extrabold flex items-center gap-1">
-                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                <span>Actions & Arrivées Directes :</span>
-              </span>
-            </div>
-
-            {/* Boutons d'actions en direct */}
-            <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
-
-              {/* 2. Bouton Actualiser Arrivée Direct */}
-              {onRefreshOdds && (
-                <button
-                  type="button"
-                  onClick={onRefreshOdds}
-                  disabled={isRefreshingOdds}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white border border-rose-400/60 text-xs font-black transition-all shadow-md shadow-rose-950/40 hover:scale-[1.02] active:scale-95 shrink-0 disabled:opacity-50"
-                  title="Rechercher l'arrivée officielle de la course en direct temps réel"
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-200 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-                  </span>
-                  <span>{isRefreshingOdds ? "Actualisation..." : "🔴 Actualiser Arrivée Direct"}</span>
-                </button>
-              )}
-
-              {/* 3. Bouton Paris-Turf Direct */}
-              <button
-                type="button"
-                onClick={() => handleFetchParisTurfDirect()}
-                disabled={isFetchingParisTurf}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-700 hover:from-emerald-500 hover:to-teal-600 text-white border border-emerald-400/60 text-xs font-black transition-all shadow-md shadow-emerald-950/40 hover:scale-[1.02] active:scale-95 shrink-0 disabled:opacity-50"
-                title="Récupérer en temps réel les arrivées de Paris-Turf (https://www.paris-turf.com/quinte/aujourdhui)"
-              >
-                <Globe className="w-3.5 h-3.5 text-emerald-200" />
-                <span>{isFetchingParisTurf ? "Paris-Turf..." : "Paris-Turf Direct"}</span>
-              </button>
-
-              {/* 4. Bouton de Synchronisation Temps Réel (pmu.fr ou paristurf.com) */}
-              <button
-                type="button"
-                onClick={handleForceResync}
-                disabled={isResyncing}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-400 hover:to-orange-400 text-slate-950 border border-amber-300/50 text-xs font-black transition-all shadow-md shadow-amber-950/40 hover:scale-[1.02] active:scale-95 shrink-0 disabled:opacity-50"
-                title="⚡ Synchronisation Temps Réel avec les sites officiels pmu.fr ou paristurf.com pour actualiser le calendrier des courses"
-              >
-                <Zap className={`w-3.5 h-3.5 fill-current ${isResyncing ? 'animate-bounce' : ''}`} />
-                <span>{isResyncing ? 'Sync...' : '⚡ Sync PMU / Paris-Turf'}</span>
-              </button>
-
-              {/* 5. Bouton Forcer Cotes */}
-              {onRefreshOdds && (
-                <button
-                  type="button"
-                  onClick={onRefreshOdds}
-                  disabled={isRefreshingOdds}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-slate-500 text-xs font-black transition-all shadow-md hover:scale-[1.02] active:scale-95 shrink-0 disabled:opacity-50"
-                  title="Forcer un rafraîchissement immédiat des cotes depuis l'API"
-                >
-                  <Zap className="w-3.5 h-3.5 text-amber-400" />
-                  <span>{isRefreshingOdds ? "Rafraîchissement..." : "Forcer Cotes"}</span>
                 </button>
               )}
             </div>

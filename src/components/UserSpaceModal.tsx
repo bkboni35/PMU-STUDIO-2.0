@@ -18,6 +18,7 @@ import {
   Key,
   AlertCircle,
   RefreshCw,
+  Crown,
 } from 'lucide-react';
 import { UserProfile } from '../types/userAuth';
 import {
@@ -39,6 +40,7 @@ interface UserSpaceModalProps {
   onLoginSuccess: (user: UserProfile) => void;
   onLogout: () => void;
   promptMessage?: string | null;
+  onOpenSubscription?: () => void;
 }
 
 type ActiveTab = 'login' | 'register' | 'accounts' | 'profile';
@@ -50,6 +52,7 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
   onLoginSuccess,
   onLogout,
   promptMessage,
+  onOpenSubscription,
 }) => {
   // Afficher directement la page de connexion par défaut
   const [activeTab, setActiveTab] = useState<ActiveTab>('login');
@@ -283,6 +286,26 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
           </div>
         </div>
 
+        {/* Banner Abonnement Mobile Money */}
+        {onOpenSubscription && (
+          <div className="mb-3 p-2.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-amber-500/20 border border-amber-500/40 flex items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2">
+              <Crown className="w-4 h-4 text-amber-400 shrink-0 fill-current" />
+              <span className="font-bold text-amber-200">Abonnement VIP Mobile Money (Orange, Wave, MTN, Moov)</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenSubscription();
+              }}
+              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] transition-all shrink-0 cursor-pointer shadow-md"
+            >
+              Pass VIP
+            </button>
+          </div>
+        )}
+
         {/* Navigation Tabs Compact */}
         <div className="grid grid-cols-3 sm:grid-cols-4 gap-1 p-1 bg-slate-950/90 rounded-xl border border-slate-800 mb-2.5">
           <button
@@ -444,48 +467,15 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
               </button>
             </form>
 
-            {/* Quick Access Badges for saved users */}
-            {savedUsers.length > 0 && (
-              <div className="pt-2 border-t border-slate-800">
-                <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                  <span className="font-bold">⚡ Connexion rapide 1-Clic :</span>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('accounts')}
-                    className="text-amber-400 hover:underline text-[10px] font-bold cursor-pointer"
-                  >
-                    Voir tous ({savedUsers.length})
-                  </button>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                  {savedUsers.slice(0, 2).map((user) => (
-                    <button
-                      key={user.id}
-                      type="button"
-                      onClick={() => handleSwitchAccount(user.id)}
-                      className="p-1.5 rounded-xl bg-slate-950/80 border border-slate-800 hover:border-amber-500/50 flex items-center justify-between gap-2 text-left transition-all hover:bg-slate-800/60 cursor-pointer"
-                    >
-                      <div className="min-w-0">
-                        <div className="text-xs font-bold text-white truncate">{user.nom || user.email}</div>
-                        <div className="text-[9px] text-amber-300/80 truncate">{user.email}</div>
-                      </div>
-                      <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9px] font-bold shrink-0">
-                        Activer
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Switch to Register */}
-            <div className="text-center pt-1">
+            <div className="text-center pt-2 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => { setActiveTab('register'); setError(null); }}
-                className="text-[11px] text-amber-400 hover:text-amber-300 underline font-semibold cursor-pointer"
+                className="text-xs text-amber-400 hover:text-amber-300 font-bold hover:underline cursor-pointer flex items-center justify-center gap-1.5 w-full py-1"
               >
-                + Inscrire un nouvel utilisateur avec nom complet et coordonnées
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Pas encore de compte ? S'inscrire officiellement</span>
               </button>
             </div>
           </div>

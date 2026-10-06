@@ -88,6 +88,10 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
 
   // Copier le pronostic complet dans le presse-papiers
   const handleCopyPronostic = () => {
+    const trio5Nums = [...basesSolides, ...chancesSerieuses.slice(0, 3)].map(p => p.numero);
+    const quarteAssociesNums = chancesSerieuses.map(p => p.numero);
+    const quinteAssociesNums = [...chancesSerieuses, tocardsSpeculatifs[0]].filter(Boolean).map(p => p.numero);
+
     const text = [
       `🏁 CLASSIFICATION & PRONOSTIC OFFICIEL V38 (12 CHEVAUX)`,
       `🏇 ${course.titre || course.prixNom || 'Course Hippique'} - ${course.hippodrome || ''} (${course.reunion || 'R1'} ${course.courseNumero || course.course || 'C1'})`,
@@ -102,8 +106,11 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
       `🎯 SÉLECTION DES 12 N° CLASSÉS PAR COTE :`,
       activeSelection.map((p, idx) => `${idx + 1}. N°${p.numero} ${p.nom} (Cote: ${p.coteProbable || getHorseGenyOdds(p)}/1) [${idx < 2 ? 'BASE' : idx < 6 ? 'CHANCE' : idx < 9 ? 'TOCARD' : 'SURPRISE'}]`).join('\n'),
       ``,
-      `🎫 TICKET QUINTÉ+ CONSEILLÉ (5 Ch.) : ${[...basesSolides, ...chancesSerieuses.slice(0, 3)].map(p => p.numero).join(' - ')}`,
-      `🎫 TICKET QUINTÉ+ ÉLARGI (8 Ch.) : ${activeSelection.slice(0, 8).map(p => p.numero).join(' - ')}`,
+      `🎟️ PROPOSITIONS DE JEUX PRODUITS PAR ALGORITHME :`,
+      `1. COUPLÉ : Bases N°${basesSolides.map(p => p.numero).join(' - ')} | Champ Réduit Base N°${basesSolides[0]?.numero} + Associés (${chancesSerieuses.slice(0, 3).map(p => `N°${p.numero}`).join(', ')})`,
+      `2. TRIO (5 N°) : ${trio5Nums.map(n => `N°${n}`).join(' - ')} (Combiné 10 combis = 4 000 FCFA | Champ Réduit = 1 200 FCFA)`,
+      `3. QUARTÉ (CHAMP RÉDUIT) : Bases ${basesSolides.map(p => `N°${p.numero}`).join(' - ')} - X - X / Associés: ${quarteAssociesNums.map(n => `N°${n}`).join(', ')} (6 combinaisons = 1 800 FCFA)`,
+      `4. QUINTÉ+ (CHAMP RÉDUIT) : Bases ${basesSolides.map(p => `N°${p.numero}`).join(' - ')} - X - X - X / Associés: ${quinteAssociesNums.map(n => `N°${n}`).join(', ')} (10 combinaisons = 3 000 FCFA / Flexi 50% = 1 500 FCFA)`,
     ].join('\n');
 
     navigator.clipboard.writeText(text);
@@ -715,7 +722,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
         </section>
       )}
 
-      {/* 5. ÉTAPE 4 : TICKETS & COMBINAISONS RECOMMANDÉES */}
+      {/* 5. ÉTAPE 4 : PROPOSITIONS DE JEUX PRODUITS PAR ALGORITHME */}
       {(activeStepFilter === 'ALL' || activeStepFilter === 'TICKETS') && (
         <section className="space-y-4">
           <div className="flex items-center gap-3 pb-2 border-b border-slate-800">
@@ -724,32 +731,92 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
             </span>
             <div>
               <h2 className="text-lg font-black text-white flex items-center gap-2">
-                <span>Étape 4 : Tickets & Combinaisons Recommandées (Pronostic Officiel)</span>
+                <span>Étape 4 : Propositions de Jeux Produits par Algorithme</span>
               </h2>
               <p className="text-xs text-slate-400">
-                Formules mathématiquement optimisées basées sur l'agencement strict des 12 chevaux de la Hiérarchie.
+                Formules mathématiquement optimisées par le moteur d'analyse : Couplé, Trio en 5 N°, Quarté Champ Réduit et Quinté+ Champ Réduit.
               </p>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {/* TICKET QUINTÉ+ 5 CHEVAUX (ORDRE / DÉSORDRE) */}
-            <div className="p-5 rounded-2xl bg-slate-900 border-2 border-amber-500/50 shadow-xl space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                <span className="font-black text-amber-400 text-sm flex items-center gap-1.5">
-                  <Crown className="w-4 h-4" />
-                  <span>Ticket Quinté+ Élite (5 Ch.)</span>
-                </span>
-                <span className="text-[10px] font-bold text-slate-400 bg-slate-950 px-2 py-0.5 rounded">2 Bases + 3 Chances</span>
-              </div>
-              <p className="text-xs text-slate-300">Formule pure concentrée sur les deux bases solides et le trio de tête des chances sérieuses.</p>
-              
-              <div className="flex items-center gap-2 py-2">
-                {[...basesSolides, ...chancesSerieuses.slice(0, 3)].map((p, i) => (
-                  <span key={`ticket5-${p.numero}-${i}`} className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 font-mono font-black text-lg flex items-center justify-center shadow-md">
-                    {p.numero}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* 1. COUPLÉ */}
+            <div className="p-5 rounded-2xl bg-slate-900 border-2 border-amber-500/50 shadow-xl space-y-3 flex flex-col justify-between">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <span className="font-black text-amber-400 text-sm flex items-center gap-1.5">
+                    <Target className="w-4 h-4" />
+                    <span>Couplé (Gagnant • Placé)</span>
                   </span>
-                ))}
+                  <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">
+                    500 FCFA
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Formule sèche sur les 2 bases solides ou en champ réduit avec les premières chances.
+                </p>
+                
+                <div className="space-y-1.5 py-1">
+                  <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl text-xs">
+                    <span className="text-slate-400 font-bold">Couplé Sec :</span>
+                    <span className="font-mono font-black text-amber-300">{basesSolides.map(p => `N°${p.numero}`).join(' - ')}</span>
+                  </div>
+                  <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl text-xs">
+                    <span className="text-slate-400 font-bold">Champ Réduit :</span>
+                    <span className="font-mono text-[11px] text-cyan-300">
+                      N°{basesSolides[0]?.numero} / {chancesSerieuses.slice(0, 3).map(p => p.numero).join('-')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {onSelectHorseForTicket && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    basesSolides.forEach(p => onSelectHorseForTicket(Number(p.numero)));
+                  }}
+                  className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-md cursor-pointer"
+                >
+                  Charger ce Couplé
+                </button>
+              )}
+            </div>
+
+            {/* 2. TRIO : 5 N° */}
+            <div className="p-5 rounded-2xl bg-slate-900 border-2 border-teal-500/50 shadow-xl space-y-3 flex flex-col justify-between">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <span className="font-black text-teal-300 text-sm flex items-center gap-1.5">
+                    <Layers className="w-4 h-4" />
+                    <span>Trio : 5 Numéros (5 N°)</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-teal-300 bg-teal-500/10 border border-teal-500/30 px-2 py-0.5 rounded">
+                    400 FCFA
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  Les 5 numéros clés recommandés : 100% de garantie dès que les 3 premiers sont dans vos 5 !
+                </p>
+                
+                <div className="flex items-center gap-1.5 py-1 justify-center">
+                  {[...basesSolides, ...chancesSerieuses.slice(0, 3)].map((p, i) => (
+                    <span key={`trio5-disp-${p.numero}-${i}`} className="w-8 h-8 rounded-lg bg-teal-500 text-slate-950 font-mono font-black text-sm flex items-center justify-center shadow-md">
+                      {p.numero}
+                    </span>
+                  ))}
+                </div>
+
+                <div className="bg-slate-950 p-2 rounded-xl text-[11px] text-slate-300 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Combiné 5 N° :</span>
+                    <strong className="text-teal-300 font-bold">4 000 FCFA (10 paris)</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Champ Réduit (2B+3A) :</span>
+                    <strong className="text-amber-300 font-bold">1 200 FCFA (3 paris)</strong>
+                  </div>
+                </div>
               </div>
 
               {onSelectHorseForTicket && (
@@ -758,66 +825,105 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
                   onClick={() => {
                     [...basesSolides, ...chancesSerieuses.slice(0, 3)].forEach(p => onSelectHorseForTicket(Number(p.numero)));
                   }}
-                  className="w-full py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-md cursor-pointer"
+                  className="w-full py-2 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs transition-all shadow-md cursor-pointer"
                 >
-                  Charger ce Ticket Quinté+
+                  Charger le Trio (5 N°)
                 </button>
               )}
             </div>
 
-            {/* TICKET QUINTÉ+ ÉLARGI (8 CHEVAUX) */}
-            <div className="p-5 rounded-2xl bg-slate-900 border-2 border-emerald-500/50 shadow-xl space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                <span className="font-black text-emerald-400 text-sm flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>Ticket Sécurité Élargi (8 Ch.)</span>
-                </span>
-                <span className="text-[10px] font-bold text-slate-400 bg-slate-950 px-2 py-0.5 rounded">Bases + Chances + Tocards</span>
-              </div>
-              <p className="text-xs text-slate-300">Couverture maximale intégrant les 2 bases, les 4 chances sérieuses et les 2 meilleurs tocards.</p>
-              
-              <div className="flex flex-wrap items-center gap-1.5 py-2">
-                {selection11.slice(0, 8).map((p, i) => (
-                  <span key={`ticket8-${p.numero}-${i}`} className="w-9 h-9 rounded-xl bg-emerald-500 text-slate-950 font-mono font-black text-base flex items-center justify-center shadow-md">
-                    {p.numero}
+            {/* 3. QUARTÉ : CHAMP RÉDUIT */}
+            <div className="p-5 rounded-2xl bg-slate-900 border-2 border-purple-500/50 shadow-xl space-y-3 flex flex-col justify-between">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <span className="font-black text-purple-300 text-sm flex items-center gap-1.5">
+                    <Trophy className="w-4 h-4" />
+                    <span>Quarté : Champ Réduit</span>
                   </span>
-                ))}
+                  <span className="text-[10px] font-bold text-purple-300 bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 rounded">
+                    300 FCFA
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  2 Bases Solides + 4 Chevaux Associés (Champs X) pour viser Ordre, Désordre et Bonus 4.
+                </p>
+                
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-purple-500/30 text-center font-mono text-xs">
+                  <div className="text-amber-400 font-bold">Bases: {basesSolides.map(p => `N°${p.numero}`).join(' - ')} - X - X</div>
+                  <div className="text-[10px] text-purple-300 mt-1">Associés : {chancesSerieuses.map(p => `N°${p.numero}`).join(', ')}</div>
+                </div>
+
+                <div className="bg-slate-950 p-2 rounded-xl text-[11px] text-slate-300 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Coût Champ Réduit :</span>
+                    <strong className="text-purple-300 font-bold">1 800 FCFA (6 paris)</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Option Flexi 50% :</span>
+                    <strong className="text-emerald-400 font-bold">900 FCFA</strong>
+                  </div>
+                </div>
               </div>
 
               {onSelectHorseForTicket && (
                 <button
                   type="button"
                   onClick={() => {
-                    selection11.slice(0, 8).forEach(p => onSelectHorseForTicket(Number(p.numero)));
+                    [...basesSolides, ...chancesSerieuses].forEach(p => onSelectHorseForTicket(Number(p.numero)));
                   }}
-                  className="w-full py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs transition-all shadow-md cursor-pointer"
+                  className="w-full py-2 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-black text-xs transition-all shadow-md cursor-pointer"
                 >
-                  Charger la Sélection des 8
+                  Charger Quarté Champ Réduit
                 </button>
               )}
             </div>
 
-            {/* COUPLÉ GAGNANT / PLACÉ & 2 SUR 4 */}
-            <div className="p-5 rounded-2xl bg-slate-900 border-2 border-cyan-500/50 shadow-xl space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                <span className="font-black text-cyan-400 text-sm flex items-center gap-1.5">
-                  <Target className="w-4 h-4" />
-                  <span>Couplés & 2 sur 4</span>
-                </span>
-                <span className="text-[10px] font-bold text-slate-400 bg-slate-950 px-2 py-0.5 rounded">Sécurité Rentabilité</span>
-              </div>
-              <p className="text-xs text-slate-300">Association des bases avec les premières chances pour sécuriser le retour sur investissement.</p>
-              
-              <div className="space-y-1.5 py-1 text-xs">
-                <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl">
-                  <span className="text-slate-400 font-bold">Couplé Gagnant / Placé :</span>
-                  <span className="font-mono font-black text-amber-300">{basesSolides.map(p => p.numero).join(' - ')}</span>
+            {/* 4. QUINTÉ+ : CHAMP RÉDUIT */}
+            <div className="p-5 rounded-2xl bg-gradient-to-b from-red-950/30 via-slate-900 to-slate-950 border-2 border-red-500/50 shadow-xl space-y-3 flex flex-col justify-between">
+              <div className="space-y-2.5">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <span className="font-black text-rose-300 text-sm flex items-center gap-1.5">
+                    <Crown className="w-4 h-4 text-amber-400" />
+                    <span>Quinté+ : Champ Réduit</span>
+                  </span>
+                  <span className="text-[10px] font-bold text-rose-300 bg-rose-500/10 border border-rose-500/30 px-2 py-0.5 rounded">
+                    300 FCFA
+                  </span>
                 </div>
-                <div className="flex items-center justify-between bg-slate-950 p-2 rounded-xl">
-                  <span className="text-slate-400 font-bold">Trio & 2 sur 4 :</span>
-                  <span className="font-mono font-black text-cyan-300">{[...basesSolides, chancesSerieuses[0]].filter(Boolean).map(p => p.numero).join(' - ')}</span>
+                <p className="text-xs text-slate-300">
+                  2 Bases Incontournables + 5 Associés (Champs X) : couverture maximale Ordre/Bonus.
+                </p>
+                
+                <div className="bg-slate-950 p-2.5 rounded-xl border border-red-500/30 text-center font-mono text-xs">
+                  <div className="text-amber-400 font-bold">Bases: {basesSolides.map(p => `N°${p.numero}`).join(' - ')} - X - X - X</div>
+                  <div className="text-[10px] text-rose-300 mt-1">
+                    Associés : {[...chancesSerieuses, tocardsSpeculatifs[0]].filter(Boolean).map(p => `N°${p.numero}`).join(', ')}
+                  </div>
+                </div>
+
+                <div className="bg-slate-950 p-2 rounded-xl text-[11px] text-slate-300 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Plein Tarif (100%) :</span>
+                    <strong className="text-rose-400 font-bold">3 000 FCFA (10 paris)</strong>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-slate-400">Option Flexi 50% :</span>
+                    <strong className="text-emerald-400 font-bold">1 500 FCFA</strong>
+                  </div>
                 </div>
               </div>
+
+              {onSelectHorseForTicket && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    [...basesSolides, ...chancesSerieuses, tocardsSpeculatifs[0]].filter(Boolean).forEach(p => onSelectHorseForTicket(Number(p.numero)));
+                  }}
+                  className="w-full py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs transition-all shadow-md cursor-pointer"
+                >
+                  Charger Quinté+ Champ Réduit
+                </button>
+              )}
             </div>
           </div>
         </section>

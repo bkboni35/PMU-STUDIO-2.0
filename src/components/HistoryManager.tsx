@@ -33,6 +33,7 @@ import {
   purgePastRacesFromHistory,
 } from '../utils/favoritesStorage';
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
+import { TrackWeatherAnalysisCard } from './TrackWeatherAnalysisCard';
 
 interface HistoryManagerProps {
   history: HistoryCourseItem[];
@@ -41,7 +42,7 @@ interface HistoryManagerProps {
   onRemoveItem: (id: string) => void;
   onClearAll: () => void;
   onUpdateHistory?: (updatedHistory: HistoryCourseItem[]) => void;
-  onNavigateTab?: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38') => void;
+  onNavigateTab?: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38' | 'trace-facteurs') => void;
 }
 
 export const HistoryManager: React.FC<HistoryManagerProps> = ({
@@ -57,10 +58,11 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Cartes comparatives dépliées (Analyse Après Course)
+  // Cartes comparatives dépliées (Analyse Après Course & Tracé)
   const [expandedComparisonId, setExpandedComparisonId] = useState<string | null>(null);
   const [expandedScoreId, setExpandedScoreId] = useState<string | null>(null);
   const [expandedValueId, setExpandedValueId] = useState<string | null>(null);
+  const [expandedTrackId, setExpandedTrackId] = useState<string | null>(null);
 
   // Temps réel & Synchronisation en direct
   const [lastSyncedAt, setLastSyncedAt] = useState<string>(
@@ -866,6 +868,22 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                       <span>Partants</span>
                     </button>
 
+                    {/* Bouton Tracé & Facteurs (avec classement des numéros par cote) */}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedTrackId(expandedTrackId === item.id ? null : item.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border shrink-0 active:scale-95 cursor-pointer shadow-sm ${
+                        expandedTrackId === item.id
+                          ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-300 shadow-amber-500/30'
+                          : 'bg-gradient-to-r from-amber-400 via-amber-500 to-amber-400 hover:from-amber-300 hover:to-amber-400 text-slate-950 border-amber-300'
+                      }`}
+                      title="Afficher le tracé, la météo, le terrain, les facteurs et le classement des numéros par cote"
+                    >
+                      <span className="text-xs">🏛️</span>
+                      <span>Tracé & Facteurs</span>
+                      {expandedTrackId === item.id ? <ChevronUp className="w-3 h-3 text-slate-950" /> : <ChevronDown className="w-3 h-3 text-slate-950" />}
+                    </button>
+
                     {/* Bouton Actualiser en Direct / Live Sync Geny */}
                     <button
                       type="button"
@@ -995,6 +1013,79 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                 <div className="mt-3">
                   <HierarchieQuinteV38Banner course={course} />
                 </div>
+
+                {/* Panneau dépliant : Tracé & Facteurs (Piste, Météo, Corde & Facteurs avec Classement des Cotes) */}
+                {expandedTrackId === item.id && (
+                  <div className="mt-4 pt-4 border-t border-amber-500/40 space-y-4 animate-fadeIn bg-slate-950/90 p-4 sm:p-5 rounded-2xl border-2 border-amber-500/50 shadow-xl">
+                    <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-2xl leading-none">🏛️</span>
+                        <div>
+                          <h4 className="text-sm sm:text-base font-black text-white flex items-center gap-2">
+                            <span>Tracé & Facteurs Déterminants</span>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              {course.hippodrome} · {course.distance}m · Corde à {course.corde || 'Gauche'}
+                            </span>
+                          </h4>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Pénétrométrie, météo, vent, orientation, biais stalles/cordes et classement des numéros par cote
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelectCourse(course);
+                          if (onNavigateTab) onNavigateTab('trace-facteurs');
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                        title="Ouvrir cette course dans l'espace d'affichage du résultat d'analyse"
+                      >
+                        <span>Ouvrir dans l'espace résultat</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    {/* Carte Complète d'Analyse Piste & Météo avec Classement des Cotes */}
+                    <TrackWeatherAnalysisCard
+                      course={course}
+                      onNavigateTab={onNavigateTab}
+                    />
+
+                    {/* Synthèse Parcours & Pièges / Facteurs */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      {course.synthese?.analyseParcours && (
+                        <div className="bg-slate-900/90 rounded-2xl border border-slate-800 p-4 space-y-2">
+                          <h5 className="font-black text-white text-xs flex items-center gap-1.5">
+                            <span>🏟️</span>
+                            <span>Analyse Approfondie du Parcours</span>
+                          </h5>
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            {course.synthese.analyseParcours}
+                          </p>
+                        </div>
+                      )}
+
+                      {course.synthese?.piegesCourse && course.synthese.piegesCourse.length > 0 && (
+                        <div className="bg-slate-900/90 rounded-2xl border border-slate-800 p-4 space-y-2">
+                          <h5 className="font-black text-rose-300 text-xs flex items-center gap-1.5">
+                            <span>⚠️</span>
+                            <span>Pièges & Facteurs Déterminants</span>
+                          </h5>
+                          <ul className="space-y-1.5 text-xs text-slate-300">
+                            {course.synthese.piegesCourse.map((piege, pIdx) => (
+                              <li key={pIdx} className="flex items-start gap-2">
+                                <span className="text-rose-400 font-black mt-0.5">•</span>
+                                <span>{piege}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Panneau dépliant : Classement par Côte */}
                 {expandedScoreId === item.id && (

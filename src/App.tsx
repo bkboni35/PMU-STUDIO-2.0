@@ -11,6 +11,7 @@ import { DerniersResultatsQuinte } from './components/DerniersResultatsQuinte';
 import { SyntheseHippoAnalyse } from './components/SyntheseHippoAnalyse';
 import { PartantsTable } from './components/PartantsTable';
 import { TicketBetCalculator } from './components/TicketBetCalculator';
+import { TrackWeatherAnalysisCard } from './components/TrackWeatherAnalysisCard';
 import { TurfAdvisorChat } from './components/TurfAdvisorChat';
 import { MusiqueDecoderModal } from './components/MusiqueDecoderModal';
 import { QuinteHierarchyModal } from './components/QuinteHierarchyModal';
@@ -49,7 +50,8 @@ import { AndroidMobileHeader } from './components/AndroidMobileHeader';
 import { AnalysisProgressBar } from './components/AnalysisProgressBar';
 import { RacesExplorerView } from './components/RacesExplorerView';
 import { UserSpaceModal } from './components/UserSpaceModal';
-import { AdminDashboardModal } from './components/AdminDashboardModal';
+import { MobileMoneySubscriptionModal } from './components/MobileMoneySubscriptionModal';
+import { AdminDashboardModal, DeploymentStatusInfo } from './components/AdminDashboardModal';
 import { DeveloperAndUserLinksModal } from './components/DeveloperAndUserLinksModal';
 import { SystemPresentationModal } from './components/SystemPresentationModal';
 import { AiQuotasModal } from './components/AiQuotasModal';
@@ -74,7 +76,7 @@ export default function App() {
   const [validationStatus, setValidationStatus] = useState<{ status: 'idle' | 'loading' | 'valid' | 'error'; errors?: string[] }>({ status: 'idle' });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoNotice, setInfoNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'synthese' | 'classification-prono' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38'>('synthese');
+  const [activeTab, setActiveTab] = useState<'synthese' | 'classification-prono' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs'>('synthese');
   const prevTabRef = useRef<string>(activeTab);
   useEffect(() => {
     prevTabRef.current = activeTab;
@@ -87,7 +89,7 @@ export default function App() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isQuinteHierarchyModalOpen, setIsQuinteHierarchyModalOpen] = useState(false);
 
-  const openTabInForeground = (tab: 'synthese' | 'classification-prono' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38') => {
+  const openTabInForeground = (tab: 'synthese' | 'classification-prono' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs') => {
     setActiveTab(tab);
     setIsForegroundModalOpen(true);
   };
@@ -115,6 +117,41 @@ export default function App() {
   const [isLinksModalOpen, setIsLinksModalOpen] = useState(false);
   const [isPresentationModalOpen, setIsPresentationModalOpen] = useState(false);
   const [isAiQuotasModalOpen, setIsAiQuotasModalOpen] = useState(false);
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+
+  // État de Déploiement GitHub & Render pour la notification Toast
+  const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatusInfo | null>(null);
+
+  // Auto-dismiss de la notification Toast après 8 secondes
+  useEffect(() => {
+    if (deploymentStatus) {
+      const timer = setTimeout(() => {
+        setDeploymentStatus(null);
+      }, 8000);
+      return () => clearTimeout(timer);
+    }
+  }, [deploymentStatus]);
+
+  // Bascule Mode Expert (Gains cumulés & Record kilométrique)
+  const [isExpertMode, setIsExpertMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('hippo_expert_mode') !== 'false';
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleExpertMode = () => {
+    setIsExpertMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('hippo_expert_mode', String(next));
+      } catch (e) {
+        // ignore
+      }
+      return next;
+    });
+  };
 
   // Espace Utilisateur & Session Email
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -1684,7 +1721,10 @@ export default function App() {
         onOpenLinksModal={() => setIsLinksModalOpen(true)}
         onOpenInstallModal={() => setIsAndroidInstallOpen(true)}
         onOpenAiQuotas={() => setIsAiQuotasModalOpen(true)}
+        onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
         onNavigateTab={(tab) => handleNavigateTab(tab)}
+        isExpertMode={isExpertMode}
+        onToggleExpertMode={handleToggleExpertMode}
       />
 
       {/* Main Container */}
@@ -1696,6 +1736,8 @@ export default function App() {
           onOpenHistory={() => setIsHistoryModalOpen(true)}
           onResetSession={handleResetSession}
           historyCount={history.length}
+          isExpertMode={isExpertMode}
+          onToggleExpertMode={handleToggleExpertMode}
         />
 
         {/* Dynamic Real-Time Analysis Progress Bar (< 30s) / Traitement */}
@@ -1912,6 +1954,30 @@ export default function App() {
                     }`}
                   >
                     G1•G2•G3 (11 Ch.)
+                  </span>
+                </button>
+
+                {/* Bouton Onglet Tracé & Facteurs (Classement des numéros par cote) */}
+                <button
+                  type="button"
+                  onClick={() => openTabInForeground('trace-facteurs')}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all cursor-pointer ${
+                    activeTab === 'trace-facteurs'
+                      ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-amber-400 text-slate-950 shadow-lg shadow-amber-500/25 font-black ring-2 ring-amber-300'
+                      : 'text-amber-300 hover:text-amber-200 hover:bg-slate-800 border border-amber-500/40 bg-amber-950/20'
+                  }`}
+                  title="Analyse du tracé de la piste, météo, pénétromètre, virages, corde et classement des numéros par cote"
+                >
+                  <span className="text-base leading-none">🏛️</span>
+                  <span>Tracé & Facteurs</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-black ${
+                      activeTab === 'trace-facteurs'
+                        ? 'bg-slate-950 text-amber-300'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}
+                  >
+                    Piste & Cotes
                   </span>
                 </button>
 
@@ -2188,6 +2254,116 @@ export default function App() {
               </div>
             )}
 
+            {activeTab === 'trace-facteurs' && (
+              <div className="bg-slate-900/90 border border-slate-700/80 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-xl w-full space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-800">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 font-black shadow-inner">
+                      <span className="text-2xl leading-none">🏛️</span>
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-lg sm:text-xl font-black text-white">Tracé, Facteurs & Classement des Cotes</h2>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">Format Paysage Étendu</span>
+                      </div>
+                      <p className="text-xs text-slate-400">
+                        {course.titre} ({course.reunion} {course.course}) — {course.hippodrome} · {course.distance}m · Corde à {course.corde || 'Gauche'} · Terrain {course.terrain || 'Bon'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => openTabInForeground('synthese')}
+                      className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold transition-all border border-slate-700 flex items-center gap-1.5"
+                    >
+                      <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Synthèse & Prono</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openTabInForeground('partants')}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all flex items-center gap-1.5 shadow-md"
+                    >
+                      <Table className="w-3.5 h-3.5 text-slate-950" />
+                      <span>Tableau des Partants ({course.partants?.length || 0})</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Module Central Tracé & Facteurs avec Classement des Numéros par Cote */}
+                <TrackWeatherAnalysisCard
+                  course={course}
+                  onNavigateTab={handleNavigateTab}
+                  onSelectHorseForTicket={handleToggleHorse}
+                  selectedHorseNumbers={selectedHorses}
+                />
+
+                {/* Analyse Approfondie du Parcours & Facteurs Clés / Pièges */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {course.synthese?.analyseParcours ? (
+                    <div className="bg-slate-950/90 rounded-3xl border border-slate-800 p-6 space-y-3">
+                      <h4 className="font-black text-white text-base flex items-center gap-2">
+                        <span>🏟️</span>
+                        <span>Analyse Approfondie du Parcours</span>
+                      </h4>
+                      <p className="text-sm text-slate-300 leading-relaxed">{course.synthese.analyseParcours}</p>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950/90 rounded-3xl border border-slate-800 p-6 space-y-3">
+                      <h4 className="font-black text-white text-base flex items-center gap-2">
+                        <span>🏟️</span>
+                        <span>Profil du Tracé — {course.hippodrome}</span>
+                      </h4>
+                      <p className="text-sm text-slate-300 leading-relaxed">
+                        Distance de {course.distance} mètres, départ corde à {course.corde || 'gauche'}.
+                        Ce parcours exige une excellente gestion de l'effort dans les tournants et une aptitude confirmée à la nature du terrain ({course.terrain || 'Bon'}).
+                      </p>
+                    </div>
+                  )}
+
+                  {course.synthese?.piegesCourse && course.synthese.piegesCourse.length > 0 ? (
+                    <div className="bg-slate-950/90 rounded-3xl border border-slate-800 p-6 space-y-3">
+                      <h4 className="font-black text-rose-300 text-base flex items-center gap-2">
+                        <span>⚠️</span>
+                        <span>Pièges & Facteurs Déterminants</span>
+                      </h4>
+                      <ul className="space-y-2 text-sm text-slate-300">
+                        {course.synthese.piegesCourse.map((p, idx) => (
+                          <li key={idx} className="flex items-start gap-3">
+                            <span className="text-rose-400 font-black mt-1">•</span>
+                            <span>{p}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950/90 rounded-3xl border border-slate-800 p-6 space-y-3">
+                      <h4 className="font-black text-amber-300 text-base flex items-center gap-2">
+                        <span>⚡</span>
+                        <span>Facteurs Clés de la Course</span>
+                      </h4>
+                      <ul className="space-y-2 text-sm text-slate-300">
+                        <li className="flex items-start gap-3">
+                          <span className="text-amber-400 font-black mt-1">•</span>
+                          <span>Gestion du départ et positionnement rapide dans le premier virage.</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                          <span className="text-amber-400 font-black mt-1">•</span>
+                          <span>Configuration de ferrure (D4/DP) et aptitude aux conditions météo du jour.</span>
+                        </li>
+                        <li className="flex items-start gap-3">
+                          <span className="text-amber-400 font-black mt-1">•</span>
+                          <span>Vitesse de pointe et résistance au vent dans la ligne droite d'arrivée.</span>
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {activeTab === 'propositions-ia' && (
               <div className="bg-slate-900/90 border border-slate-700/80 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-xl w-full space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-800">
@@ -2197,10 +2373,10 @@ export default function App() {
                     </div>
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-lg sm:text-xl font-black text-white">Proposition de Jeux des IA (Base • T5 • Q6 • Q7)</h2>
+                        <h2 className="text-lg sm:text-xl font-black text-white">Propositions de Jeux de l'Algorithme (Couplé • Trio 5 N° • Quarté Champ Réduit • Quinté+ Champ Réduit)</h2>
                         <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">Format Paysage Étendu</span>
                       </div>
-                      <p className="text-xs text-slate-400">Combinaisons optimisées par IA selon votre budget</p>
+                      <p className="text-xs text-slate-400">Combinaisons optimisées par algorithme : Couplé, Trio en 5 N°, Quarté Champ Réduit et Quinté+ Champ Réduit</p>
                     </div>
                   </div>
                 </div>
@@ -2254,6 +2430,7 @@ export default function App() {
                   onRefreshOdds={() => refreshOddsNow()}
                   nextOddsSec={nextOddsSec}
                   isRefreshingOdds={isRefreshingCotes}
+                  isExpertMode={isExpertMode}
                 />
 
                 {selectedHorses.length > 0 && (
@@ -2487,6 +2664,7 @@ export default function App() {
               onRefreshOdds={() => course && refreshOddsNow(course, true)}
               nextOddsSec={nextOddsSec}
               isRefreshingOdds={isRefreshingCotes}
+              isExpertMode={isExpertMode}
             />
             </div>
           </div>
@@ -2658,6 +2836,7 @@ export default function App() {
       <AdminDashboardModal
         isOpen={isAdminOpen}
         onClose={() => setIsAdminOpen(false)}
+        onDeploySuccess={(info) => setDeploymentStatus(info)}
       />
 
       {/* User Space & Email Authentication Modal */}
@@ -2671,6 +2850,13 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
         onLogout={handleLogout}
         promptMessage={userSpacePrompt}
+        onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+      />
+
+      {/* Mobile Money Subscription Modal */}
+      <MobileMoneySubscriptionModal
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setIsSubscriptionModalOpen(false)}
       />
 
       {/* Android APK & PWA Installation Modal */}
@@ -2733,12 +2919,14 @@ export default function App() {
                   {activeTab === 'ticket' && <Calculator className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'advisor' && <Bot className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'fiche-pdf-v38' && <Crown className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />}
+                  {activeTab === 'trace-facteurs' && <span className="text-xl sm:text-2xl leading-none">🏛️</span>}
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
                     <h2 className="text-base sm:text-xl font-black text-white">
                       {activeTab === 'synthese' && 'Synthèse & Pronostic Quinté+'}
                       {activeTab === 'classification-prono' && 'Classification par Groupes & Pronostic Officiel V38'}
+                      {activeTab === 'trace-facteurs' && 'Tracé, Facteurs & Classement des Cotes'}
                       {activeTab === 'propositions-ia' && 'Proposition de Jeux des IA (Base • T5 • Q6 • Q7)'}
                       {activeTab === 'partants' && `Tableau des Partants (${course?.partants?.length || 0})`}
                       {activeTab === 'college-gemini' && 'Collège Gemini - 6 IA Spécialisées'}
@@ -2826,6 +3014,73 @@ export default function App() {
                       onToggleHorse={handleToggleHorse}
                     />
                   )}
+                  {activeTab === 'trace-facteurs' && (
+                    <div className="space-y-6">
+                      <TrackWeatherAnalysisCard
+                        course={course}
+                        onNavigateTab={handleNavigateTab}
+                        onSelectHorseForTicket={handleToggleHorse}
+                        selectedHorseNumbers={selectedHorses}
+                      />
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {course.synthese?.analyseParcours ? (
+                          <div className="bg-slate-950/90 rounded-3xl border border-slate-800 p-6 space-y-3">
+                            <h4 className="font-black text-white text-base flex items-center gap-2">
+                              <span>🏟️</span>
+                              <span>Analyse Approfondie du Parcours</span>
+                            </h4>
+                            <p className="text-sm text-slate-300 leading-relaxed">{course.synthese.analyseParcours}</p>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-950/90 rounded-3xl border border-slate-800 p-6 space-y-3">
+                            <h4 className="font-black text-white text-base flex items-center gap-2">
+                              <span>🏟️</span>
+                              <span>Profil du Tracé — {course.hippodrome}</span>
+                            </h4>
+                            <p className="text-sm text-slate-300 leading-relaxed">
+                              Distance de {course.distance} mètres, départ corde à {course.corde || 'gauche'}.
+                              Ce parcours exige une excellente gestion de l'effort dans les tournants et une aptitude confirmée à la nature du terrain ({course.terrain || 'Bon'}).
+                            </p>
+                          </div>
+                        )}
+
+                        {course.synthese?.piegesCourse && course.synthese.piegesCourse.length > 0 ? (
+                          <div className="bg-slate-950/90 rounded-3xl border border-slate-800 p-6 space-y-3">
+                            <h4 className="font-black text-rose-300 text-base flex items-center gap-2">
+                              <span>⚠️</span>
+                              <span>Pièges & Facteurs Déterminants</span>
+                            </h4>
+                            <ul className="space-y-2 text-sm text-slate-300">
+                              {course.synthese.piegesCourse.map((p, idx) => (
+                                <li key={idx} className="flex items-start gap-3">
+                                  <span className="text-rose-400 font-black mt-1">•</span>
+                                  <span>{p}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : (
+                          <div className="bg-slate-950/90 rounded-3xl border border-slate-800 p-6 space-y-3">
+                            <h4 className="font-black text-amber-300 text-base flex items-center gap-2">
+                              <span>⚡</span>
+                              <span>Facteurs Clés de la Course</span>
+                            </h4>
+                            <ul className="space-y-2 text-sm text-slate-300">
+                              <li className="flex items-start gap-3">
+                                <span className="text-amber-400 font-black mt-1">•</span>
+                                <span>Gestion du départ et positionnement rapide dans le premier virage.</span>
+                              </li>
+                              <li className="flex items-start gap-3">
+                                <span className="text-amber-400 font-black mt-1">•</span>
+                                <span>Configuration de ferrure (D4/DP) et aptitude aux conditions météo du jour.</span>
+                              </li>
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {activeTab === 'propositions-ia' && (
                     <PropositionsJeuxIA
                       course={course}
@@ -2846,6 +3101,7 @@ export default function App() {
                       onRefreshOdds={() => refreshOddsNow(course, true)}
                       nextOddsSec={nextOddsSec}
                       isRefreshingOdds={isRefreshingCotes}
+                      isExpertMode={isExpertMode}
                     />
                   )}
                   {activeTab === 'college-gemini' && (
@@ -2887,6 +3143,55 @@ export default function App() {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast Notification de Confirmation de Déploiement GitHub & Render */}
+      {deploymentStatus && (
+        <div className="fixed top-4 right-4 z-[99999] max-w-md w-[calc(100vw-2rem)] sm:w-auto animate-fadeIn">
+          <div className="p-4 rounded-2xl bg-slate-900/95 border-2 border-emerald-500/80 shadow-2xl shadow-emerald-500/30 backdrop-blur-xl text-slate-100 flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400 to-teal-600 text-slate-950 flex items-center justify-center font-black shadow-lg shadow-emerald-500/30 shrink-0 mt-0.5">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  Déploiement GitHub Confirmé
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {deploymentStatus.timestamp}
+                </span>
+              </div>
+              <h4 className="text-sm font-black text-white leading-snug">
+                Succès de la Synchronisation & Mise à Jour Render
+              </h4>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                {deploymentStatus.message}
+              </p>
+              {deploymentStatus.commitUrl && (
+                <div className="pt-1 flex items-center gap-3">
+                  <a
+                    href={deploymentStatus.commitUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-emerald-400 hover:text-emerald-300 hover:underline font-bold font-mono flex items-center gap-1"
+                  >
+                    <span>Voir le commit #{deploymentStatus.commitSha?.substring(0, 7)} sur GitHub</span>
+                    <Globe className="w-3.5 h-3.5" />
+                  </a>
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setDeploymentStatus(null)}
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors shrink-0 cursor-pointer"
+              title="Fermer la notification"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         </div>
       )}

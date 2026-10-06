@@ -275,7 +275,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
           { id: 'valeur', label: '📈 Index Valeur', icon: Sparkles },
           { id: 'ecarts', label: '⏳ Écarts & Forme', icon: Flame },
           { id: 'stats', label: '📊 Stats 10 Courses', icon: Star },
-          { id: 'parcours', label: '🏟️ Tracé & Facteurs', icon: Sparkles },
+          { id: 'parcours', label: '🏛️ Tracé & Facteurs', icon: Sparkles },
           { id: 'tout', label: '👁️ Vue Globale', icon: Star },
         ].map((tab) => (
           <button
@@ -744,8 +744,12 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       {/* 5. SECTION PARCOURS & ANALYSE PISTE / MÉTÉO / CORDE */}
       {(subView === 'parcours' || subView === 'tout') && (
         <div className="space-y-6">
-          {/* Module d'Analyse de la Piste, Météo & Biais de Corde/Stalle */}
-          <TrackWeatherAnalysisCard course={course} />
+          {/* Module d'Analyse de la Piste, Météo & Biais de Corde/Stalle avec Classement des Cotes */}
+          <TrackWeatherAnalysisCard
+            course={course}
+            onSelectHorseForTicket={onSelectHorseForTicket}
+            selectedHorseNumbers={selectedHorseNumbers}
+          />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {synthese.analyseParcours && (

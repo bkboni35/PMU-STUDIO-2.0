@@ -4,12 +4,22 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI, Type } from '@google/genai';
-import { SAMPLE_RACES } from './src/data/sampleRaces.js';
-import { buildFallbackRace, buildFallbackAdvisorAnswer } from './src/utils/raceGenerator.js';
-import { getCuratedPmuMeetings } from './src/data/pmuMeetingsData.js';
-import { getFriday02Meetings } from './src/data/plrFriday02Data.js';
-import { enrichRaceWithGeminiCollege, buildFactCheckingCertificate, computePartantHippoScore } from './src/utils/geminiMultiModelEngine.js';
-import { extractGenyRscData, assertRealCoursePayload, extractRaceProgram } from './src/utils/turfExtractor.js';
+import JSZip from 'jszip';
+
+// Enregistrement du loader tsx pour la résolution native Node 22/24 en production et dev
+try {
+  const { register } = await import('tsx/esm/api');
+  register();
+} catch (err) {
+  console.warn('Note: tsx loader registration skipped or already active:', err);
+}
+
+const { SAMPLE_RACES } = await import('./src/data/sampleRaces');
+const { buildFallbackRace, buildFallbackAdvisorAnswer } = await import('./src/utils/raceGenerator');
+const { getCuratedPmuMeetings } = await import('./src/data/pmuMeetingsData');
+const { getFriday02Meetings } = await import('./src/data/plrFriday02Data');
+const { enrichRaceWithGeminiCollege, buildFactCheckingCertificate, computePartantHippoScore } = await import('./src/utils/geminiMultiModelEngine');
+const { extractGenyRscData, assertRealCoursePayload, extractRaceProgram } = await import('./src/utils/turfExtractor');
 
 dotenv.config();
 
@@ -17,7 +27,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
@@ -3815,6 +3825,439 @@ pause
   return res.send(scriptContent);
 });
 
+// API de Synchronisation et Exportation vers GitHub
+app.post('/api/github/sync', async (req, res) => {
+  try {
+    const { repoUrl, branch = 'main', commitMessage = 'Mise à jour PMU Studio 2.0', githubToken, renderDeployHookUrl } = req.body || {};
+    
+    // Extraire owner et repo
+    let owner = 'bkboni35';
+    let repo = 'PMU-STUDIO-2.0';
+    const match = (repoUrl || '').match(/github\.com[/:]([\w.-]+)\/([\w.-]+?)(\.git)?$/i);
+    if (match) {
+      owner = match[1];
+      repo = match[2];
+    }
+
+    const cleanToken = (githubToken || process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim();
+
+    // Fonction de parcours récursif des fichiers sources du projet
+    const rootDir = __dirname;
+    const filesToSync: { path: string; content: string; encoding: 'utf-8' | 'base64' }[] = [];
+
+    const allowedExtensions = [
+      '.ts', '.tsx', '.js', '.jsx', '.json', '.html', '.css', '.md', '.rules', '.mjs',
+      '.svg', '.ico', '.png', '.jpg', '.jpeg', '.webp', '.txt', '.yml', '.yaml', '.bat', '.sh'
+    ];
+    const ignoredDirs = ['node_modules', '.git', 'dist', '.cache', 'coverage', '.temp'];
+
+    function scanDir(currentDir: string, relativePrefix: string = '') {
+      if (!fs.existsSync(currentDir)) return;
+      const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          if (!ignoredDirs.includes(entry.name)) {
+            scanDir(path.join(currentDir, entry.name), path.join(relativePrefix, entry.name));
+          }
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          const relPath = path.join(relativePrefix, entry.name).replace(/\\/g, '/');
+          if (allowedExtensions.includes(ext) || entry.name.startsWith('.env.example') || entry.name === '.gitignore') {
+            try {
+              const fullPath = path.join(currentDir, entry.name);
+              const stats = fs.statSync(fullPath);
+              if (stats.size < 3 * 1024 * 1024) { // Moins de 3 Mo par fichier
+                const isBinary = ['.png', '.jpg', '.jpeg', '.webp', '.ico'].includes(ext);
+                if (isBinary) {
+                  const content = fs.readFileSync(fullPath).toString('base64');
+                  filesToSync.push({ path: relPath, content, encoding: 'base64' });
+                } else {
+                  const content = fs.readFileSync(fullPath, 'utf-8');
+                  filesToSync.push({ path: relPath, content, encoding: 'utf-8' });
+                }
+              }
+            } catch (err) {
+              console.warn(`Lecture ignorée pour ${relPath}:`, err);
+            }
+          }
+        }
+      }
+    }
+
+    // Scanner les dossiers clés
+    if (fs.existsSync(path.join(rootDir, 'src'))) scanDir(path.join(rootDir, 'src'), 'src');
+    if (fs.existsSync(path.join(rootDir, 'public'))) scanDir(path.join(rootDir, 'public'), 'public');
+
+    // Fichiers racines essentiels
+    const rootFiles = [
+      'package.json',
+      'tsconfig.json',
+      'vite.config.ts',
+      'index.html',
+      'server.ts',
+      'server.mjs',
+      'firestore.rules',
+      'firebase-blueprint.json',
+      'firebase-applet-config.json',
+      'metadata.json',
+      'vercel.json',
+      'README.md',
+      '.gitignore',
+      '.env.example'
+    ];
+
+    for (const rf of rootFiles) {
+      const fullPath = path.join(rootDir, rf);
+      if (fs.existsSync(fullPath)) {
+        try {
+          const content = fs.readFileSync(fullPath, 'utf-8');
+          filesToSync.push({ path: rf, content, encoding: 'utf-8' });
+        } catch {}
+      }
+    }
+
+    // Si un jeton GitHub PAT est disponible, on fait le push direct via l'API GitHub
+    if (cleanToken && cleanToken.length > 5) {
+      const headers: Record<string, string> = {
+        'Authorization': `token ${cleanToken}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'PMU-STUDIO-AutoSync',
+        'Content-Type': 'application/json',
+      };
+
+      // 1. Obtenir la référence de la branche (avec fallback master/main ou initialisation)
+      let targetBranch = branch || 'main';
+      let refRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${targetBranch}`, { headers });
+      
+      let latestCommitSha = '';
+
+      if (!refRes.ok && refRes.status === 404) {
+        // Tester l'autre branche commune ('master' si 'main' demandé, ou vice-versa)
+        const alternateBranch = targetBranch === 'main' ? 'master' : 'main';
+        const altRefRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${alternateBranch}`, { headers });
+        
+        if (altRefRes.ok) {
+          targetBranch = alternateBranch;
+          refRes = altRefRes;
+          const refData = await refRes.json();
+          latestCommitSha = refData.object.sha;
+        } else {
+          // Vérifier si le dépôt existe
+          const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+          if (!repoRes.ok) {
+            const repoErr = await repoRes.json().catch(() => ({}));
+            return res.status(repoRes.status).json({
+              error: `Dépôt GitHub introuvable (${owner}/${repo}) ou jeton sans permissions suffisantes. Message GitHub : ${repoErr.message || repoRes.statusText}`,
+            });
+          }
+
+          // Dépôt vide : initialiser avec un README.md initial
+          const initRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/README.md`, {
+            method: 'PUT',
+            headers,
+            body: JSON.stringify({
+              message: 'Initial commit - PMU Studio 2.0',
+              content: Buffer.from('# PMU STUDIO 2.0\nApplication Turf & Pronostics IA Hippiques').toString('base64'),
+              branch: targetBranch,
+            }),
+          });
+
+          if (!initRes.ok) {
+            const initErr = await initRes.json().catch(() => ({}));
+            return res.status(initRes.status).json({
+              error: `Impossible d'initialiser la branche '${targetBranch}' sur le dépôt vide : ${initErr.message || initRes.statusText}`,
+            });
+          }
+
+          const initData = await initRes.json();
+          latestCommitSha = initData.commit.sha;
+        }
+      } else if (refRes.ok) {
+        const refData = await refRes.json();
+        latestCommitSha = refData.object.sha;
+      } else {
+        const errJson = await refRes.json().catch(() => ({}));
+        return res.status(refRes.status).json({
+          error: `Erreur d'accès à la branche '${targetBranch}' sur GitHub (${owner}/${repo}) : ${errJson.message || refRes.statusText}`,
+        });
+      }
+
+      // 2. Créer les Blobs pour les fichiers volumineux ou encodés en base64 pour éviter les limitations de taille
+      const treeItems: { path: string; mode: string; type: string; sha?: string; content?: string }[] = [];
+
+      for (const f of filesToSync) {
+        if (f.encoding === 'base64' || f.content.length > 50000) {
+          try {
+            const blobRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/blobs`, {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({
+                content: f.content,
+                encoding: f.encoding === 'base64' ? 'base64' : 'utf-8',
+              }),
+            });
+            if (blobRes.ok) {
+              const blobData = await blobRes.json();
+              treeItems.push({
+                path: f.path,
+                mode: '100644',
+                type: 'blob',
+                sha: blobData.sha,
+              });
+              continue;
+            }
+          } catch (e) {
+            console.warn(`Erreur création blob pour ${f.path}:`, e);
+          }
+        }
+        
+        // Fichier texte standard
+        treeItems.push({
+          path: f.path,
+          mode: '100644',
+          type: 'blob',
+          content: f.content,
+        });
+      }
+
+      // 3. Créer l'arbre (Tree) avec les fichiers modifiés
+      const treePayload: any = {
+        tree: treeItems,
+      };
+      if (latestCommitSha) {
+        treePayload.base_tree = latestCommitSha;
+      }
+
+      const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(treePayload),
+      });
+
+      if (!treeRes.ok) {
+        const treeErr = await treeRes.json().catch(() => ({}));
+        return res.status(treeRes.status).json({
+          error: `Erreur lors de la création de l'arbre Git : ${treeErr.message || treeRes.statusText}`,
+        });
+      }
+      const treeData = await treeRes.json();
+
+      // 4. Créer le commit
+      const commitPayload: any = {
+        message: commitMessage || 'Mise à jour PMU Studio 2.0',
+        tree: treeData.sha,
+      };
+      if (latestCommitSha) {
+        commitPayload.parents = [latestCommitSha];
+      }
+
+      const commitRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(commitPayload),
+      });
+
+      if (!commitRes.ok) {
+        const commitErr = await commitRes.json().catch(() => ({}));
+        return res.status(commitRes.status).json({
+          error: `Erreur création commit : ${commitErr.message || commitRes.statusText}`,
+        });
+      }
+      const newCommitData = await commitRes.json();
+
+      // 5. Mettre à jour la référence de la branche
+      const updateRefRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${targetBranch}`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({
+          sha: newCommitData.sha,
+          force: true,
+        }),
+      });
+
+      if (!updateRefRes.ok) {
+        const updateErr = await updateRefRes.json().catch(() => ({}));
+        return res.status(updateRefRes.status).json({
+          error: `Erreur mise à jour branche '${targetBranch}' : ${updateErr.message || updateRefRes.statusText}`,
+        });
+      }
+
+      // 6. Optionnel : Déclencher le webhook Render si configuré
+      let renderHookSuccess = false;
+      const effectiveHookUrl = renderDeployHookUrl || process.env.RENDER_DEPLOY_HOOK_URL;
+      if (effectiveHookUrl && typeof effectiveHookUrl === 'string' && effectiveHookUrl.startsWith('http')) {
+        try {
+          await fetch(effectiveHookUrl, { method: 'POST' });
+          renderHookSuccess = true;
+        } catch (rhErr) {
+          console.warn('Notification webhook Render ignorée:', rhErr);
+        }
+      }
+
+      return res.json({
+        success: true,
+        filesCount: filesToSync.length,
+        commitSha: newCommitData.sha,
+        commitUrl: `https://github.com/${owner}/${repo}/commit/${newCommitData.sha}`,
+        repoUrl: `https://github.com/${owner}/${repo}`,
+        branch: targetBranch,
+        renderHookTriggered: renderHookSuccess,
+        message: `Synchronisation réussie ! ${filesToSync.length} fichiers ont été poussés sur la branche '${targetBranch}' de GitHub. Render lance automatiquement la mise à jour en production.`,
+      });
+    }
+
+    // Sans token PAT fourni
+    return res.json({
+      success: true,
+      requiresToken: true,
+      filesCount: filesToSync.length,
+      repoUrl: `https://github.com/${owner}/${repo}`,
+      branch,
+      message: `${filesToSync.length} fichiers sources sont prêts à être synchronisés vers GitHub.`,
+    });
+  } catch (err: any) {
+    console.error('Erreur API GitHub Sync:', err);
+    return res.status(500).json({
+      error: err?.message || 'Erreur interne lors de la préparation de la synchronisation GitHub.',
+    });
+  }
+});
+
+// API de vérification du jeton GitHub
+app.post('/api/github/verify-token', async (req, res) => {
+  try {
+    const { githubToken, repoUrl = 'https://github.com/bkboni35/PMU-STUDIO-2.0' } = req.body || {};
+    if (!githubToken || typeof githubToken !== 'string' || githubToken.trim().length < 5) {
+      return res.status(400).json({ valid: false, error: 'Veuillez saisir un Personal Access Token GitHub.' });
+    }
+
+    const match = (repoUrl || '').match(/github\.com[/:]([\w.-]+)\/([\w.-]+?)(\.git)?$/i);
+    const owner = match ? match[1] : 'bkboni35';
+    const repo = match ? match[2] : 'PMU-STUDIO-2.0';
+
+    const testRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+      headers: {
+        'Authorization': `token ${githubToken.trim()}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'PMU-STUDIO-Verify',
+      },
+    });
+
+    if (testRes.ok) {
+      const repoData = await testRes.json();
+      const userRes = await fetch('https://api.github.com/user', {
+        headers: {
+          'Authorization': `token ${githubToken.trim()}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'PMU-STUDIO-Verify',
+        },
+      });
+      const userData = userRes.ok ? await userRes.json() : {};
+
+      return res.json({
+        valid: true,
+        username: userData.login || owner,
+        repoName: repoData.full_name,
+        permissions: repoData.permissions || { push: true },
+        message: `Jeton GitHub valide et connecté au compte @${userData.login || owner} avec accès au dépôt ${repoData.full_name} !`,
+      });
+    } else {
+      const errData = await testRes.json().catch(() => ({}));
+      return res.status(testRes.status).json({
+        valid: false,
+        error: `Jeton invalide ou sans accès à ${owner}/${repo} : ${errData.message || testRes.statusText}`,
+      });
+    }
+  } catch (err: any) {
+    return res.status(500).json({ valid: false, error: err?.message || 'Erreur lors du test du jeton GitHub.' });
+  }
+});
+
+// API de téléchargement complet du projet en ZIP prêt pour GitHub
+app.get(['/api/project/download-zip', '/download/project-zip'], async (req, res) => {
+  try {
+    const rootDir = __dirname;
+    const zip = new JSZip();
+
+    const allowedExtensions = ['.ts', '.tsx', '.js', '.jsx', '.json', '.html', '.css', '.md', '.rules', '.mjs', '.svg', '.png', '.ico'];
+    const ignoredDirs = ['node_modules', '.git', 'dist', '.cache', 'coverage'];
+
+    function addDirToZip(currentDir: string, zipFolder: JSZip) {
+      const entries = fs.readdirSync(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (entry.isDirectory()) {
+          if (!ignoredDirs.includes(entry.name)) {
+            const subFolder = zipFolder.folder(entry.name);
+            if (subFolder) {
+              addDirToZip(path.join(currentDir, entry.name), subFolder);
+            }
+          }
+        } else if (entry.isFile()) {
+          const ext = path.extname(entry.name).toLowerCase();
+          if (allowedExtensions.includes(ext) || entry.name.startsWith('.env.example') || entry.name === '.gitignore') {
+            try {
+              const fullPath = path.join(currentDir, entry.name);
+              const stats = fs.statSync(fullPath);
+              if (stats.size < 5 * 1024 * 1024) { // Moins de 5 Mo
+                const content = fs.readFileSync(fullPath);
+                zipFolder.file(entry.name, content);
+              }
+            } catch {}
+          }
+        }
+      }
+    }
+
+    // Ajouter les dossiers
+    if (fs.existsSync(path.join(rootDir, 'src'))) {
+      const srcFolder = zip.folder('src');
+      if (srcFolder) addDirToZip(path.join(rootDir, 'src'), srcFolder);
+    }
+
+    if (fs.existsSync(path.join(rootDir, 'public'))) {
+      const publicFolder = zip.folder('public');
+      if (publicFolder) addDirToZip(path.join(rootDir, 'public'), publicFolder);
+    }
+
+    // Ajouter les fichiers racines
+    const rootFiles = [
+      'package.json',
+      'tsconfig.json',
+      'vite.config.ts',
+      'index.html',
+      'server.ts',
+      'server.mjs',
+      'firestore.rules',
+      'firebase-blueprint.json',
+      'firebase-applet-config.json',
+      'metadata.json',
+      'vercel.json',
+      'README.md',
+      '.gitignore',
+      '.env.example'
+    ];
+
+    for (const rf of rootFiles) {
+      const fullPath = path.join(rootDir, rf);
+      if (fs.existsSync(fullPath)) {
+        try {
+          const content = fs.readFileSync(fullPath);
+          zip.file(rf, content);
+        } catch {}
+      }
+    }
+
+    const zipBuffer = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', 'attachment; filename="PMU-STUDIO-2.0-sources.zip"');
+    return res.send(zipBuffer);
+  } catch (err: any) {
+    console.error('Erreur génération ZIP projet:', err);
+    return res.status(500).json({ error: 'Erreur lors de la création de l\'archive ZIP du projet.' });
+  }
+});
+
 app.get(['/download/HippoAnalyse_Pro.url', '/HippoAnalyse_Pro.url'], (req, res) => {
   const host = req.get('host') || 'localhost:3000';
   const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
@@ -3834,11 +4277,54 @@ Prop3=19,11
   return res.send(shortcutContent);
 });
 
-// Vite middleware in dev or static files in production
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, 'dist')));
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+// Static assets serving from public and dist folders
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d' }));
+if (fs.existsSync(path.join(__dirname, 'dist'))) {
+  app.use(express.static(path.join(__dirname, 'dist'), { maxAge: '1d' }));
+}
+
+// Fallback direct pour les logos et icônes
+const publicDir = path.join(__dirname, 'public');
+const assetsDir = path.join(__dirname, 'src', 'assets', 'images');
+
+app.get(['/horse-logo.jpg', '/favicon.ico', '/pwa-192x192.png', '/pwa-512x512.png', '/app-icon.jpg'], (req, res) => {
+  const reqName = path.basename(req.path);
+  const targetPath = fs.existsSync(path.join(publicDir, reqName)) 
+    ? path.join(publicDir, reqName) 
+    : path.join(publicDir, 'horse-logo.jpg');
+  if (fs.existsSync(targetPath)) {
+    return res.sendFile(targetPath);
+  }
+  return res.status(404).end();
+});
+
+app.get(['/hippoanalyse_pro_logo_1790414725595.jpg', '/src/assets/images/hippoanalyse_pro_logo_1790414725595.jpg'], (req, res) => {
+  const p1 = path.join(publicDir, 'hippoanalyse_pro_logo_1790414725595.jpg');
+  const p2 = path.join(assetsDir, 'hippoanalyse_pro_logo_1790414725595.jpg');
+  const p3 = path.join(publicDir, 'horse-logo.jpg');
+  if (fs.existsSync(p1)) return res.sendFile(p1);
+  if (fs.existsSync(p2)) return res.sendFile(p2);
+  if (fs.existsSync(p3)) return res.sendFile(p3);
+  return res.status(404).end();
+});
+
+app.get(['/manifest.webmanifest', '/manifest.json'], (req, res) => {
+  const p = path.join(publicDir, 'manifest.webmanifest');
+  if (fs.existsSync(p)) {
+    res.setHeader('Content-Type', 'application/manifest+json');
+    return res.sendFile(p);
+  }
+  return res.status(404).end();
+});
+
+if (process.env.NODE_ENV === 'production' || (!process.env.VITE_DEV && fs.existsSync(path.join(__dirname, 'dist', 'index.html')) && process.env.NODE_ENV !== 'development')) {
+  app.get('*', (req, res, next) => {
+    if (req.originalUrl.startsWith('/api')) return next();
+    const distIndexPath = path.join(__dirname, 'dist', 'index.html');
+    if (fs.existsSync(distIndexPath)) {
+      return res.sendFile(distIndexPath);
+    }
+    next();
   });
 } else {
   const { createServer } = await import('vite');
@@ -3855,6 +4341,10 @@ if (process.env.NODE_ENV === 'production') {
       res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
+      const distIndexPath = path.join(__dirname, 'dist', 'index.html');
+      if (fs.existsSync(distIndexPath)) {
+        return res.sendFile(distIndexPath);
+      }
       next(e);
     }
   });

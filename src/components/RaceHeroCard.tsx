@@ -21,7 +21,7 @@ interface RaceHeroCardProps {
   onTriggerArrivalAudit?: () => void;
   isAuditingArrival?: boolean;
   onClearArrival?: () => void;
-  onNavigateTab?: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38') => void;
+  onNavigateTab?: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38' | 'trace-facteurs') => void;
   selectedHorsesCount?: number;
   onResetSelection?: () => void;
 }
@@ -298,6 +298,17 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 text-slate-950 fill-slate-950" />
             <span>Expertise {course.discipline || 'Discipline'} /100</span>
+          </button>
+
+          {/* Bouton Tracé & Facteurs */}
+          <button
+            type="button"
+            onClick={() => onNavigateTab && onNavigateTab('trace-facteurs')}
+            className="flex items-center gap-1.5 font-black text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-400 hover:from-amber-300 hover:to-amber-400 px-3.5 py-1.5 rounded-xl shadow-md shadow-amber-500/25 transition-all text-xs active:scale-95 border border-amber-300 shrink-0 cursor-pointer"
+            title="Consulter l'analyse du tracé, de la météo, du terrain et le classement des numéros par cote"
+          >
+            <span className="text-sm">🏛️</span>
+            <span>Tracé & Facteurs</span>
           </button>
 
           {/* Bouton Exporter Hiérarchie V38 */}

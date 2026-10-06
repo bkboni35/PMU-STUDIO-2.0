@@ -163,29 +163,59 @@ export function resolveMeetingDateRelative(
  * Normalise une chaîne de date en format standard YYYY-MM-DD pour les requêtes API et comparaisons.
  */
 export function normalizeDateForQuery(dateStr: string): string {
-  if (!dateStr || dateStr === 'all') return '';
-  const clean = dateStr.trim().toLowerCase();
+  if (!dateStr || dateStr === 'all' || dateStr === 'today' || dateStr === 'last7' || dateStr === 'upcoming7') return '';
+  const clean = dateStr.trim();
 
   // Format ISO YYYY-MM-DD
-  const isoMatch = dateStr.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  const isoMatch = clean.match(/\b(\d{4}-\d{2}-\d{2})\b/);
   if (isoMatch) return isoMatch[1];
 
-  if (clean.includes('30') || clean.includes('mercredi')) return '2026-09-30';
-  if (clean.includes('29') || clean.includes('mardi')) return '2026-09-29';
-  if (clean.includes('28') || clean.includes('lundi')) return '2026-09-28';
-  if (clean.includes('27') || clean.includes('dimanche')) return '2026-09-27';
-  if (clean.includes('26') || clean.includes('samedi')) return '2026-09-26';
-  if (clean.includes('01') || clean.includes('jeudi')) return '2026-10-01';
-
   // Format DD/MM/YYYY
-  const slashMatch = dateStr.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
+  const slashMatch = clean.match(/\b(\d{1,2})\/(\d{1,2})\/(\d{4})\b/);
   if (slashMatch) {
     const d = slashMatch[1].padStart(2, '0');
     const m = slashMatch[2].padStart(2, '0');
     return `${slashMatch[3]}-${m}-${d}`;
   }
 
-  return dateStr.trim();
+  // Format textuel français : ex "Vendredi 02 Octobre 2026", "2 Octobre 2026", etc.
+  const lower = clean.toLowerCase();
+  const months: Record<string, string> = {
+    janv: '01', jan: '01',
+    févr: '02', fevr: '02', fév: '02', fev: '02',
+    mars: '03', mar: '03',
+    avr: '04',
+    mai: '05',
+    juin: '06',
+    juil: '07',
+    août: '08', aout: '08',
+    sept: '09', sep: '09',
+    oct: '10',
+    nov: '11',
+    déc: '12', dec: '12',
+  };
+
+  let monthNum = '';
+  for (const [prefix, num] of Object.entries(months)) {
+    if (lower.includes(prefix)) {
+      monthNum = num;
+      break;
+    }
+  }
+
+  if (monthNum) {
+    const yearMatch = lower.match(/\b(202\d)\b/);
+    const year = yearMatch ? yearMatch[1] : '2026';
+    // Supprimer l'année pour ne pas confondre "2026" avec le jour "26"
+    const withoutYear = lower.replace(/\b202\d\b/g, '');
+    const dayMatch = withoutYear.match(/\b(0?[1-9]|[12]\d|3[01])\b/);
+    if (dayMatch) {
+      const day = dayMatch[1].padStart(2, '0');
+      return `${year}-${monthNum}-${day}`;
+    }
+  }
+
+  return clean;
 }
 
 /**

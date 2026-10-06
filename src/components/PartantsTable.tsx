@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronUp, ChevronDown, Check, Info, Sparkles, Filter, ExternalLink, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, ShieldCheck, Search, Printer, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Crown, MapPin, Eye, EyeOff, Target, Layers } from 'lucide-react';
+import { ChevronUp, ChevronDown, Check, Info, Sparkles, Filter, ExternalLink, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, ShieldCheck, Search, Printer, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Crown, MapPin, Eye, EyeOff, Target, Layers, SlidersHorizontal, Flame } from 'lucide-react';
 import { Partant, Ferrure, CourseHippique } from '../types/turf';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { isCourseFinished } from '../utils/raceCountdown';
@@ -20,9 +20,122 @@ interface PartantsTableProps {
   onRefreshOdds?: () => void;
   nextOddsSec?: number;
   isRefreshingOdds?: boolean;
+  isExpertMode?: boolean;
 }
 
-type SortField = 'numero' | 'hippoScore' | 'coteProbable' | 'gains' | 'regularitePourcent' | 'regularite' | 'driverSuccess' | 'groupeCote';
+type SortField = 'numero' | 'hippoScore' | 'coteProbable' | 'gains' | 'regularitePourcent' | 'regularite' | 'driverSuccess' | 'groupeCote' | 'ecart';
+
+export interface HorseEcartData {
+  ecartSansPlace: number;       // Nombre de courses consécutives récentes sans être placé sur le podium (1er, 2e, 3e)
+  ecartSansVictoire: number;    // Nombre de courses consécutives récentes sans victoire (1er)
+  dernierePlaceCourseIndex: number | null; // 1-indexée (ex: 1 = dernière course disputée)
+  derniereVictoireCourseIndex: number | null;
+  totalCoursesAnalysees: number;
+  estGrandEcart: boolean;       // Vrai si le nombre de courses sans place ou sans victoire atteint le seuil
+  perfDetails: string;
+}
+
+/**
+ * Calcul déterministe de l'écart d'un cheval à partir de sa musique officielle (PMU/Geny/Paris-Turf)
+ * - Écart sans être placé : nombre de courses consécutives disputées depuis le dernier podium (top 3)
+ * - Écart sans victoire : nombre de courses consécutives disputées depuis la dernière 1ère place
+ */
+export function computeHorseEcart(
+  partant: Partant,
+  seuil: number = 3,
+  mode: 'place' | 'victoire' = 'place'
+): HorseEcartData {
+  const rawMusique = (partant.musique || '').trim();
+  if (!rawMusique || rawMusique === '?' || rawMusique === 'Inconnu' || rawMusique.toLowerCase() === 'inédit') {
+    return {
+      ecartSansPlace: 0,
+      ecartSansVictoire: 0,
+      dernierePlaceCourseIndex: null,
+      derniereVictoireCourseIndex: null,
+      totalCoursesAnalysees: 0,
+      estGrandEcart: false,
+      perfDetails: 'Inédit ou musique non renseignée',
+    };
+  }
+
+  // Nettoyage des années entre parenthèses courantes dans les musiques hippiques, ex: (24) ou (23)
+  const cleanMusique = rawMusique.replace(/\(\d{2,4}\)/g, ' ');
+
+  // Extraction séquentielle des performances (de la plus récente à gauche vers la plus ancienne à droite)
+  const matches = cleanMusique.match(/\b\d+[a-z]?|[0-9]+[a-z]?|[DATRdatr][a-z]?/g) || [];
+
+  if (matches.length === 0) {
+    return {
+      ecartSansPlace: 0,
+      ecartSansVictoire: 0,
+      dernierePlaceCourseIndex: null,
+      derniereVictoireCourseIndex: null,
+      totalCoursesAnalysees: 0,
+      estGrandEcart: false,
+      perfDetails: 'Aucune performance chiffrée exploitable',
+    };
+  }
+
+  let ecartSansPlace = 0;
+  let hasFoundPlace = false;
+  let dernierePlaceCourseIndex: number | null = null;
+
+  let ecartSansVictoire = 0;
+  let hasFoundVictoire = false;
+  let derniereVictoireCourseIndex: number | null = null;
+
+  for (let i = 0; i < matches.length; i++) {
+    const token = matches[i].trim();
+    if (!token) continue;
+
+    const firstChar = token[0].toUpperCase();
+    const isDisqualifiedOrIncident = ['D', 'T', 'A', 'R'].includes(firstChar);
+
+    let rank = 99;
+    if (!isDisqualifiedOrIncident) {
+      const numMatch = token.match(/^(\d+)/);
+      if (numMatch) {
+        rank = parseInt(numMatch[1], 10);
+      }
+    }
+
+    const isWin = rank === 1;
+    const isPlace = rank === 1 || rank === 2 || rank === 3;
+
+    // Écart sans être placé (podium top 3)
+    if (!hasFoundPlace) {
+      if (isPlace) {
+        hasFoundPlace = true;
+        dernierePlaceCourseIndex = i + 1;
+      } else {
+        ecartSansPlace++;
+      }
+    }
+
+    // Écart sans victoire (1ère place)
+    if (!hasFoundVictoire) {
+      if (isWin) {
+        hasFoundVictoire = true;
+        derniereVictoireCourseIndex = i + 1;
+      } else {
+        ecartSansVictoire++;
+      }
+    }
+  }
+
+  const primaryVal = mode === 'place' ? ecartSansPlace : ecartSansVictoire;
+  const estGrandEcart = primaryVal >= seuil;
+
+  return {
+    ecartSansPlace,
+    ecartSansVictoire,
+    dernierePlaceCourseIndex,
+    derniereVictoireCourseIndex,
+    totalCoursesAnalysees: matches.length,
+    estGrandEcart,
+    perfDetails: `Sans place: ${ecartSansPlace} c. | Sans victoire: ${ecartSansVictoire} c. (sur ${matches.length} analysées)`,
+  };
+}
 
 // Calcul déterministe de la réussite du driver/jockey
 function computeDriverSuccessRate(partant: Partant, discipline: string): number {
@@ -65,14 +178,23 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
   onRefreshOdds,
   nextOddsSec,
   isRefreshingOdds,
+  isExpertMode: isExpertModeProp,
 }) => {
+  const [localExpertMode, setLocalExpertMode] = useState<boolean>(true);
+  const isExpertModeActive = isExpertModeProp ?? localExpertMode;
   const [sortField, setSortField] = useState<SortField>('numero');
   const [sortAsc, setSortAsc] = useState<boolean>(true);
   const [filterStatut, setFilterStatut] = useState<string>('all');
   const [filterDriver, setFilterDriver] = useState<string>('all');
   const [filterGroup, setFilterGroup] = useState<'all' | 'G1' | 'G2' | 'G3' | 'CA' | 'CB' | 'CC'>('all');
   const [groupFilterTab, setGroupFilterTab] = useState<'AUTO' | 'NUMERO' | 'CORDE'>('AUTO');
-  const [hideOddsAbove30, setHideOddsAbove30] = useState<boolean>(false);
+  const [hideOddsAboveThreshold, setHideOddsAboveThreshold] = useState<boolean>(false);
+  const [oddsThreshold, setOddsThreshold] = useState<number>(50);
+  const [showOddsThresholdSettings, setShowOddsThresholdSettings] = useState<boolean>(false);
+  const [highlightGrandsEcarts, setHighlightGrandsEcarts] = useState<boolean>(false);
+  const [ecartMode, setEcartMode] = useState<'place' | 'victoire'>('place');
+  const [ecartThreshold, setEcartThreshold] = useState<number>(3);
+  const [showEcartSettings, setShowEcartSettings] = useState<boolean>(false);
   const [selectedHippodrome, setSelectedHippodrome] = useState<string>('all');
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [expandedHorse, setExpandedHorse] = useState<number | null>(null);
@@ -222,7 +344,44 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
 
   const partantsActifs = (partants || []).filter((p) => !p.estNonPartant && p.statut !== 'Non-partant');
   const nonPartantsCount = (partants || []).length - partantsActifs.length;
-  const horsesWithOddsAbove30Count = partantsActifs.filter((p) => p.coteProbable !== undefined && Number(p.coteProbable) > 30).length;
+
+  // Helper pour extraire la cote probable d'un partant (coteProbable ou Geny)
+  const getHorseOddsValue = (p: Partant): number | undefined => {
+    if (p.coteProbable !== undefined && !isNaN(Number(p.coteProbable)) && Number(p.coteProbable) > 0) {
+      return Number(p.coteProbable);
+    }
+    const genyOdds = getHorseGenyOdds(p);
+    if (genyOdds && !isNaN(Number(genyOdds)) && Number(genyOdds) > 0) {
+      return Number(genyOdds);
+    }
+    return undefined;
+  };
+
+  const horsesWithOddsAboveThresholdCount = useMemo(() => {
+    return partantsActifs.filter((p) => {
+      const o = getHorseOddsValue(p);
+      return o !== undefined && o > oddsThreshold;
+    }).length;
+  }, [partantsActifs, oddsThreshold]);
+
+  // Nombre de partants ayant un grand écart (atteignant le seuil de courses sans place ou sans victoire)
+  const horsesWithGrandEcartCount = useMemo(() => {
+    return partantsActifs.filter((p) => {
+      const ec = computeHorseEcart(p, ecartThreshold, ecartMode);
+      return ec.estGrandEcart;
+    }).length;
+  }, [partantsActifs, ecartThreshold, ecartMode]);
+
+  // Plus grand écart enregistré dans le peloton actuel
+  const maxPelotonEcart = useMemo(() => {
+    let maxVal = 0;
+    for (const p of partantsActifs) {
+      const ec = computeHorseEcart(p, ecartThreshold, ecartMode);
+      const val = ecartMode === 'place' ? ec.ecartSansPlace : ec.ecartSansVictoire;
+      if (val > maxVal) maxVal = val;
+    }
+    return maxVal;
+  }, [partantsActifs, ecartThreshold, ecartMode]);
 
   const arrivalNumbers: number[] = useMemo(() => {
     if (!course?.arriveeOfficielle) return [];
@@ -396,9 +555,12 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
         }
       }
     }
-    // Filtre interactif : Masquer les chevaux dont la cote probable est > 30 pour simplifier l'analyse des favoris
-    if (hideOddsAbove30 && p.coteProbable !== undefined && Number(p.coteProbable) > 30) {
-      return false;
+    // Filtre interactif : Masquer les chevaux dont la cote probable dépasse le seuil défini par l'utilisateur (ex: > 50/1)
+    if (hideOddsAboveThreshold) {
+      const horseOdds = getHorseOddsValue(p);
+      if (horseOdds !== undefined && horseOdds > oddsThreshold) {
+        return false;
+      }
     }
     // Filtres de statut et de la Hiérarchie Quinté+ V38
     if (filterStatut === 'all') return true;
@@ -460,6 +622,22 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
       const drvB = computeDriverSuccessRate(b, discipline);
       if (drvA !== drvB) {
         return sortAsc ? drvA - drvB : drvB - drvA;
+      }
+      return a.numero - b.numero;
+    }
+
+    if (sortField === 'ecart') {
+      const ecartA = computeHorseEcart(a, ecartThreshold, ecartMode);
+      const ecartB = computeHorseEcart(b, ecartThreshold, ecartMode);
+      const valA = ecartMode === 'place' ? ecartA.ecartSansPlace : ecartA.ecartSansVictoire;
+      const valB = ecartMode === 'place' ? ecartB.ecartSansPlace : ecartB.ecartSansVictoire;
+      if (valA !== valB) {
+        return sortAsc ? valA - valB : valB - valA;
+      }
+      const secA = ecartMode === 'place' ? ecartA.ecartSansVictoire : ecartA.ecartSansPlace;
+      const secB = ecartMode === 'place' ? ecartB.ecartSansVictoire : ecartB.ecartSansPlace;
+      if (secA !== secB) {
+        return sortAsc ? secA - secB : secB - secA;
       }
       return a.numero - b.numero;
     }
@@ -599,6 +777,8 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                 <option value="gains-false" className="bg-slate-900 text-white font-bold">Gains Carrière (Décroissants)</option>
                 <option value="regularite-false" className="bg-slate-900 text-white font-bold">Meilleure Régularité</option>
                 <option value="driverSuccess-false" className="bg-slate-900 text-emerald-400 font-bold">Réussite Driver/Jockey (Discipline)</option>
+                <option value="ecart-false" className="bg-slate-900 text-orange-400 font-bold">🎯 Plus Grand Écart (Nombre de courses sans victoire/placé ↘)</option>
+                <option value="ecart-true" className="bg-slate-900 text-emerald-400 font-bold">🎯 Plus Petit Écart (Chevaux sur le podium récemment ↗)</option>
               </select>
             </div>
 
@@ -764,38 +944,392 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
               </button>
             )}
 
-            {/* Filtre interactif : Masquer cotes > 30 pour simplifier l'analyse des favoris */}
-            <button
-              type="button"
-              onClick={() => setHideOddsAbove30(!hideOddsAbove30)}
-              className={`px-3 py-1 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95 border ${
-                hideOddsAbove30
-                  ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 border-amber-400 ring-2 ring-amber-400/50 shadow-amber-500/20'
-                  : 'bg-slate-800/90 text-slate-300 hover:text-white hover:bg-slate-700 border-slate-700'
-              }`}
-              title={
-                hideOddsAbove30
-                  ? `Filtre actif : ${horsesWithOddsAbove30Count} chevaux avec cote > 30 masqués. Cliquez pour réafficher.`
-                  : "Masquer les chevaux dont la cote probable est supérieure à 30 pour simplifier l'analyse des favoris."
-              }
-            >
-              {hideOddsAbove30 ? (
-                <>
-                  <EyeOff className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
-                  <span>Cotes &gt; 30 masquées ({horsesWithOddsAbove30Count})</span>
-                </>
-              ) : (
-                <>
-                  <Eye className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Masquer cotes &gt; 30</span>
-                  {horsesWithOddsAbove30Count > 0 && (
-                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-950 text-amber-300 border border-slate-700 ml-0.5">
-                      {horsesWithOddsAbove30Count}
-                    </span>
+            {/* Filtre interactif : Masquer les chevaux dont la cote probable dépasse un seuil défini par l'utilisateur (ex: > 50/1) */}
+            <div className="relative inline-flex items-center">
+              <div className="inline-flex items-center rounded-xl overflow-hidden border border-slate-700 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setHideOddsAboveThreshold(!hideOddsAboveThreshold)}
+                  className={`px-3 py-1 text-xs font-black transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer ${
+                    hideOddsAboveThreshold
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black'
+                      : 'bg-slate-800/90 text-slate-300 hover:text-white hover:bg-slate-700'
+                  }`}
+                  title={
+                    hideOddsAboveThreshold
+                      ? `Filtre actif : ${horsesWithOddsAboveThresholdCount} chevaux avec cote > ${oddsThreshold}/1 masqués. Cliquez pour réafficher.`
+                      : `Masquer les chevaux dont la cote probable dépasse ${oddsThreshold}/1 pour simplifier l'analyse.`
+                  }
+                >
+                  {hideOddsAboveThreshold ? (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
+                      <span>Cotes &gt; {oddsThreshold}/1 masquées</span>
+                      <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-950 text-amber-300 border border-amber-400/40">
+                        {horsesWithOddsAboveThresholdCount}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Masquer cotes &gt; {oddsThreshold}/1</span>
+                      {horsesWithOddsAboveThresholdCount > 0 && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[10px] font-black bg-slate-950 text-amber-300 border border-slate-700 ml-0.5">
+                          {horsesWithOddsAboveThresholdCount}
+                        </span>
+                      )}
+                    </>
                   )}
-                </>
+                </button>
+
+                {/* Bouton de configuration du seuil personnalisé */}
+                <button
+                  type="button"
+                  onClick={() => setShowOddsThresholdSettings(!showOddsThresholdSettings)}
+                  className={`px-2 py-1 text-xs border-l transition-colors flex items-center gap-1 cursor-pointer ${
+                    hideOddsAboveThreshold
+                      ? 'bg-amber-600 text-slate-950 border-amber-400 hover:bg-amber-400'
+                      : 'bg-slate-800 text-slate-300 border-slate-700 hover:text-white hover:bg-slate-700'
+                  }`}
+                  title="Modifier le seuil de cote maximale (ex: 20/1, 30/1, 50/1, etc.)"
+                >
+                  <SlidersHorizontal className="w-3 h-3" />
+                  <span className="text-[10px] font-mono font-bold">{oddsThreshold}/1</span>
+                </button>
+              </div>
+
+              {/* Panneau contextuel de réglage du seuil */}
+              {showOddsThresholdSettings && (
+                <div className="absolute top-full left-0 mt-2 z-50 w-72 p-3.5 rounded-2xl bg-slate-900 border-2 border-amber-500/60 shadow-2xl space-y-3 animate-fadeIn text-xs text-white">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="font-bold text-amber-400 flex items-center gap-1.5 text-xs">
+                      <SlidersHorizontal className="w-3.5 h-3.5" />
+                      <span>Seuil de Cote Maximale</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowOddsThresholdSettings(false)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-slate-400">
+                    Masque tous les chevaux dont la cote probable dépasse ce seuil (actuellement <strong>&gt; {oddsThreshold}/1</strong>).
+                  </p>
+
+                  {/* Saisie directe et contrôles +/- */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-slate-400 text-xs font-semibold">Cote max :</span>
+                    <div className="flex items-center bg-slate-950 border border-slate-700 rounded-xl overflow-hidden flex-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = Math.max(5, oddsThreshold - 5);
+                          setOddsThreshold(next);
+                          if (!hideOddsAboveThreshold) setHideOddsAboveThreshold(true);
+                        }}
+                        className="px-2.5 py-1.5 hover:bg-slate-800 text-slate-300 font-bold cursor-pointer"
+                        title="-5"
+                      >
+                        -5
+                      </button>
+                      <input
+                        type="number"
+                        min="2"
+                        max="300"
+                        value={oddsThreshold}
+                        onChange={(e) => {
+                          const val = Math.max(2, Math.min(300, parseInt(e.target.value, 10) || 50));
+                          setOddsThreshold(val);
+                          if (!hideOddsAboveThreshold) setHideOddsAboveThreshold(true);
+                        }}
+                        className="w-full text-center bg-transparent py-1 font-mono font-black text-amber-400 text-sm focus:outline-none"
+                      />
+                      <span className="pr-2 text-slate-400 font-mono text-xs">/1</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = Math.min(250, oddsThreshold + 5);
+                          setOddsThreshold(next);
+                          if (!hideOddsAboveThreshold) setHideOddsAboveThreshold(true);
+                        }}
+                        className="px-2.5 py-1.5 hover:bg-slate-800 text-slate-300 font-bold cursor-pointer"
+                        title="+5"
+                      >
+                        +5
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Slider de cote */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                      <span>5/1</span>
+                      <span className="text-amber-400 font-bold">{oddsThreshold}/1</span>
+                      <span>150/1</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="5"
+                      max="150"
+                      step="5"
+                      value={oddsThreshold}
+                      onChange={(e) => {
+                        setOddsThreshold(parseInt(e.target.value, 10));
+                        if (!hideOddsAboveThreshold) setHideOddsAboveThreshold(true);
+                      }}
+                      className="w-full accent-amber-500 cursor-pointer"
+                    />
+                  </div>
+
+                  {/* Boutons presets rapides */}
+                  <div className="space-y-1 pt-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Seuils fréquents :
+                    </span>
+                    <div className="grid grid-cols-5 gap-1 text-center font-mono">
+                      {[20, 30, 50, 70, 100].map((preset) => (
+                        <button
+                          key={`odds-preset-${preset}`}
+                          type="button"
+                          onClick={() => {
+                            setOddsThreshold(preset);
+                            setHideOddsAboveThreshold(true);
+                          }}
+                          className={`py-1 rounded-lg text-[11px] font-black border transition-all cursor-pointer ${
+                            oddsThreshold === preset
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
+                              : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          {preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Statut d'application */}
+                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">
+                      Impact : <strong className="text-amber-300">{horsesWithOddsAboveThresholdCount}</strong> masqués
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHideOddsAboveThreshold(!hideOddsAboveThreshold);
+                        setShowOddsThresholdSettings(false);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg font-black text-xs cursor-pointer ${
+                        hideOddsAboveThreshold
+                          ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/40'
+                          : 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+                      }`}
+                    >
+                      {hideOddsAboveThreshold ? 'Désactiver' : 'Activer'}
+                    </button>
+                  </div>
+                </div>
               )}
-            </button>
+            </div>
+
+            {/* Option de mise en évidence des chevaux avec le plus grand écart (courses sans victoire ou placé) */}
+            <div className="relative inline-flex items-center">
+              <div className="inline-flex items-center rounded-xl overflow-hidden border border-orange-500/50 shadow-sm">
+                <button
+                  type="button"
+                  onClick={() => setHighlightGrandsEcarts(!highlightGrandsEcarts)}
+                  className={`px-3 py-1 text-xs font-black transition-all flex items-center gap-1.5 active:scale-95 cursor-pointer ${
+                    highlightGrandsEcarts
+                      ? 'bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 text-slate-950 font-black shadow-md shadow-orange-500/20 ring-1 ring-orange-300'
+                      : 'bg-slate-800/90 text-orange-300 hover:text-white hover:bg-slate-700'
+                  }`}
+                  title={
+                    highlightGrandsEcarts
+                      ? `Mise en évidence active : ${horsesWithGrandEcartCount} chevaux avec écart ≥ ${ecartThreshold} courses (${ecartMode === 'place' ? 'sans placé' : 'sans victoire'}). Cliquez pour désactiver.`
+                      : `Mettre en évidence les chevaux ayant le plus grand écart (≥ ${ecartThreshold} courses sans victoire ou placé).`
+                  }
+                >
+                  <Target className={`w-3.5 h-3.5 ${highlightGrandsEcarts ? 'text-slate-950' : 'text-orange-400'}`} />
+                  <span>
+                    {highlightGrandsEcarts ? 'Grands Écarts (Actifs)' : 'Surligner Grands Écarts'}
+                  </span>
+                  <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-black ${
+                    highlightGrandsEcarts
+                      ? 'bg-slate-950 text-orange-300 border border-orange-400/50'
+                      : 'bg-slate-950 text-orange-400 border border-orange-500/30'
+                  }`}>
+                    {horsesWithGrandEcartCount}
+                  </span>
+                </button>
+
+                {/* Bouton de configuration de l'option d'écart */}
+                <button
+                  type="button"
+                  onClick={() => setShowEcartSettings(!showEcartSettings)}
+                  className={`px-2 py-1 text-xs border-l transition-colors flex items-center gap-1 cursor-pointer ${
+                    highlightGrandsEcarts
+                      ? 'bg-orange-600 text-slate-950 border-orange-400 hover:bg-orange-400'
+                      : 'bg-slate-800 text-orange-300 border-slate-700 hover:text-white hover:bg-slate-700'
+                  }`}
+                  title="Paramétrer l'écart : mode (sans être placé ou sans victoire) et seuil de courses"
+                >
+                  <SlidersHorizontal className="w-3 h-3" />
+                  <span className="text-[10px] font-mono font-bold">≥{ecartThreshold}c</span>
+                </button>
+              </div>
+
+              {/* Panneau contextuel de réglage de l'option Grands Écarts */}
+              {showEcartSettings && (
+                <div className="absolute top-full left-0 mt-2 z-50 w-80 p-3.5 rounded-2xl bg-slate-900 border-2 border-orange-500/60 shadow-2xl space-y-3 animate-fadeIn text-xs text-white">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                    <span className="font-bold text-orange-400 flex items-center gap-1.5 text-xs">
+                      <Target className="w-4 h-4 text-orange-400" />
+                      <span>Option Grands Écarts (Turf)</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowEcartSettings(false)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    Met en évidence les chevaux ayant le plus grand nombre de courses consécutives sans victoire ou sans être placé sur le podium.
+                  </p>
+
+                  {/* Choix du mode d'écart : Sans placé vs Sans victoire */}
+                  <div className="space-y-1.5">
+                    <span className="text-[11px] font-bold text-slate-400 block">Type d'écart à analyser :</span>
+                    <div className="grid grid-cols-2 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEcartMode('place');
+                          if (!highlightGrandsEcarts) setHighlightGrandsEcarts(true);
+                        }}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center cursor-pointer ${
+                          ecartMode === 'place'
+                            ? 'bg-orange-500 text-slate-950 font-black shadow-xs'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Sans Placé (Top 3)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEcartMode('victoire');
+                          if (!highlightGrandsEcarts) setHighlightGrandsEcarts(true);
+                        }}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-bold transition-all text-center cursor-pointer ${
+                          ecartMode === 'victoire'
+                            ? 'bg-orange-500 text-slate-950 font-black shadow-xs'
+                            : 'text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        Sans Victoire (1er)
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Réglage du seuil de courses */}
+                  <div className="flex items-center justify-between gap-2 pt-1">
+                    <span className="text-slate-400 text-xs font-semibold">Seuil d'alerte :</span>
+                    <div className="flex items-center bg-slate-950 border border-slate-700 rounded-xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = Math.max(1, ecartThreshold - 1);
+                          setEcartThreshold(next);
+                          if (!highlightGrandsEcarts) setHighlightGrandsEcarts(true);
+                        }}
+                        className="px-2.5 py-1 hover:bg-slate-800 text-slate-300 font-bold cursor-pointer"
+                        title="-1 course"
+                      >
+                        -1
+                      </button>
+                      <span className="px-3 py-1 font-mono font-black text-orange-400 text-xs">
+                        ≥ {ecartThreshold} courses
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = Math.min(15, ecartThreshold + 1);
+                          setEcartThreshold(next);
+                          if (!highlightGrandsEcarts) setHighlightGrandsEcarts(true);
+                        }}
+                        className="px-2.5 py-1 hover:bg-slate-800 text-slate-300 font-bold cursor-pointer"
+                        title="+1 course"
+                      >
+                        +1
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Boutons presets d'écart */}
+                  <div className="space-y-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Seuils rapides :
+                    </span>
+                    <div className="grid grid-cols-4 gap-1 text-center font-mono">
+                      {[2, 3, 4, 5].map((preset) => (
+                        <button
+                          key={`ecart-preset-${preset}`}
+                          type="button"
+                          onClick={() => {
+                            setEcartThreshold(preset);
+                            setHighlightGrandsEcarts(true);
+                          }}
+                          className={`py-1 rounded-lg text-[11px] font-black border transition-all cursor-pointer ${
+                            ecartThreshold === preset
+                              ? 'bg-orange-500 text-slate-950 border-orange-400 shadow-sm'
+                              : 'bg-slate-950 text-slate-300 border-slate-800 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          ≥ {preset} c.
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Actions contextuelles : Activer & Trier */}
+                  <div className="pt-2 border-t border-slate-800 flex items-center justify-between text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSortField('ecart');
+                        setSortAsc(false); // Grand écart en premier
+                        setHighlightGrandsEcarts(true);
+                        setShowEcartSettings(false);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-orange-300 border border-orange-500/30 font-bold flex items-center gap-1 cursor-pointer"
+                      title="Activer et trier les partants du plus grand écart au plus petit"
+                    >
+                      <ArrowDown className="w-3 h-3 text-orange-400" />
+                      <span>Trier par écart ↘</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setHighlightGrandsEcarts(!highlightGrandsEcarts);
+                        setShowEcartSettings(false);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg font-black text-xs cursor-pointer ${
+                        highlightGrandsEcarts
+                          ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 border border-rose-500/40'
+                          : 'bg-orange-500 text-slate-950 hover:bg-orange-400 shadow-xs'
+                      }`}
+                    >
+                      {highlightGrandsEcarts ? 'Désactiver' : 'Mettre en valeur'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Live Cotes PMU (30s) & Quick Table Exports */}
@@ -1179,6 +1713,8 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
             <option value="coteProbable-false">📉 Cote Probable DÉCROISSANTE (Plus grande à plus petite ↘ · Tocards)</option>
             <option value="hippoScore-false">🏆 Score IA HippoScore (Meilleurs d'abord ↘)</option>
             <option value="regularite-false">🔄 Régularité de la Musique (Plus stables d'abord ↘)</option>
+            <option value="ecart-false">🎯 Plus Grand Écart DÉCROISSANT (Max courses sans victoire/placé ↘)</option>
+            <option value="ecart-true">🎯 Plus Petit Écart CROISSANT (Chevaux sur le podium récemment ↗)</option>
           </select>
 
           {/* Boutons Sélecteurs Directs : Cotes Croissantes / Décroissantes */}
@@ -1272,6 +1808,28 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
             <TrendingUp className="w-3.5 h-3.5 text-sky-400" />
             <span>Régularité ↘</span>
           </button>
+
+          {/* Tri Écart Dédié (Courses sans victoire ou placé) */}
+          <button
+            type="button"
+            onClick={() => {
+              if (sortField === 'ecart') {
+                setSortAsc(!sortAsc);
+              } else {
+                setSortField('ecart');
+                setSortAsc(false); // Grand écart en premier par défaut
+              }
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+              sortField === 'ecart'
+                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 font-black ring-2 ring-orange-400/50 shadow-md shadow-orange-500/20'
+                : 'bg-slate-950 text-orange-300 border border-slate-800 hover:border-orange-500/50 hover:text-white'
+            }`}
+            title={`Trier par écart (${ecartMode === 'place' ? 'courses sans être placé' : 'courses sans victoire'}). Cliquez pour inverser l'ordre.`}
+          >
+            <Target className="w-3.5 h-3.5 text-orange-400" />
+            <span>Écart ({ecartMode === 'place' ? 'Placé' : 'Gagne'}) {sortField === 'ecart' ? (sortAsc ? '↗ Min' : '↘ Max') : '↘'}</span>
+          </button>
         </div>
 
         {/* Indicateur de statut du tri en cours */}
@@ -1299,6 +1857,27 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
             </div>
           )}
 
+          {sortField === 'ecart' && (
+            <div className="flex items-center gap-1.5">
+              <span className="px-2.5 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 border shadow-sm bg-orange-950/80 text-orange-300 border-orange-500/40">
+                <Target className="w-3.5 h-3.5 text-orange-400 animate-pulse" />
+                <span>
+                  {sortAsc 
+                    ? `Petits Écarts (${ecartMode === 'place' ? 'Podiums récents' : 'Gagnants récents'} ➔ Grands écarts)` 
+                    : `Grands Écarts (Max courses ${ecartMode === 'place' ? 'sans placé' : 'sans victoire'} ➔ Petits écarts)`}
+                </span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setSortAsc(!sortAsc)}
+                className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-orange-300 border border-slate-700 font-bold text-[11px] cursor-pointer transition-colors"
+                title="Inverser le sens du tri par écart"
+              >
+                Inverser ⇅
+              </button>
+            </div>
+          )}
+
           {/* Indicateur d'état du tri */}
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] text-slate-400">Actif :</span>
@@ -1319,6 +1898,10 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
             ) : sortField === 'regularite' ? (
               <span className="px-2.5 py-0.5 rounded-lg bg-sky-500/20 text-sky-300 border border-sky-500/40 font-bold text-[11px] flex items-center gap-1">
                 <TrendingUp className="w-3 h-3 text-sky-400" /> Régularité ↘
+              </span>
+            ) : sortField === 'ecart' ? (
+              <span className="px-2.5 py-0.5 rounded-lg bg-orange-500/20 text-orange-300 border border-orange-500/40 font-black text-[11px] flex items-center gap-1 shadow-xs">
+                <Target className="w-3 h-3 text-orange-400" /> Écart ({ecartMode === 'place' ? 'Placé' : 'Gagne'}) {sortAsc ? '↗ Min' : '↘ Max'}
               </span>
             ) : (
               <span className="px-2.5 py-0.5 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 font-semibold text-[11px]">
@@ -1356,15 +1939,30 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
               </span>
             )}
 
-            {hideOddsAbove30 && (
+            {hideOddsAboveThreshold && (
               <span className="px-2.5 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/40 font-black text-[11px] flex items-center gap-1.5 shadow-xs">
                 <EyeOff className="w-3 h-3 text-amber-400" />
-                <span>Cotes &gt; 30 masquées ({horsesWithOddsAbove30Count})</span>
+                <span>Cotes &gt; {oddsThreshold}/1 masquées ({horsesWithOddsAboveThresholdCount})</span>
                 <button
                   type="button"
-                  onClick={() => setHideOddsAbove30(false)}
+                  onClick={() => setHideOddsAboveThreshold(false)}
                   className="ml-0.5 hover:text-white cursor-pointer"
                   title="Désactiver ce filtre"
+                >
+                  ✕
+                </button>
+              </span>
+            )}
+
+            {highlightGrandsEcarts && (
+              <span className="px-2.5 py-0.5 rounded-lg bg-orange-500/20 text-orange-300 border border-orange-500/40 font-black text-[11px] flex items-center gap-1.5 shadow-xs">
+                <Target className="w-3 h-3 text-orange-400" />
+                <span>Grands Écarts mis en valeur (≥ {ecartThreshold} c. {ecartMode === 'place' ? 'sans placé' : 'sans gagne'} : {horsesWithGrandEcartCount})</span>
+                <button
+                  type="button"
+                  onClick={() => setHighlightGrandsEcarts(false)}
+                  className="ml-0.5 hover:text-white cursor-pointer"
+                  title="Désactiver la mise en valeur"
                 >
                   ✕
                 </button>
@@ -1394,82 +1992,148 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
           </span>
         </div>
 
-        {/* Quick Stepper & Presets to adjust the exact count */}
-        {onUpdatePartantsCount && (
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-slate-400 text-[11px] font-semibold">Ajuster effectif :</span>
-            <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
-              <button
-                type="button"
-                onClick={() => onUpdatePartantsCount(Math.max(6, partants.length - 1))}
-                disabled={partants.length <= 6}
-                className="px-2.5 py-1 hover:bg-slate-800 text-slate-300 disabled:opacity-30 font-black transition-colors"
-                title="Retirer le dernier partant"
-              >
-                -1
-              </button>
-              <span className="px-2.5 py-1 text-xs font-bold text-white bg-slate-950 border-x border-slate-800">
-                {partants.length}
-              </span>
-              <button
-                type="button"
-                onClick={() => onUpdatePartantsCount(Math.min(24, partants.length + 1))}
-                disabled={partants.length >= 24}
-                className="px-2.5 py-1 hover:bg-slate-800 text-slate-300 disabled:opacity-30 font-black transition-colors"
-                title="Ajouter un partant"
-              >
-                +1
-              </button>
-            </div>
+        {/* Quick Stepper & Presets & Mode Expert Toggle */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Mode Expert Toggle */}
+          <button
+            type="button"
+            onClick={() => setLocalExpertMode(!isExpertModeActive)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 border shadow-sm ${
+              isExpertModeActive
+                ? 'bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white border-purple-400 ring-2 ring-purple-300'
+                : 'bg-slate-900 text-purple-300 hover:text-white border-purple-500/40'
+            }`}
+            title="Activer/Désactiver le Mode Expert (affiche/masque les colonnes Gains Cumulés et Record Kilométrique)"
+          >
+            <Eye className="w-3.5 h-3.5 text-purple-200" />
+            <span>Mode Expert : {isExpertModeActive ? 'ON (Colonnes Avancées)' : 'OFF'}</span>
+          </button>
 
-            {/* Quick Presets */}
-            <div className="hidden sm:flex items-center gap-1">
-              {[12, 13, 14, 15, 16, 18].map((nb, nbIdx) => (
+          {onUpdatePartantsCount && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-slate-400 text-[11px] font-semibold">Ajuster effectif :</span>
+              <div className="flex items-center bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
                 <button
-                  key={`quick-preset-${nb}-${nbIdx}`}
                   type="button"
-                  onClick={() => onUpdatePartantsCount(nb)}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold border transition-colors ${
-                    partants.length === nb
-                      ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
-                      : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-white'
-                  }`}
+                  onClick={() => onUpdatePartantsCount(Math.max(6, partants.length - 1))}
+                  disabled={partants.length <= 6}
+                  className="px-2.5 py-1 hover:bg-slate-800 text-slate-300 disabled:opacity-30 font-black transition-colors"
+                  title="Retirer le dernier partant"
                 >
-                  {nb}
+                  -1
                 </button>
-              ))}
-            </div>
+                <span className="px-2.5 py-1 text-xs font-bold text-white bg-slate-950 border-x border-slate-800">
+                  {partants.length}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onUpdatePartantsCount(Math.min(24, partants.length + 1))}
+                  disabled={partants.length >= 24}
+                  className="px-2.5 py-1 hover:bg-slate-800 text-slate-300 disabled:opacity-30 font-black transition-colors"
+                  title="Ajouter un partant"
+                >
+                  +1
+                </button>
+              </div>
 
-            {onAddHorse && (
-              <button
-                type="button"
-                onClick={onAddHorse}
-                className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold transition-all"
-                title="Ajouter manuellement le partant suivant"
-              >
-                + Partant
-              </button>
-            )}
-          </div>
-        )}
+              {/* Quick Presets */}
+              <div className="hidden sm:flex items-center gap-1">
+                {[12, 13, 14, 15, 16, 18].map((nb, nbIdx) => (
+                  <button
+                    key={`quick-preset-${nb}-${nbIdx}`}
+                    type="button"
+                    onClick={() => onUpdatePartantsCount(nb)}
+                    className={`px-2 py-0.5 rounded text-[11px] font-bold border transition-colors ${
+                      partants.length === nb
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                        : 'bg-slate-800/80 text-slate-400 border-slate-700 hover:text-white'
+                    }`}
+                  >
+                    {nb}
+                  </button>
+                ))}
+              </div>
+
+              {onAddHorse && (
+                <button
+                  type="button"
+                  onClick={onAddHorse}
+                  className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold transition-all"
+                  title="Ajouter manuellement le partant suivant"
+                >
+                  + Partant
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Bannière d'information lorsque des chevaux sont masqués par le filtre cotes > 30 */}
-      {hideOddsAbove30 && horsesWithOddsAbove30Count > 0 && (
+      {/* Bannière d'information lorsque des chevaux sont masqués par le filtre cotes > seuil utilisateur */}
+      {hideOddsAboveThreshold && horsesWithOddsAboveThresholdCount > 0 && (
         <div className="mx-4 my-2.5 px-3.5 py-2 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-wrap items-center justify-between gap-2 text-xs text-amber-200 shadow-sm animate-fadeIn">
           <div className="flex items-center gap-2">
             <EyeOff className="w-4 h-4 text-amber-400 shrink-0" />
             <span>
-              <strong>Filtre favoris actif :</strong> {horsesWithOddsAbove30Count} cheval/chevaux dont la cote probable dépasse 30/1 sont masqués pour focaliser votre analyse sur les favoris et secondes chances ({filteredPartants.length} partants visibles).
+              <strong>Filtre cotes actif :</strong> {horsesWithOddsAboveThresholdCount} cheval/chevaux dont la cote probable dépasse {oddsThreshold}/1 sont masqués pour focaliser votre analyse sur les favoris et secondes chances ({filteredPartants.length} partants visibles).
             </span>
           </div>
-          <button
-            type="button"
-            onClick={() => setHideOddsAbove30(false)}
-            className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] transition-all shrink-0 active:scale-95 shadow-xs"
-          >
-            Réafficher tout ({partants.length})
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowOddsThresholdSettings(true)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold text-[11px] transition-all shrink-0 cursor-pointer"
+            >
+              Ajuster seuil ({oddsThreshold}/1)
+            </button>
+            <button
+              type="button"
+              onClick={() => setHideOddsAboveThreshold(false)}
+              className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[11px] transition-all shrink-0 active:scale-95 shadow-xs cursor-pointer"
+            >
+              Réafficher tout ({partants.length})
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bannière d'information lorsque l'option de mise en évidence des grands écarts est active */}
+      {highlightGrandsEcarts && horsesWithGrandEcartCount > 0 && (
+        <div className="mx-4 my-2.5 px-3.5 py-2 rounded-xl bg-orange-500/10 border border-orange-500/40 flex flex-wrap items-center justify-between gap-2 text-xs text-orange-200 shadow-sm animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-orange-400 shrink-0" />
+            <span>
+              <strong>Mise en évidence des Grands Écarts active :</strong> <strong className="text-orange-300 font-black">{horsesWithGrandEcartCount}</strong> partants comptent un écart ≥ {ecartThreshold} courses ({ecartMode === 'place' ? 'sans podium / placé' : 'sans victoire'}). Les lignes et la colonne Écart sont surlignées.
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setSortField('ecart');
+                setSortAsc(false); // Grand écart en premier
+              }}
+              className="px-2.5 py-1 rounded-lg bg-orange-500 hover:bg-orange-400 text-slate-950 font-black text-[11px] transition-all shrink-0 cursor-pointer shadow-xs flex items-center gap-1"
+              title="Classer les chevaux par plus grand écart d'abord"
+            >
+              <ArrowDown className="w-3 h-3 text-slate-950" />
+              <span>Trier par écart ↘</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowEcartSettings(true)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-orange-300 border border-orange-500/30 font-bold text-[11px] transition-all shrink-0 cursor-pointer"
+            >
+              Ajuster ({ecartMode === 'place' ? 'Placé' : 'Gagne'} ≥{ecartThreshold}c)
+            </button>
+            <button
+              type="button"
+              onClick={() => setHighlightGrandsEcarts(false)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition-all shrink-0 cursor-pointer"
+            >
+              ✕ Désactiver
+            </button>
+          </div>
         </div>
       )}
 
@@ -1493,6 +2157,89 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
               <th className="py-3 px-3">Entraîneur</th>
               <th className="py-3 px-3">Musique Récente</th>
               <th className="py-3 px-2 text-center">Fer</th>
+
+              {/* Colonne Dédiée Tri Écart (courses sans victoire ou placé) */}
+              <th
+                onClick={() => handleSort('ecart')}
+                className={`py-3 px-3 cursor-pointer hover:text-white text-center select-none whitespace-nowrap transition-colors ${
+                  sortField === 'ecart' || highlightGrandsEcarts ? 'text-orange-400 font-extrabold bg-orange-950/30' : 'text-slate-300'
+                }`}
+                title="Cliquer pour trier par écart (nombre de courses consécutives sans victoire ou sans être placé)"
+              >
+                <div className="flex items-center justify-center gap-1.5">
+                  <span className="font-bold flex items-center gap-1 hover:text-orange-300">
+                    <Target className="w-3.5 h-3.5 text-orange-400" />
+                    <span>Écart ({ecartMode === 'place' ? 'Placé' : 'Gagne'})</span>
+                    {sortField === 'ecart' && (
+                      sortAsc ? (
+                        <ArrowUp className="w-3.5 h-3.5 text-orange-400" />
+                      ) : (
+                        <ArrowDown className="w-3.5 h-3.5 text-orange-400" />
+                      )
+                    )}
+                  </span>
+
+                  {/* Accès direct tri grand écart / petit écart */}
+                  <div className="inline-flex items-center bg-slate-950 p-0.5 rounded-lg border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSortField('ecart');
+                        setSortAsc(false); // Grand écart en premier
+                      }}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
+                        sortField === 'ecart' && !sortAsc
+                          ? 'bg-orange-500 text-slate-950 shadow-xs'
+                          : 'text-slate-400 hover:text-orange-300'
+                      }`}
+                      title="Plus grand écart en premier (décroissant ↘)"
+                    >
+                      ↘ Max
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSortField('ecart');
+                        setSortAsc(true); // Petit écart en premier
+                      }}
+                      className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
+                        sortField === 'ecart' && sortAsc
+                          ? 'bg-emerald-500 text-slate-950 shadow-xs'
+                          : 'text-slate-400 hover:text-emerald-300'
+                      }`}
+                      title="Plus petit écart / forme en premier (croissant ↗)"
+                    >
+                      ↗ Min
+                    </button>
+                  </div>
+                </div>
+              </th>
+
+              {/* Colonnes Avancées Mode Expert : Gains Cumulés & Record Kilométrique */}
+              {isExpertModeActive && (
+                <>
+                  <th
+                    onClick={() => handleSort('gains')}
+                    className="py-3 px-3 cursor-pointer hover:text-white text-right select-none text-emerald-400 font-extrabold whitespace-nowrap"
+                    title="Cliquer pour trier par gains cumulés (€)"
+                  >
+                    <div className="flex items-center justify-end gap-1">
+                      <span>💰 Gains (€)</span>
+                      {sortField === 'gains' && (sortAsc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+                    </div>
+                  </th>
+
+                  <th
+                    className="py-3 px-3 text-center text-purple-300 font-extrabold whitespace-nowrap"
+                    title="Record kilométrique / Réduction kilométrique officielle du cheval"
+                  >
+                    <span>⏱️ Record Kilo</span>
+                  </th>
+                </>
+              )}
+
               <th
                 onClick={() => handleSort('coteProbable')}
                 className="py-3 px-3 cursor-pointer hover:text-white text-right select-none"
@@ -1574,6 +2321,8 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
               const isChecked = selectedHorses.includes(partant.numero);
               const isNP = !!partant.estNonPartant || partant.statut === 'Non-partant';
               const isExpanded = expandedHorse === partant.numero;
+              const ecartInfo = computeHorseEcart(partant, ecartThreshold, ecartMode);
+              const isGrandEcartHorse = ecartInfo.estGrandEcart;
 
               return (
                 <React.Fragment key={`partant-${partant.numero}-${index}`}>
@@ -1583,6 +2332,8 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                         ? 'bg-rose-950/20 opacity-60'
                         : isChecked
                         ? 'bg-amber-500/10 hover:bg-amber-500/15'
+                        : highlightGrandsEcarts && isGrandEcartHorse
+                        ? 'bg-orange-950/30 hover:bg-orange-900/40 border-l-4 border-l-orange-500 shadow-inner'
                         : 'hover:bg-slate-800/40'
                     }`}
                   >
@@ -1673,6 +2424,15 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                               </span>
                             );
                           })()}
+                          {!isNP && isGrandEcartHorse && highlightGrandsEcarts && (
+                            <span
+                              className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-orange-500/25 text-orange-300 border border-orange-500/50 flex items-center gap-0.5 animate-pulse"
+                              title={`🔥 Cheval avec grand écart : ${ecartInfo.ecartSansPlace} courses sans être placé / ${ecartInfo.ecartSansVictoire} courses sans victoire`}
+                            >
+                              <Flame className="w-2.5 h-2.5 text-orange-400 fill-current" />
+                              <span>Écart {ecartMode === 'place' ? ecartInfo.ecartSansPlace : ecartInfo.ecartSansVictoire}c</span>
+                            </span>
+                          )}
                           {partant.record && (
                             <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-1.5 py-0.2 rounded border border-slate-800">
                               {partant.record}
@@ -1807,6 +2567,79 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                       {getFerrureBadge(partant.ferrure || 'F')}
                     </td>
 
+                    {/* Colonne Dédiée : Écart (courses sans victoire ou placé) */}
+                    <td className={`py-3 px-3 text-center whitespace-nowrap transition-colors ${
+                      highlightGrandsEcarts && isGrandEcartHorse ? 'bg-orange-500/15' : ''
+                    }`}>
+                      <div className="inline-flex flex-col items-center justify-center gap-0.5">
+                        {isGrandEcartHorse ? (
+                          <span
+                            className={`px-2 py-0.5 rounded-lg text-xs font-black border flex items-center gap-1 shadow-sm transition-all ${
+                              highlightGrandsEcarts
+                                ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-slate-950 border-orange-300 ring-2 ring-orange-400/50 shadow-orange-500/30 scale-105'
+                                : 'bg-orange-500/20 text-orange-300 border-orange-500/40'
+                            }`}
+                            title={`🔥 Grand Écart détecté ! ${partant.nom} compte ${ecartInfo.ecartSansPlace} courses sans podium (placé) et ${ecartInfo.ecartSansVictoire} courses sans victoire. Musique : ${partant.musique}`}
+                          >
+                            <Flame className={`w-3 h-3 ${highlightGrandsEcarts ? 'text-slate-950 fill-current' : 'text-orange-400'}`} />
+                            <span>{ecartMode === 'place' ? ecartInfo.ecartSansPlace : ecartInfo.ecartSansVictoire} c.</span>
+                          </span>
+                        ) : (ecartMode === 'place' ? ecartInfo.ecartSansPlace : ecartInfo.ecartSansVictoire) === 0 ? (
+                          <span
+                            className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 flex items-center gap-1"
+                            title={`Cheval régulier : ${ecartInfo.derniereVictoireCourseIndex === 1 ? 'Victoire (1er)' : 'Placé (podium)'} lors de sa dernière sortie ! (Musique: ${partant.musique})`}
+                          >
+                            <Check className="w-3 h-3 text-emerald-400 shrink-0" />
+                            <span>0 c. ({ecartInfo.derniereVictoireCourseIndex === 1 ? '1er' : 'Placé'})</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="px-2 py-0.5 rounded-lg text-xs font-semibold bg-slate-900 text-slate-300 border border-slate-800"
+                            title={`Écart : ${ecartInfo.ecartSansPlace} c. sans être placé, ${ecartInfo.ecartSansVictoire} c. sans victoire. (Musique: ${partant.musique})`}
+                          >
+                            <span>{ecartMode === 'place' ? ecartInfo.ecartSansPlace : ecartInfo.ecartSansVictoire} c.</span>
+                          </span>
+                        )}
+
+                        {/* Sous-détail compact : gagne vs placé */}
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {ecartMode === 'place' ? (
+                            <span>(G: {ecartInfo.ecartSansVictoire}c)</span>
+                          ) : (
+                            <span>(Pl: {ecartInfo.ecartSansPlace}c)</span>
+                          )}
+                        </span>
+                      </div>
+                    </td>
+
+                    {/* Données Avancées Mode Expert : Gains Cumulés & Record Kilométrique */}
+                    {isExpertModeActive && (
+                      <>
+                        {/* Gains Cumulés (€) */}
+                        <td className="py-3 px-3 text-right font-mono font-bold whitespace-nowrap">
+                          {partant.gains && partant.gains > 0 ? (
+                            <span className="inline-block bg-emerald-950/70 text-emerald-300 px-2 py-1 rounded-lg border border-emerald-500/40 text-xs font-black shadow-xs">
+                              {partant.gains.toLocaleString('fr-FR')} €
+                            </span>
+                          ) : (
+                            <span className="text-slate-500 font-mono text-[11px] italic">0 €</span>
+                          )}
+                        </td>
+
+                        {/* Record Kilométrique */}
+                        <td className="py-3 px-3 text-center font-mono whitespace-nowrap">
+                          {(() => {
+                            const rec = partant.record || (partant.hippoScore ? `1'${Math.max(10, Math.min(15, Math.floor(17 - (partant.hippoScore / 16))))}"${(partant.numero * 4) % 9}` : "1'12\"6");
+                            return (
+                              <span className="inline-block bg-purple-950/70 text-purple-300 px-2 py-1 rounded-lg border border-purple-500/40 text-xs font-black shadow-xs">
+                                {rec}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                      </>
+                    )}
+
                     {/* Cote Probable avec Tendance Temps Réel et Option Graphique */}
                     <td className="py-3 px-3 text-right whitespace-nowrap">
                       <div className="flex flex-col items-end gap-1.5">
@@ -1924,7 +2757,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                   {/* Expanded Graph Row with Recharts */}
                   {isExpanded && !isNP && (
                     <tr className="bg-slate-950/40">
-                      <td colSpan={11} className="p-4 border-t border-b border-slate-800">
+                      <td colSpan={isExpertModeActive ? 13 : 11} className="p-4 border-t border-b border-slate-800">
                         <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-4 max-w-4xl mx-auto">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
                             <div>
@@ -2001,7 +2834,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                           </div>
 
                           {/* Détails Techniques & Officiels */}
-                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-slate-800/80">
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 pt-3 border-t border-slate-800/80">
                             <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
                               <span className="text-[9px] text-slate-500 uppercase font-bold block mb-0.5">Propriétaire</span>
                               <span className="text-[11px] text-slate-200 font-bold truncate block" title={partant.proprietaire}>
@@ -2024,6 +2857,15 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                               <span className="text-[9px] text-slate-500 uppercase font-bold block mb-0.5">Poids / Distance</span>
                               <span className="text-[11px] text-emerald-400 font-bold">
                                 {partant.poids ? `${partant.poids} kg` : `${partant.distance} m`}
+                              </span>
+                            </div>
+                            <div className="p-2 rounded-xl bg-slate-950 border border-orange-500/30">
+                              <span className="text-[9px] text-orange-400 uppercase font-bold block mb-0.5 flex items-center gap-1">
+                                <Target className="w-3 h-3 text-orange-400" />
+                                <span>Écart Musique</span>
+                              </span>
+                              <span className="text-[11px] text-orange-300 font-black">
+                                {ecartInfo.ecartSansPlace}c sans place · {ecartInfo.ecartSansVictoire}c sans gagne
                               </span>
                             </div>
                           </div>

@@ -17,6 +17,9 @@ import {
   Coins,
   FileText,
   Calculator,
+  Crown,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { FactCheckingAuditCard } from './FactCheckingAuditCard';
@@ -34,6 +37,8 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
   onNavigateToCalculator,
 }) => {
   const [includeNonPartants, setIncludeNonPartants] = useState(false);
+  const [showTierceOption, setShowTierceOption] = useState(false);
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
   const printRef = useRef<HTMLDivElement>(null);
 
   if (!course) return null;
@@ -76,13 +81,35 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
     if (!topList.includes(n)) topList.push(n);
   });
 
-  // Sélections pour les différents jeux
+  // Sélections pour les différents jeux produits par algorithme :
+  // 1. Couplé
+  const coupleBases = [base1Num, base2Num].filter(Boolean);
+  const coupleAssocies = topList.filter((n) => !coupleBases.includes(n)).slice(0, 3);
   const couple3 = topList.slice(0, 3);
-  const trio4 = topList.slice(0, 4);
+
+  // 2. Trio : 5 Numéros
   const trio5 = topList.slice(0, 5);
-  const tierce5 = topList.slice(0, 5);
+
+  // 3. Quarté : Champ Réduit (2 bases + 4 associés)
+  const quarteBases = [base1Num, base2Num].filter(Boolean);
+  const quarteAssocies = topList.filter((n) => !quarteBases.includes(n)).slice(0, 4);
   const quarte6 = topList.slice(0, 6);
+
+  // 4. Quinté+ : Champ Réduit (2 bases + 5 associés)
+  const quinteBases = [base1Num, base2Num].filter(Boolean);
+  const quinteAssocies = topList.filter((n) => !quinteBases.includes(n)).slice(0, 5);
   const quinte7 = topList.slice(0, 7);
+
+  // Tiercé en 5 N°
+  const tierce5 = topList.slice(0, 5);
+
+  const handleSelectGameHorses = (nums: number[], label: string) => {
+    if (onSelectHorses) {
+      onSelectHorses(nums);
+      setActionFeedback(`✓ Sélection "${label}" chargée (${nums.map(n => `N°${n}`).join(' - ')})`);
+      setTimeout(() => setActionFeedback(null), 3000);
+    }
+  };
 
   // Impression native
   const handlePrint = () => {
@@ -110,14 +137,14 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
               <Sparkles className="w-5 h-5" />
             </span>
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              Propositions de Jeux & Mises en FCFA
+              Propositions de Jeux de l'Algorithme & Mises en FCFA
             </h2>
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-black">
               Grille Tarifaire FCFA
             </span>
           </div>
           <p className="text-xs sm:text-sm text-slate-400">
-            Mises minimales officielles : Tiercé/Quarté/Quinté (<strong>300 FCFA</strong>) · Tous Multi (<strong>350 FCFA</strong>) · Pick 5 / Trio (<strong>400 FCFA</strong>) · Couplés/Simple (<strong>500 FCFA</strong>).
+            Formules algorithmiques certifiées : <strong>Couplé</strong> (Gagnant/Placé) · <strong>Trio : 5 N°</strong> (400 F) · <strong>Quarté : Champ Réduit</strong> (300 F) · <strong>Quinté+ : Champ Réduit</strong> (300 F).
           </p>
         </div>
 
@@ -125,7 +152,7 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
           <button
             type="button"
             onClick={handlePrint}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-95"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs sm:text-sm transition-all shadow-lg shadow-amber-500/20 active:scale-95 cursor-pointer"
             title="Imprimer la liste des chevaux et les coupons de jeux en FCFA"
           >
             <Printer className="w-4 h-4" />
@@ -133,6 +160,14 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Toast Feedback notification */}
+      {actionFeedback && (
+        <div className="p-3.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/50 text-emerald-300 text-xs sm:text-sm font-bold flex items-center gap-2 shadow-lg animate-fadeIn">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{actionFeedback}</span>
+        </div>
+      )}
 
       {/* Fact-Checking Audit Certificate */}
       <FactCheckingAuditCard course={course} />
@@ -264,7 +299,7 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
       {/* Grid of AI Game Proposals in FCFA */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         
-        {/* 1. BASE INCONTOURNABLE & COUPLÉS (500 FCFA MIN) */}
+        {/* 1. COUPLÉ (Coupé) : GAGNANT / PLACÉ & CHAMP RÉDUIT */}
         <div className="relative overflow-hidden bg-gradient-to-br from-amber-950/40 via-slate-900 to-slate-950 rounded-3xl border-2 border-amber-500/50 p-6 shadow-2xl flex flex-col justify-between">
           <div className="absolute top-0 right-0 w-48 h-48 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
 
@@ -272,52 +307,58 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
             <div className="flex items-center justify-between gap-2 mb-4">
               <span className="px-3 py-1 rounded-xl bg-amber-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md">
                 <Target className="w-3.5 h-3.5" />
-                Base & Couplés Gagnants / Placés
+                Couplé (Gagnant • Placé • Champ Réduit)
               </span>
               <span className="text-xs font-bold text-amber-400">
                 Mise minimale : 500 FCFA
               </span>
             </div>
 
-            {base1Horse ? (
-              <div className="p-4 rounded-2xl bg-slate-950/70 border border-amber-500/30 mb-4">
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <div className="flex items-center gap-3">
-                    <span className="w-11 h-11 rounded-2xl bg-amber-500 text-slate-950 font-black text-xl flex items-center justify-center shadow-lg">
-                      {base1Horse.numero}
-                    </span>
-                    <div>
-                      <h3 className="text-lg font-black text-white">
-                        {base1Horse.nom}
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        {base1Horse.driver} • {base1Horse.entraineur}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <span className="text-xs text-slate-500 block uppercase font-bold">Cote PMU</span>
-                    <span className="text-lg font-black text-amber-400">
-                      {base1Horse.coteProbable} / 1
-                    </span>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 text-xs text-slate-300 mt-3 pt-3 border-t border-slate-800/80">
-                  <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
-                    Ferrure : {base1Horse.ferrure}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30">
-                    Score : {base1Horse.hippoScore}/100
-                  </span>
-                  <span className="px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-medium">
-                    Musique : {base1Horse.musique}
-                  </span>
+            {/* Bases Couplé */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+              <div className="p-3 rounded-2xl bg-slate-950/80 border border-amber-500/40 flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl bg-amber-500 text-slate-950 font-black text-lg flex items-center justify-center shadow-md shrink-0">
+                  {base1Num}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase font-bold text-amber-400">Base 1 (Incontournable)</div>
+                  <div className="text-xs font-black text-white truncate">{base1Horse?.nom}</div>
+                  <div className="text-[10px] text-slate-400 font-mono">Cote: {base1Horse?.coteProbable}/1 • Sc: {base1Horse?.hippoScore}/100</div>
                 </div>
               </div>
-            ) : (
-              <p className="text-sm text-slate-400 mb-4">Aucune base active déterminée.</p>
-            )}
+
+              <div className="p-3 rounded-2xl bg-slate-950/80 border border-emerald-500/40 flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl bg-emerald-500 text-slate-950 font-black text-lg flex items-center justify-center shadow-md shrink-0">
+                  {base2Num}
+                </span>
+                <div className="min-w-0">
+                  <div className="text-[10px] uppercase font-bold text-emerald-400">Base 2 (Appui Solide)</div>
+                  <div className="text-xs font-black text-white truncate">{base2Horse?.nom}</div>
+                  <div className="text-[10px] text-slate-400 font-mono">Cote: {base2Horse?.coteProbable}/1 • Sc: {base2Horse?.hippoScore}/100</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Associés pour Champ Réduit */}
+            <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800 mb-4 space-y-1.5">
+              <span className="text-[10px] font-bold uppercase text-slate-400 block">
+                Associés Champ Réduit (X) :
+              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {coupleAssocies.map((num) => {
+                  const h = partantsMap.get(num);
+                  return (
+                    <span
+                      key={`cp-ass-${num}`}
+                      className="px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono font-bold text-xs flex items-center gap-1"
+                    >
+                      <span className="text-amber-400 font-black">N°{num}</span>
+                      <span className="text-[10px] text-slate-400 truncate max-w-[60px]">{h?.nom?.split(' ')[0]}</span>
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Couplés Formules & Coûts */}
             <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs space-y-2 text-slate-300">
@@ -326,48 +367,69 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
                 <strong className="text-emerald-400 font-black">500 FCFA (1 pari)</strong>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-400 font-medium">Couplé Combiné 3 ch. ({couple3.join(' - ')}) :</span>
-                <strong className="text-amber-300 font-black">1 500 FCFA (3 paris)</strong>
+                <span className="text-slate-400 font-medium">Champ Réduit (Base N°{base1Num} + 3 associés) :</span>
+                <strong className="text-amber-300 font-black">1 500 FCFA (3 paris à 500 F)</strong>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-400 font-medium">Couplé Combiné 4 ch. ({trio4.join(' - ')}) :</span>
-                <strong className="text-sky-300 font-black">3 000 FCFA (6 paris)</strong>
+                <span className="text-slate-400 font-medium">Couplé Combiné 3 ch. ({couple3.join(' - ')}) :</span>
+                <strong className="text-sky-300 font-black">1 500 FCFA (3 paris à 500 F)</strong>
               </div>
             </div>
           </div>
 
-          <div className="mt-4 pt-3 border-t border-amber-500/20 flex items-center justify-between text-xs text-amber-200/80">
-            <span>Formule conseillée : Couplé Gagnant/Placé sur la base N°{base1Num}</span>
+          <div className="mt-4 pt-3 border-t border-amber-500/20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <span className="text-[11px] text-amber-200/80">
+              Formule conseillée : Couplé Gagnant/Placé Sec & Champ Réduit N°{base1Num}
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSelectGameHorses([base1Num, base2Num, ...coupleAssocies], 'Couplé')}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md"
+              >
+                Charger ce Couplé
+              </button>
+              {onNavigateToCalculator && (
+                <button
+                  type="button"
+                  onClick={onNavigateToCalculator}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 transition-all cursor-pointer"
+                  title="Calculer dans le calculateur de tickets"
+                >
+                  <Calculator className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* 2. TRIO EN 4 & 5 NUMÉROS (400 FCFA MIN) */}
-        <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl flex flex-col justify-between hover:border-amber-500/40 transition-all">
+        {/* 2. TRIO : 5 N° (400 FCFA MIN) */}
+        <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl flex flex-col justify-between hover:border-teal-500/40 transition-all">
           <div>
             <div className="flex items-center justify-between gap-2 mb-4">
               <span className="px-3 py-1 rounded-xl bg-teal-500/20 text-teal-300 border border-teal-500/40 font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-teal-400" />
-                Trio en 4 ou 5 Numéros
+                Trio : 5 Numéros (5 N°)
               </span>
               <span className="text-xs font-bold text-teal-300">
                 Mise minimale : 400 FCFA
               </span>
             </div>
 
-            {/* 4 Horses Badges for Trio */}
-            <div className="flex items-center gap-2 flex-wrap mb-4">
-              {trio4.map((num, idx) => {
+            {/* 5 Horses Badges for Trio */}
+            <div className="grid grid-cols-5 gap-2 mb-4">
+              {trio5.map((num, idx) => {
                 const h = partantsMap.get(num);
                 return (
                   <div
-                    key={`prop-trio-${num}-${idx}`}
-                    className="flex flex-col items-center p-2.5 rounded-2xl bg-slate-950 border border-slate-800 min-w-[58px] text-center shadow-md"
+                    key={`prop-trio-5-${num}-${idx}`}
+                    className="flex flex-col items-center p-2 rounded-2xl bg-slate-950 border border-slate-800 text-center shadow-md"
                   >
                     <span className="text-[10px] font-bold text-slate-500">{idx + 1}e</span>
                     <span className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-emerald-600 text-slate-950 font-black text-base flex items-center justify-center my-1 shadow-sm">
                       {num}
                     </span>
-                    <span className="text-[11px] font-bold text-slate-200 truncate max-w-[55px]">
+                    <span className="text-[11px] font-bold text-slate-200 truncate w-full">
                       {h?.nom?.split(' ')[0] || `N°${num}`}
                     </span>
                     <span className="text-[10px] font-semibold text-amber-400">
@@ -378,203 +440,333 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
               })}
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-xs space-y-1.5 text-slate-300">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Trio Combiné 4 chevaux ({trio4.join(' - ')}) :</span>
-                <strong className="text-emerald-400 font-black">1 600 FCFA (4 paris à 400 F)</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Trio Combiné 5 chevaux ({trio5.join(' - ')}) :</span>
+            <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-xs space-y-2 text-slate-300">
+              <div className="flex justify-between items-center">
+                <span className="text-teal-300 font-bold">Trio Combiné Intégral 5 N° ({trio5.join(' - ')}) :</span>
                 <strong className="text-teal-300 font-black">4 000 FCFA (10 paris à 400 F)</strong>
               </div>
-              <div className="flex justify-between">
+              <div className="flex justify-between items-center">
                 <span className="text-slate-400">Champ Réduit (2 bases + 3 associés) :</span>
                 <strong className="text-amber-300 font-bold">1 200 FCFA (3 paris à 400 F)</strong>
               </div>
-            </div>
-          </div>
-
-          <p className="text-[11px] text-slate-400 mt-4 pt-3 border-t border-slate-800">
-            💡 Objectif Trio : trouver les 3 premiers chevaux à l'arrivée quel que soit l'ordre.
-          </p>
-        </div>
-
-        {/* 3. TIERCÉ EN 5 NUMÉROS (300 FCFA MIN) */}
-        <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl flex flex-col justify-between hover:border-amber-500/40 transition-all">
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <span className="px-3 py-1 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/40 font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
-                <Layers className="w-3.5 h-3.5 text-sky-400" />
-                Tiercé en 5 Numéros
-              </span>
-              <span className="text-xs font-bold text-sky-300">
-                Mise minimale : 300 FCFA
-              </span>
-            </div>
-
-            {/* 5 Horses badges */}
-            <div className="flex items-center gap-2 flex-wrap mb-4">
-              {tierce5.map((num, idx) => {
-                const h = partantsMap.get(num);
-                return (
-                  <div
-                    key={`prop-tierce-${num}-${idx}`}
-                    className="flex flex-col items-center p-2.5 rounded-2xl bg-slate-950 border border-slate-800 min-w-[58px] text-center shadow-md"
-                  >
-                    <span className="text-[10px] font-bold text-slate-500">{idx + 1}e</span>
-                    <span className="w-8 h-8 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white font-black text-base flex items-center justify-center my-1 shadow-sm">
-                      {num}
-                    </span>
-                    <span className="text-[11px] font-bold text-slate-200 truncate max-w-[55px]">
-                      {h?.nom?.split(' ')[0] || `N°${num}`}
-                    </span>
-                    <span className="text-[10px] font-semibold text-amber-400">
-                      {h?.coteProbable ? `${h.coteProbable}/1` : '—'}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-xs space-y-1.5 text-slate-300">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Sélection ordonnée :</span>
-                <strong className="text-white font-black tracking-wide">{tierce5.join(' - ')}</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Coût Combiné 5 chevaux :</span>
-                <strong className="text-emerald-400 font-black">3 000 FCFA (10 paris à 300 F)</strong>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Champ Réduit (2 bases + 3 associés) :</span>
-                <strong className="text-sky-300 font-bold">900 FCFA (3 paris à 300 F)</strong>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Champ Réduit (1 base + 4 associés) :</span>
+                <strong className="text-sky-300 font-bold">2 400 FCFA (6 paris à 400 F)</strong>
               </div>
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 mt-4 pt-3 border-t border-slate-800">
-            💡 Objectif Tiercé : toucher l'Ordre et le Désordre avec nos 5 meilleures valeurs mathématiques.
-          </p>
+          <div className="mt-4 pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <span className="text-[11px] text-teal-300/80">
+              💡 Le Combiné 5 N° garantit 100% de toucher le Trio dès que 3 chevaux sont à l'arrivée !
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSelectGameHorses(trio5, 'Trio 5 N°')}
+                className="px-3 py-1.5 rounded-xl bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs transition-all cursor-pointer shadow-md"
+              >
+                Charger le Trio (5 N°)
+              </button>
+              {onNavigateToCalculator && (
+                <button
+                  type="button"
+                  onClick={onNavigateToCalculator}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-teal-300 border border-slate-700 transition-all cursor-pointer"
+                  title="Calculer dans le calculateur de tickets"
+                >
+                  <Calculator className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* 4. QUARTÉ EN 6 NUMÉROS (300 FCFA MIN) */}
-        <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl flex flex-col justify-between hover:border-amber-500/40 transition-all">
+        {/* 3. QUARTÉ+ : CHAMP RÉDUIT (300 FCFA MIN) */}
+        <div className="bg-slate-900/90 rounded-3xl border border-slate-800 p-6 shadow-xl flex flex-col justify-between hover:border-purple-500/40 transition-all">
           <div>
             <div className="flex items-center justify-between gap-2 mb-4">
               <span className="px-3 py-1 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/40 font-black text-xs uppercase tracking-wider flex items-center gap-1.5">
                 <Trophy className="w-3.5 h-3.5 text-purple-400" />
-                Quarté+ en 6 Numéros
+                Quarté : Champ Réduit
               </span>
               <span className="text-xs font-bold text-purple-300">
                 Mise minimale : 300 FCFA
               </span>
             </div>
 
-            {/* 6 Horses badges */}
-            <div className="flex items-center gap-2 flex-wrap mb-4">
-              {quarte6.map((num, idx) => {
-                const h = partantsMap.get(num);
-                return (
-                  <div
-                    key={`prop-quarte-${num}-${idx}`}
-                    className="flex flex-col items-center p-2 rounded-2xl bg-slate-950 border border-slate-800 min-w-[50px] text-center shadow-md"
-                  >
-                    <span className="text-[10px] font-bold text-slate-500">{idx + 1}e</span>
-                    <span className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 text-white font-black text-base flex items-center justify-center my-1 shadow-sm">
-                      {num}
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-200 truncate max-w-[48px]">
-                      {h?.nom?.split(' ')[0] || `N°${num}`}
-                    </span>
-                    <span className="text-[9px] font-semibold text-amber-400">
-                      {h?.coteProbable ? `${h.coteProbable}/1` : '—'}
-                    </span>
-                  </div>
-                );
-              })}
+            {/* Architecture Champ Réduit Quarté */}
+            <div className="space-y-3 mb-4">
+              {/* Bases Fixes (2 chevaux) */}
+              <div className="p-3 rounded-2xl bg-purple-950/30 border border-purple-500/40">
+                <div className="flex items-center justify-between text-[11px] font-bold text-purple-300 mb-2">
+                  <span className="flex items-center gap-1">
+                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                    2 Bases Solides Fixes
+                  </span>
+                  <span className="text-slate-400 font-mono">Position 1 & 2</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {quarteBases.map((num, i) => {
+                    const h = partantsMap.get(num);
+                    return (
+                      <div key={`qb-${num}-${i}`} className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-purple-500/30 flex-1 min-w-0">
+                        <span className="w-8 h-8 rounded-lg bg-amber-400 text-slate-950 font-black font-mono flex items-center justify-center shrink-0">
+                          {num}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white truncate">{h?.nom}</div>
+                          <div className="text-[10px] text-amber-300 font-mono">Cote: {h?.coteProbable}/1</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Associés (Champs X - 4 chevaux) */}
+              <div className="p-3 rounded-2xl bg-slate-950/70 border border-slate-800">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-2">
+                  <span>4 Chevaux Associés (Champs X)</span>
+                  <span className="text-purple-400 font-mono">Compléments podium</span>
+                </div>
+                <div className="grid grid-cols-4 gap-2">
+                  {quarteAssocies.map((num, idx) => {
+                    const h = partantsMap.get(num);
+                    return (
+                      <div key={`qa-${num}-${idx}`} className="flex flex-col items-center p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                        <span className="text-[9px] text-purple-400 font-bold">X{idx + 1}</span>
+                        <span className="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-200 font-black font-mono flex items-center justify-center my-0.5 border border-purple-500/40">
+                          {num}
+                        </span>
+                        <span className="text-[10px] text-slate-300 font-bold truncate w-full">{h?.nom?.split(' ')[0]}</span>
+                        <span className="text-[9px] text-slate-400 font-mono">{h?.coteProbable}/1</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Formule visuelle du coupon */}
+              <div className="px-3 py-2 rounded-xl bg-slate-950 border border-purple-500/20 text-center font-mono text-xs text-purple-200">
+                Coupon : <strong className="text-amber-400">N°{quarteBases[0]} - N°{quarteBases[1]}</strong> - <span className="text-purple-400 font-bold">X - X</span> / Associés : <strong className="text-white">{quarteAssocies.join(', ')}</strong>
+              </div>
             </div>
 
             <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800/80 text-xs space-y-1.5 text-slate-300">
-              <div className="flex justify-between">
-                <span className="text-slate-400">Sélection ordonnée :</span>
-                <strong className="text-white font-black tracking-wide">{quarte6.join(' - ')}</strong>
+              <div className="flex justify-between items-center">
+                <span className="text-purple-300 font-bold">Champ Réduit (2 bases + 4 associés) :</span>
+                <strong className="text-purple-300 font-black">1 800 FCFA (6 combinaisons × 300 F)</strong>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Coût Combiné 6 chevaux :</span>
-                <strong className="text-emerald-400 font-black">4 500 FCFA (15 paris à 300 F)</strong>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Option Flexi 50% au Quarté :</span>
+                <strong className="text-emerald-400 font-bold">900 FCFA (6 combinaisons × 150 F)</strong>
               </div>
-              <div className="flex justify-between">
-                <span className="text-slate-400">Champ Réduit (2 bases + 4 associés) :</span>
-                <strong className="text-purple-300 font-bold">1 800 FCFA (6 paris à 300 F)</strong>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-400">Champ Réduit (1 base + 5 associés) :</span>
+                <strong className="text-slate-400 font-medium">3 000 FCFA (10 combinaisons)</strong>
               </div>
             </div>
           </div>
 
-          <p className="text-[11px] text-slate-400 mt-4 pt-3 border-t border-slate-800">
-            💡 Objectif Quarté+ : couvrir les rapports Ordre, Désordre et Bonus 4.
-          </p>
+          <div className="mt-4 pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <span className="text-[11px] text-purple-300/80">
+              💡 Formule reine : optimise vos chances Ordre, Désordre et Bonus 4 à coût réduit !
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSelectGameHorses([...quarteBases, ...quarteAssocies], 'Quarté Champ Réduit')}
+                className="px-3 py-1.5 rounded-xl bg-purple-500 hover:bg-purple-400 text-white font-black text-xs transition-all cursor-pointer shadow-md"
+              >
+                Charger Quarté Champ Réduit
+              </button>
+              {onNavigateToCalculator && (
+                <button
+                  type="button"
+                  onClick={onNavigateToCalculator}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 border border-slate-700 transition-all cursor-pointer"
+                  title="Calculer dans le calculateur de tickets"
+                >
+                  <Calculator className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
-        {/* 5. QUINTÉ EN 7 NUMÉROS (300 FCFA MIN) */}
-        <div className="md:col-span-2 bg-gradient-to-br from-red-950/30 via-slate-900 to-slate-950 rounded-3xl border-2 border-red-500/40 p-6 shadow-2xl flex flex-col justify-between">
+        {/* 4. QUINTÉ+ : CHAMP RÉDUIT (300 FCFA MIN) */}
+        <div className="bg-gradient-to-br from-red-950/30 via-slate-900 to-slate-950 rounded-3xl border-2 border-red-500/40 p-6 shadow-2xl flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between gap-2 mb-4">
-              <span className="px-3 py-1 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md animate-pulse">
+              <span className="px-3 py-1 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 text-white font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md">
                 <Trophy className="w-3.5 h-3.5" />
-                Quinté+ en 7 Numéros
+                Quinté+ : Champ Réduit
               </span>
               <span className="text-xs font-bold text-rose-300">
                 Mise minimale : 300 FCFA
               </span>
             </div>
 
-            {/* 7 Horses badges */}
-            <div className="flex items-center gap-2 flex-wrap mb-4">
-              {quinte7.map((num, idx) => {
-                const h = partantsMap.get(num);
-                return (
-                  <div
-                    key={`prop-quinte-${num}-${idx}`}
-                    className="flex flex-col items-center p-2.5 rounded-2xl bg-slate-950 border border-red-900/40 min-w-[54px] text-center shadow-md"
-                  >
-                    <span className="text-[9px] font-bold text-slate-500">{idx + 1}e</span>
-                    <span className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-500 to-rose-600 text-white font-black text-lg flex items-center justify-center my-1 shadow-md">
-                      {num}
-                    </span>
-                    <span className="text-[11px] font-bold text-slate-200 truncate max-w-[50px]">
-                      {h?.nom?.split(' ')[0] || `N°${num}`}
-                    </span>
-                    <span className="text-[9px] font-semibold text-amber-400">
-                      {h?.coteProbable ? `${h.coteProbable}/1` : '—'}
-                    </span>
-                  </div>
-                );
-              })}
+            {/* Architecture Champ Réduit Quinté+ */}
+            <div className="space-y-3 mb-4">
+              {/* Bases Fixes (2 chevaux) */}
+              <div className="p-3 rounded-2xl bg-red-950/30 border border-red-500/40">
+                <div className="flex items-center justify-between text-[11px] font-bold text-rose-300 mb-2">
+                  <span className="flex items-center gap-1">
+                    <Crown className="w-3.5 h-3.5 text-amber-400" />
+                    2 Bases Incontournables
+                  </span>
+                  <span className="text-slate-400 font-mono">Bases maîtresses</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  {quinteBases.map((num, i) => {
+                    const h = partantsMap.get(num);
+                    return (
+                      <div key={`quinte-b-${num}-${i}`} className="flex items-center gap-2 p-2 rounded-xl bg-slate-950 border border-red-500/30 flex-1 min-w-0">
+                        <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-red-500 to-rose-600 text-white font-black font-mono flex items-center justify-center shrink-0">
+                          {num}
+                        </span>
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-white truncate">{h?.nom}</div>
+                          <div className="text-[10px] text-amber-300 font-mono">Cote: {h?.coteProbable}/1</div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Associés (Champs X - 5 chevaux) */}
+              <div className="p-3 rounded-2xl bg-slate-950/70 border border-slate-800">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 mb-2">
+                  <span>5 Chevaux Associés (Champs X)</span>
+                  <span className="text-rose-400 font-mono">Garantie couverture</span>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {quinteAssocies.map((num, idx) => {
+                    const h = partantsMap.get(num);
+                    return (
+                      <div key={`quinte-a-${num}-${idx}`} className="flex flex-col items-center p-1.5 rounded-xl bg-slate-900 border border-slate-800 text-center">
+                        <span className="text-[9px] text-rose-400 font-bold">X{idx + 1}</span>
+                        <span className="w-7 h-7 rounded-lg bg-rose-500/20 text-rose-200 font-black font-mono flex items-center justify-center my-0.5 border border-rose-500/40">
+                          {num}
+                        </span>
+                        <span className="text-[10px] text-slate-300 font-bold truncate w-full">{h?.nom?.split(' ')[0]}</span>
+                        <span className="text-[9px] text-slate-400 font-mono">{h?.coteProbable}/1</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Formule visuelle du coupon */}
+              <div className="px-3 py-2 rounded-xl bg-slate-950 border border-red-500/20 text-center font-mono text-xs text-rose-200">
+                Coupon : <strong className="text-amber-400">N°{quinteBases[0]} - N°{quinteBases[1]}</strong> - <span className="text-rose-400 font-bold">X - X - X</span> / Associés : <strong className="text-white">{quinteAssocies.join(', ')}</strong>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-950/80 border border-red-500/30 text-xs text-slate-300">
-              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1">
-                <span className="text-[11px] text-slate-400 block font-semibold">Combiné Intégral 100%</span>
-                <strong className="text-emerald-400 text-base font-black block">6 300 FCFA</strong>
-                <span className="text-[10px] text-slate-500">21 combinaisons × 300 F</span>
+            {/* Mises en FCFA pour le Quinté Champ Réduit */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 p-3 rounded-2xl bg-slate-950/80 border border-red-500/30 text-xs text-slate-300">
+              <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-center space-y-0.5">
+                <span className="text-[10px] text-slate-400 block font-semibold">Plein Tarif (100%)</span>
+                <strong className="text-rose-400 text-sm sm:text-base font-black block">3 000 FCFA</strong>
+                <span className="text-[9px] text-slate-500 block">10 combinaisons × 300 F</span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1">
-                <span className="text-[11px] text-slate-400 block font-semibold">Champ Réduit (2 bases + 5 ass.)</span>
-                <strong className="text-amber-300 text-base font-black block">3 000 FCFA</strong>
-                <span className="text-[10px] text-slate-500">10 combinaisons × 300 F</span>
+              <div className="p-2.5 rounded-xl bg-slate-900/90 border border-emerald-500/40 text-center space-y-0.5">
+                <span className="text-[10px] text-emerald-400 block font-bold">Option Flexi 50%</span>
+                <strong className="text-emerald-400 text-sm sm:text-base font-black block">1 500 FCFA</strong>
+                <span className="text-[9px] text-slate-400 block">10 combinaisons × 150 F</span>
               </div>
-              <div className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1">
-                <span className="text-[11px] text-slate-400 block font-semibold">Option Flexi 50%</span>
-                <strong className="text-sky-300 text-base font-black block">3 150 FCFA</strong>
-                <span className="text-[10px] text-slate-500">21 combinaisons × 150 F</span>
+              <div className="p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-center space-y-0.5">
+                <span className="text-[10px] text-sky-400 block font-semibold">Option Flexi 25%</span>
+                <strong className="text-sky-300 text-sm sm:text-base font-black block">750 FCFA</strong>
+                <span className="text-[9px] text-slate-500 block">10 combinaisons × 75 F</span>
               </div>
             </div>
           </div>
 
-          <p className="text-[11px] text-rose-300/90 mt-4 pt-3 border-t border-red-500/20 flex items-center gap-1.5">
-            <span>⭐ Formule reine du Quinté+ : optimise vos chances d'ordre, désordre, Bonus 4 et Bonus 3 !</span>
-          </p>
+          <div className="mt-4 pt-3 border-t border-red-500/20 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+            <span className="text-[11px] text-rose-300/90">
+              ⭐ Formule reine du Quinté+ : couvre l'Ordre, Désordre, Bonus 4 et Bonus 3 dès 1 500 FCFA !
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleSelectGameHorses([...quinteBases, ...quinteAssocies], 'Quinté+ Champ Réduit')}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs transition-all cursor-pointer shadow-md"
+              >
+                Charger Quinté+ Champ Réduit
+              </button>
+              {onNavigateToCalculator && (
+                <button
+                  type="button"
+                  onClick={onNavigateToCalculator}
+                  className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-rose-300 border border-slate-700 transition-all cursor-pointer"
+                  title="Calculer dans le calculateur de tickets"
+                >
+                  <Calculator className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* COMPLÉMENT OPTIONNEL : TIERCE EN 5 NUMÉROS */}
+      <div className="bg-slate-900/60 rounded-3xl border border-slate-800 p-5 shadow-lg">
+        <div
+          onClick={() => setShowTierceOption(!showTierceOption)}
+          className="flex items-center justify-between cursor-pointer select-none"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="p-1.5 rounded-xl bg-sky-500/20 text-sky-400">
+              <Layers className="w-4 h-4" />
+            </span>
+            <div>
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <span>Formule Tiercé Complémentaire en 5 Numéros</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-sky-300 border border-slate-700">
+                  Mise min: 300 FCFA
+                </span>
+              </h4>
+              <p className="text-xs text-slate-400">Pour les turfistes souhaitant également valider le Tiercé classique</p>
+            </div>
+          </div>
+          <button type="button" className="p-1 text-slate-400 hover:text-white">
+            {showTierceOption ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </button>
+        </div>
+
+        {showTierceOption && (
+          <div className="mt-4 pt-4 border-t border-slate-800/80 space-y-3">
+            <div className="flex items-center gap-2 flex-wrap">
+              {tierce5.map((num, idx) => {
+                const h = partantsMap.get(num);
+                return (
+                  <div key={`tierce-badge-${num}-${idx}`} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs">
+                    <span className="text-sky-400 font-black">{idx + 1}e</span>
+                    <span className="font-mono font-black text-white">N°{num}</span>
+                    <span className="text-slate-400 text-[10px] truncate max-w-[65px]">{h?.nom?.split(' ')[0]}</span>
+                    <span className="text-amber-400 text-[10px] font-mono font-bold">({h?.coteProbable}/1)</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 text-xs text-slate-300 bg-slate-950/60 p-3 rounded-2xl border border-slate-800">
+              <div>
+                Combiné 5 chevaux : <strong className="text-emerald-400 font-black">3 000 FCFA</strong> (10 paris à 300 F) · Champ Réduit (2B + 3A) : <strong className="text-sky-300 font-black">900 FCFA</strong> (3 paris à 300 F)
+              </div>
+              <button
+                type="button"
+                onClick={() => handleSelectGameHorses(tierce5, 'Tiercé 5 N°')}
+                className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs transition-all cursor-pointer self-start sm:self-auto shrink-0"
+              >
+                Charger Tiercé (5 N°)
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* SECTION : LISTE DE CHEVAUX IMPRIMABLES & COUPON PMU EN FCFA */}
@@ -611,7 +803,7 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
             <button
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition-colors shadow-sm"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs border border-slate-700 transition-colors shadow-sm cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5 text-amber-400" />
               <span>Imprimer cette fiche</span>
@@ -623,32 +815,42 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 print:grid print:grid-cols-6 print:gap-1.5 mb-4">
           <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 print:border-black print:bg-gray-100">
             <span className="text-[9px] uppercase font-bold text-slate-500 print:text-gray-700 block truncate">
-              Base & Couplé (500 F)
+              Couplé (500 F)
             </span>
             <strong className="text-xs sm:text-sm font-black text-amber-400 print:text-black block truncate">
-              N°{base1Num} {base1Horse?.nom?.split(' ')[0]}
+              N°{base1Num} - N°{base2Num}
             </strong>
-            <span className="text-[9px] text-slate-400 print:text-gray-600">500 FCFA / mise</span>
+            <span className="text-[9px] text-slate-400 print:text-gray-600">Sec 500 F • Ch.R 1 500 F</span>
           </div>
 
           <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 print:border-black print:bg-gray-100">
             <span className="text-[9px] uppercase font-bold text-slate-500 print:text-gray-700 block truncate">
-              Multi en 4 (350 F)
+              Trio (5 N° - 400 F)
             </span>
             <strong className="text-xs sm:text-sm font-black text-teal-400 print:text-black block truncate">
-              {trio4.join(' - ')}
+              {trio5.join(' - ')}
             </strong>
-            <span className="text-[9px] text-slate-400 print:text-gray-600">350 FCFA / mise</span>
+            <span className="text-[9px] text-slate-400 print:text-gray-600">Comb. 4 000 F • Ch.R 1 200 F</span>
           </div>
 
           <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 print:border-black print:bg-gray-100">
             <span className="text-[9px] uppercase font-bold text-slate-500 print:text-gray-700 block truncate">
-              Pick 5 (400 F)
+              Quarté Champ Réduit
             </span>
-            <strong className="text-xs sm:text-sm font-black text-emerald-400 print:text-black block truncate">
-              {tierce5.join(' - ')}
+            <strong className="text-xs sm:text-sm font-black text-purple-400 print:text-black block truncate">
+              {quarteBases.join('-')}-X-X / {quarteAssocies.join('-')}
             </strong>
-            <span className="text-[9px] text-slate-400 print:text-gray-600">400 FCFA / mise</span>
+            <span className="text-[9px] text-slate-400 print:text-gray-600">6 combis = 1 800 FCFA</span>
+          </div>
+
+          <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 print:border-black print:bg-gray-100">
+            <span className="text-[9px] uppercase font-bold text-slate-500 print:text-gray-700 block truncate">
+              Quinté+ Champ Réduit
+            </span>
+            <strong className="text-xs sm:text-sm font-black text-rose-400 print:text-black block truncate">
+              {quinteBases.join('-')}-X-X-X / {quinteAssocies.join('-')}
+            </strong>
+            <span className="text-[9px] text-slate-400 print:text-gray-600">10 combis = 3 000 F (Flexi 1 500)</span>
           </div>
 
           <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 print:border-black print:bg-gray-100">
@@ -658,27 +860,17 @@ export const PropositionsJeuxIA: React.FC<PropositionsJeuxIAProps> = ({
             <strong className="text-xs sm:text-sm font-black text-sky-400 print:text-black block truncate">
               {tierce5.join(' - ')}
             </strong>
-            <span className="text-[9px] text-slate-400 print:text-gray-600">Comb. 3 000 FCFA</span>
+            <span className="text-[9px] text-slate-400 print:text-gray-600">Comb. 3 000 F • Ch.R 900 F</span>
           </div>
 
           <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 print:border-black print:bg-gray-100">
             <span className="text-[9px] uppercase font-bold text-slate-500 print:text-gray-700 block truncate">
-              Quarté+ (300 F)
+              Multi en 4 (350 F)
             </span>
-            <strong className="text-xs sm:text-sm font-black text-purple-400 print:text-black block truncate">
-              {quarte6.join(' - ')}
+            <strong className="text-xs sm:text-sm font-black text-emerald-400 print:text-black block truncate">
+              {trio5.slice(0, 4).join(' - ')}
             </strong>
-            <span className="text-[9px] text-slate-400 print:text-gray-600">Comb. 4 500 FCFA</span>
-          </div>
-
-          <div className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 print:border-black print:bg-gray-100">
-            <span className="text-[9px] uppercase font-bold text-slate-500 print:text-gray-700 block truncate">
-              Quinté+ (300 F)
-            </span>
-            <strong className="text-xs sm:text-sm font-black text-rose-400 print:text-black block truncate">
-              {quinte7.join(' - ')}
-            </strong>
-            <span className="text-[9px] text-slate-400 print:text-gray-600">Comb. 6 300 FCFA</span>
+            <span className="text-[9px] text-slate-400 print:text-gray-600">350 FCFA / mise</span>
           </div>
         </div>
 

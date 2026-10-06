@@ -313,34 +313,7 @@ export function getAllRegisteredUsers(): UserProfile[] {
   try {
     const raw = localStorage.getItem(USERS_DB_KEY);
     if (!raw) {
-      const sampleUsers: UserProfile[] = [
-        {
-          id: 'usr_boni_1',
-          email: 'bkboni35@gmail.com',
-          nom: 'Ghislain BONI',
-          telephone: '+225 01 01 24 61 06',
-          estConnecte: true,
-          dateInscription: '20 septembre 2026 à 10:00',
-          derniereConnexion: '29 septembre 2026 à 09:15',
-          statutMembre: 'Membre Administrateur / VIP',
-          analysesEffectuees: 58,
-          pays: 'Côte d\'Ivoire / France',
-        },
-        {
-          id: 'usr_sample_1',
-          email: 'turfiste.pro@gmail.com',
-          nom: 'Jean-Marc Turf',
-          telephone: '+33 6 12 34 56 78',
-          estConnecte: false,
-          dateInscription: '24 septembre 2026 à 07:30',
-          derniereConnexion: '24 septembre 2026 à 08:10',
-          statutMembre: 'Abonné VIP',
-          analysesEffectuees: 14,
-          pays: 'France (PMU)',
-        }
-      ];
-      localStorage.setItem(USERS_DB_KEY, JSON.stringify(sampleUsers));
-      return sampleUsers;
+      return [];
     }
     return JSON.parse(raw);
   } catch {

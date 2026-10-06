@@ -22,6 +22,7 @@ import {
   Zap,
   FileText,
   X,
+  Star,
 } from 'lucide-react';
 import { PmuMeeting, PmuCalendarResponse } from '../types/turf';
 import { getCuratedPmuMeetings, PLR_FRIDAY_02_MEETINGS } from '../data/pmuMeetingsData';
@@ -119,6 +120,31 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
     return todayIso;
   });
   const [selectedHippodrome, setSelectedHippodrome] = useState<string>('all');
+  // Hippodromes Favoris & Recherche Dédiée
+  const [favoriteHippodromes, setFavoriteHippodromes] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('hippo_favorite_hippodromes');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return ['Paris-Vincennes', 'Longchamp', 'Auteuil', 'Saint-Cloud', 'Chantilly'];
+  });
+  const [showOnlyFavoriteHippodromes, setShowOnlyFavoriteHippodromes] = useState<boolean>(false);
+
+  const handleToggleFavoriteHippodrome = (hippoName: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    const cleanName = hippoName.trim();
+    if (!cleanName) return;
+    setFavoriteHippodromes((prev) => {
+      const exists = prev.some((h) => h.toLowerCase() === cleanName.toLowerCase());
+      const next = exists
+        ? prev.filter((h) => h.toLowerCase() !== cleanName.toLowerCase())
+        : [...prev, cleanName];
+      try {
+        localStorage.setItem('hippo_favorite_hippodromes', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'quinte'>('all');
   const [disciplineFilter, setDisciplineFilter] = useState<string>('all');
   const [reunionFilter, setReunionFilter] = useState<string>('all');
@@ -1141,11 +1167,118 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
       const mIso = getMeetingIsoDate(m);
       const mNorm = normalizeDateForQuery(m.date || '');
       const matchExact = m.dateRelative === selectedDate || m.date === selectedDate;
-      const matchIso = mIso === selectedDate;
+      const matchIso = (Boolean(mIso && selNorm) && mIso === selNorm) || mIso === selectedDate;
       const matchNorm = Boolean(selNorm && mNorm && selNorm === mNorm);
       return matchExact || matchIso || matchNorm;
     });
   }, [meetings, selectedDate]);
+
+  // Liste de toutes les dates distinctes détectées dans l'ensemble du programme avec métadonnées et décomptes
+  const distinctDatesWithCount = useMemo(() => {
+    const todayIso = getIvoryCoastDate(0);
+    const tomorrowIso = getIvoryCoastDate(1);
+    const yesterdayIso = getIvoryCoastDate(-1);
+
+    const dateMap = new Map<string, {
+      iso: string;
+      label: string;
+      shortLabel: string;
+      count: number;
+      quinteCount: number;
+      isToday: boolean;
+      isTomorrow: boolean;
+      isYesterday: boolean;
+      reunions: string[];
+      hippodromes: string[];
+    }>();
+
+    meetings.forEach((m) => {
+      const iso = getMeetingIsoDate(m);
+      if (!iso) return;
+      const existing = dateMap.get(iso);
+      if (existing) {
+        existing.count += 1;
+        if (m.estQuinte) existing.quinteCount += 1;
+        if (m.reunion && !existing.reunions.includes(m.reunion)) existing.reunions.push(m.reunion);
+        if (m.hippodrome && !existing.hippodromes.includes(m.hippodrome)) existing.hippodromes.push(m.hippodrome);
+      } else {
+        const isToday = iso === todayIso;
+        const isTomorrow = iso === tomorrowIso;
+        const isYesterday = iso === yesterdayIso;
+
+        let displayLabel = m.date || iso;
+        try {
+          const parts = iso.split('-');
+          if (parts.length === 3) {
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            const frFormatted = d.toLocaleDateString('fr-FR', {
+              weekday: 'long',
+              day: 'numeric',
+              month: 'long',
+            });
+            displayLabel = frFormatted.charAt(0).toUpperCase() + frFormatted.slice(1);
+          }
+        } catch {}
+
+        let shortLabel = displayLabel;
+        try {
+          const parts = iso.split('-');
+          if (parts.length === 3) {
+            const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            shortLabel = d.toLocaleDateString('fr-FR', {
+              weekday: 'short',
+              day: 'numeric',
+              month: 'short',
+            });
+          }
+        } catch {}
+
+        dateMap.set(iso, {
+          iso,
+          label: displayLabel,
+          shortLabel,
+          count: 1,
+          quinteCount: m.estQuinte ? 1 : 0,
+          isToday,
+          isTomorrow,
+          isYesterday,
+          reunions: m.reunion ? [m.reunion] : [],
+          hippodromes: m.hippodrome ? [m.hippodrome] : [],
+        });
+      }
+    });
+
+    return Array.from(dateMap.values()).sort((a, b) => a.iso.localeCompare(b.iso));
+  }, [meetings]);
+
+  // Libellé textuel convivial de la date couramment sélectionnée
+  const currentSelectedDateLabel = useMemo(() => {
+    if (selectedDate === 'all') return 'Toutes les dates';
+    if (selectedDate === 'today') return "Aujourd'hui";
+    if (selectedDate === 'last7') return '7 derniers jours';
+    if (selectedDate === 'upcoming7') return '7 prochains jours';
+
+    const normalized = normalizeDateForQuery(selectedDate);
+    const matched = distinctDatesWithCount.find((d) => d.iso === normalized || d.iso === selectedDate);
+    if (matched) {
+      if (matched.isToday) return `Aujourd'hui (${matched.shortLabel})`;
+      if (matched.isTomorrow) return `Demain (${matched.shortLabel})`;
+      return matched.label;
+    }
+
+    try {
+      if (normalized && normalized.includes('-')) {
+        const parts = normalized.split('-');
+        if (parts.length === 3) {
+          const d = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+          const fr = d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+          return fr.charAt(0).toUpperCase() + fr.slice(1);
+        }
+      }
+    } catch {}
+
+    return selectedDate;
+  }, [selectedDate, distinctDatesWithCount]);
 
   // Carte des dates disponibles avec nombre de courses pour le calendrier interactif
   const availableDatesMap = useMemo(() => {
@@ -1430,9 +1563,17 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
         if ((m.reunion || '').toUpperCase() !== reunionFilter.toUpperCase()) return false;
       }
 
+      // Filtre hippodromes favoris uniquement
+      if (showOnlyFavoriteHippodromes) {
+        const isFav = favoriteHippodromes.some(
+          (fav) => fav.toLowerCase() === (m.hippodrome || '').toLowerCase().trim()
+        );
+        if (!isFav) return false;
+      }
+
       // Filtre hippodrome spécifique
       if (selectedHippodrome !== 'all') {
-        if ((m.hippodrome || '').toLowerCase() !== selectedHippodrome.toLowerCase()) return false;
+        if ((m.hippodrome || '').toLowerCase().trim() !== selectedHippodrome.toLowerCase().trim()) return false;
       }
 
       // Filtre Quinté
@@ -1743,6 +1884,146 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
             availableDates={availableDatesMap}
             isLoading={isLoading}
           />
+        </div>
+
+        {/* Barre Dédiée : Filtrage par Jour & Programme Quotidien */}
+        <div className="mt-3.5 p-3.5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-500/50 flex flex-col gap-3 shadow-xl">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-2 bg-amber-500/20 px-3 py-1.5 rounded-xl border border-amber-500/40 shadow-sm">
+                <CalendarDays className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wider">
+                  Filtrer par Date :
+                </span>
+              </div>
+
+              {/* Menu Déroulant Principal de Sélection du Jour */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <select
+                  id="main-date-filter-dropdown"
+                  value={selectedDate}
+                  onChange={(e) => handleDateSelect(e.target.value)}
+                  className="bg-slate-950 text-amber-300 font-black text-xs sm:text-sm px-3.5 py-2 rounded-xl border-2 border-amber-500 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-lg shadow-amber-500/10"
+                  title="Sélectionner une date pour afficher son programme complet"
+                >
+                  <option value="all" className="bg-slate-900 text-white font-bold">
+                    📅 Toutes les dates ({meetings.length} courses)
+                  </option>
+                  <option value="today" className="bg-slate-900 text-emerald-300 font-bold">
+                    🌟 Aujourd'hui ({meetings.filter(m => getMeetingIsoDate(m) === getIvoryCoastDate(0) || m.dateRelative === "Aujourd'hui").length} courses)
+                  </option>
+                  <option value="upcoming7" className="bg-slate-900 text-cyan-300 font-bold">
+                    ⏱️ 7 prochains jours
+                  </option>
+                  <option value="last7" className="bg-slate-900 text-sky-300 font-bold">
+                    🕒 7 derniers jours (Archives)
+                  </option>
+                  {distinctDatesWithCount.map((d) => (
+                    <option key={`main-date-opt-${d.iso}`} value={d.iso} className="bg-slate-900 text-amber-300 font-bold">
+                      🗓️ {d.label} ({d.count} course{d.count > 1 ? 's' : ''}{d.quinteCount > 0 ? ' • 🏆 Quinté+' : ''})
+                    </option>
+                  ))}
+                </select>
+
+                {/* Sélecteur de date natif HTML5 */}
+                <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 hover:border-amber-400 px-3 py-2 rounded-xl shadow-inner">
+                  <CalendarIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <input
+                    type="date"
+                    aria-label="Choisir un jour précis"
+                    value={(selectedDate === 'all' || selectedDate === 'last7' || selectedDate === 'upcoming7' || selectedDate === 'today') ? '' : normalizeDateForQuery(selectedDate)}
+                    onChange={(e) => {
+                      if (e.target.value) handleDateSelect(e.target.value);
+                    }}
+                    className="bg-transparent text-amber-300 font-mono font-black text-xs focus:outline-none cursor-pointer w-[120px]"
+                    title="Choisir un jour spécifique dans le calendrier"
+                  />
+                </div>
+
+                {selectedDate !== 'all' && (
+                  <button
+                    type="button"
+                    onClick={() => handleDateSelect('all')}
+                    className="px-2.5 py-2 rounded-xl bg-amber-500/20 text-amber-300 hover:bg-amber-500 hover:text-slate-950 border border-amber-500/40 text-xs font-black transition-all flex items-center gap-1"
+                    title="Effacer le filtre par date et afficher toutes les dates"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>Effacer</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Badges d'état de la date sélectionnée */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-mono font-bold text-amber-300 bg-amber-500/15 px-3 py-1 rounded-xl border border-amber-500/30">
+                DATE ACTIVE : {currentSelectedDateLabel.toUpperCase()}
+              </span>
+              <span className="text-[11px] font-mono font-extrabold text-emerald-400 bg-emerald-500/15 px-2.5 py-1 rounded-xl border border-emerald-500/30">
+                {activeDayMeetings.length} / {meetings.length} COURSES
+              </span>
+            </div>
+          </div>
+
+          {/* Boutons d'accès direct rapide par jour */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800/80">
+            <span className="text-[11px] font-extrabold text-slate-400 mr-1 flex items-center gap-1">
+              <Filter className="w-3 h-3 text-amber-400" />
+              <span>Jours rapides :</span>
+            </span>
+
+            <button
+              type="button"
+              onClick={() => handleDateSelect('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                selectedDate === 'all'
+                  ? 'bg-amber-500 text-slate-950 shadow-md ring-2 ring-amber-400 font-black'
+                  : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+              title="Afficher toutes les dates"
+            >
+              <span>Toutes ({meetings.length})</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleDateSelect('today')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                selectedDate === 'today' || (selectedDate !== 'all' && normalizeDateForQuery(selectedDate) === getIvoryCoastDate(0))
+                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 shadow-md ring-2 ring-emerald-300 font-black'
+                  : 'bg-slate-950 text-emerald-400 hover:text-white border border-slate-800 hover:border-slate-700'
+              }`}
+              title="Afficher le programme d'aujourd'hui"
+            >
+              <Sparkles className="w-3.5 h-3.5 fill-current" />
+              <span>Aujourd'hui</span>
+            </button>
+
+            {distinctDatesWithCount.map((d) => {
+              const isSelected = selectedDate !== 'all' && (normalizeDateForQuery(selectedDate) === d.iso || selectedDate === d.iso);
+              return (
+                <button
+                  key={`quick-date-tag-${d.iso}`}
+                  type="button"
+                  onClick={() => handleDateSelect(isSelected ? 'all' : d.iso)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 shadow-md ring-2 ring-amber-300 scale-[1.02]'
+                      : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800 hover:border-slate-700'
+                  }`}
+                  title={`Filtrer par ${d.label} (${d.count} courses)`}
+                >
+                  <span>🗓️ {d.shortLabel}</span>
+                  {d.quinteCount > 0 && <span className="text-[10px] text-amber-400">🏆</span>}
+                  <span className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono font-bold ${
+                    isSelected ? 'bg-slate-950 text-amber-300' : 'bg-slate-900 text-slate-400'
+                  }`}>
+                    {d.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Barre Dédiée : Menu Déroulant de Filtrage par Discipline (Trot, Plat, Obstacle) */}
@@ -2279,6 +2560,40 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                   )}
                 </div>
 
+                {/* Menu Déroulant Rapide de Filtrage par Jour */}
+                <div className="flex items-center gap-2 bg-slate-900 border border-amber-500/50 rounded-xl px-3 py-1.5 shadow-md shadow-amber-500/10">
+                  <CalendarDays className="w-4 h-4 text-amber-400 shrink-0" />
+                  <label htmlFor="calendar-date-secondary-dropdown" className="text-xs text-amber-300 font-black whitespace-nowrap">
+                    Jour :
+                  </label>
+                  <select
+                    id="calendar-date-secondary-dropdown"
+                    value={selectedDate}
+                    onChange={(e) => handleDateSelect(e.target.value)}
+                    className="bg-slate-950 text-white font-black text-xs px-2.5 py-1.5 rounded-lg border border-slate-700 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400/50 cursor-pointer"
+                    title="Filtrer les réunions par jour spécifique"
+                  >
+                    <option value="all">📅 Tous ({meetings.length})</option>
+                    <option value="today">🌟 Aujourd'hui</option>
+                    <option value="upcoming7">⏱️ 7 jours</option>
+                    {distinctDatesWithCount.map((d) => (
+                      <option key={`sec-date-${d.iso}`} value={d.iso}>
+                        🗓️ {d.shortLabel} ({d.count} c.)
+                      </option>
+                    ))}
+                  </select>
+                  {selectedDate !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => handleDateSelect('all')}
+                      className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                      title="Afficher toutes les dates"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
                 {/* Boutons d'accès direct rapide */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <button
@@ -2348,11 +2663,25 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
               </div>
             </div>
 
-            {/* Barre récapitulative des filtres actifs (Discipline, Recherche & Hippodrome) */}
-            {(disciplineFilter !== 'all' || searchTerm.trim() || hippoSearch.trim()) && (
+            {/* Barre récapitulative des filtres actifs (Date, Discipline, Recherche & Hippodrome) */}
+            {(selectedDate !== 'all' || disciplineFilter !== 'all' || searchTerm.trim() || hippoSearch.trim() || selectedHippodrome !== 'all' || reunionFilter !== 'all') && (
               <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-800/80 text-xs">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-[11px] font-black uppercase text-slate-400">Filtres actifs :</span>
+                  {selectedDate !== 'all' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-500/40 text-amber-300 font-bold text-xs shadow-sm">
+                      <CalendarDays className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Date : {currentSelectedDateLabel}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleDateSelect('all')}
+                        className="hover:text-white p-0.5 rounded hover:bg-amber-500/30 transition-colors"
+                        title="Effacer le filtre date"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
                   {disciplineFilter !== 'all' && (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold text-xs">
                       <span>Discipline : {disciplineFilter.toUpperCase()}</span>
@@ -2380,6 +2709,33 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                       </button>
                     </span>
                   )}
+                  {selectedHippodrome !== 'all' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-bold text-xs">
+                      <MapPin className="w-3 h-3 text-emerald-400" />
+                      <span>Hippo : {selectedHippodrome}</span>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedHippodrome('all')}
+                        className="hover:text-white"
+                        title="Effacer le filtre hippodrome"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
+                  {reunionFilter !== 'all' && (
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-500/15 border border-blue-500/30 text-blue-300 font-bold text-xs">
+                      <span>Réunion : {reunionFilter}</span>
+                      <button
+                        type="button"
+                        onClick={() => setReunionFilter('all')}
+                        className="hover:text-white"
+                        title="Effacer le filtre réunion"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </span>
+                  )}
                   {searchTerm.trim() && (
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-sky-500/15 border border-sky-500/30 text-sky-300 font-bold text-xs">
                       <Search className="w-3 h-3 text-sky-400" />
@@ -2402,9 +2758,12 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                 <button
                   type="button"
                   onClick={() => {
+                    handleDateSelect('all');
                     setDisciplineFilter('all');
                     setSearchTerm('');
                     setHippoSearch('');
+                    setSelectedHippodrome('all');
+                    setReunionFilter('all');
                   }}
                   className="px-2.5 py-1 rounded-lg text-[11px] font-extrabold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors flex items-center gap-1"
                   title="Réinitialiser tous les filtres"
@@ -2418,12 +2777,30 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
         )}
 
         {activeDayMeetings.length === 0 ? (
-          <div className="p-8 text-center bg-slate-950/60 rounded-2xl border border-slate-800 space-y-2">
-            <CalendarDays className="w-8 h-8 text-amber-400/80 mx-auto" />
-            <p className="text-sm font-bold text-white">Aucune réunion programmée pour cette date.</p>
-            <p className="text-xs text-slate-400">
-              Sélectionnez un jour dans le calendrier interactif ci-dessus (ex: Jeudi 01 Octobre, Mercredi 30 Septembre...) ou cliquez sur « Aujourd'hui ».
+          <div className="p-8 text-center bg-slate-950/60 rounded-2xl border border-slate-800 space-y-3 shadow-inner">
+            <CalendarDays className="w-10 h-10 text-amber-400/80 mx-auto" />
+            <p className="text-sm font-bold text-white">
+              Aucune réunion programmée pour {currentSelectedDateLabel}.
             </p>
+            <p className="text-xs text-slate-400 max-w-md mx-auto">
+              Aucune course ne correspond à cette sélection dans votre calendrier. Vous pouvez basculer sur une autre journée ou afficher l'intégralité des courses.
+            </p>
+            <div className="flex items-center justify-center gap-2 pt-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => handleDateSelect('today')}
+                className="px-3.5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-slate-950 font-black text-xs rounded-xl shadow-md hover:scale-105 transition-transform"
+              >
+                🌟 Consulter Aujourd'hui
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDateSelect('all')}
+                className="px-3.5 py-2 bg-slate-900 text-amber-300 border border-amber-500/40 font-bold text-xs rounded-xl hover:bg-slate-800 transition-colors"
+              >
+                📅 Afficher toutes les dates ({meetings.length})
+              </button>
+            </div>
           </div>
         ) : (
           <div className="space-y-3 pt-1">
@@ -2778,65 +3155,167 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
           </div>
         </div>
 
-        {/* Barre de Filtres Rapides par Hippodrome (1-Click) */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800/80">
-          <span className="text-[11px] font-black uppercase text-amber-400 mr-1 flex items-center gap-1">
-            <MapPin className="w-3.5 h-3.5" />
-            <span>Hippodromes :</span>
-          </span>
-          <button
-            type="button"
-            onClick={() => setSelectedHippodrome('all')}
-            className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all ${
-              selectedHippodrome === 'all'
-                ? 'bg-amber-500 text-slate-950 shadow-sm'
-                : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
-            }`}
-          >
-            Tous
-          </button>
-          {['Paris-Vincennes', 'Longchamp', 'Auteuil', 'Saint-Cloud', 'Chantilly', 'Deauville', 'Toulouse', 'Laval', 'Cagnes-sur-Mer', 'Enghien'].map((hippoName) => {
-            return (
-              <button
-                key={hippoName}
-                type="button"
-                onClick={() => setSelectedHippodrome(selectedHippodrome.toLowerCase() === hippoName.toLowerCase() ? 'all' : hippoName)}
-                className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all ${
-                  selectedHippodrome.toLowerCase() === hippoName.toLowerCase()
-                    ? 'bg-amber-500 text-slate-950 shadow-sm font-black'
-                    : 'bg-slate-950 text-slate-300 hover:text-white border border-slate-800'
-                }`}
-              >
-                📍 {hippoName}
-              </button>
-            );
-          })}
+        {/* Barre de Filtres Rapides & Recherche Intelligente par Hippodrome */}
+        <div className="flex flex-col gap-2 pt-2.5 border-t border-slate-800/80">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[11px] font-black uppercase text-amber-400 flex items-center gap-1.5">
+                <MapPin className="w-4 h-4 text-amber-400" />
+                <span>Hippodromes du jour :</span>
+              </span>
+
+              {/* Champ de recherche rapide d'hippodrome */}
+              <div className="relative flex items-center min-w-[180px] max-w-xs">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 pointer-events-none" />
+                <input
+                  type="text"
+                  value={hippoSearch}
+                  onChange={(e) => setHippoSearch(e.target.value)}
+                  placeholder="Rechercher hippodrome..."
+                  className="w-full bg-slate-950 text-amber-300 font-bold text-xs pl-8 pr-7 py-1 rounded-xl border border-slate-800 focus:border-amber-400 focus:outline-hidden"
+                />
+                {hippoSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setHippoSearch('')}
+                    className="absolute right-2 text-slate-400 hover:text-white text-xs font-black p-0.5 rounded"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Bouton Filtrer par Hippodromes Favoris */}
+            <button
+              type="button"
+              onClick={() => setShowOnlyFavoriteHippodromes(!showOnlyFavoriteHippodromes)}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black border transition-all shadow-sm active:scale-95 ${
+                showOnlyFavoriteHippodromes
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 ring-2 ring-amber-400/30'
+                  : 'bg-slate-950 text-amber-300 hover:text-white border-amber-500/30 hover:bg-slate-900'
+              }`}
+              title="Afficher uniquement les courses sur vos hippodromes favoris"
+            >
+              <Star className={`w-3.5 h-3.5 ${showOnlyFavoriteHippodromes ? 'fill-slate-950 text-slate-950' : 'fill-amber-400 text-amber-400'}`} />
+              <span>Favoris ({favoriteHippodromes.length})</span>
+            </button>
+          </div>
+
+          {/* Pastilles dynamiques d'hippodromes actifs */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedHippodrome('all');
+                setShowOnlyFavoriteHippodromes(false);
+                setHippoSearch('');
+              }}
+              className={`px-2.5 py-1 rounded-lg font-extrabold text-xs transition-all ${
+                selectedHippodrome === 'all' && !showOnlyFavoriteHippodromes && !hippoSearch
+                  ? 'bg-amber-500 text-slate-950 shadow-sm'
+                  : 'bg-slate-950 text-slate-400 hover:text-white border border-slate-800'
+              }`}
+            >
+              Tous ({activeDayMeetings.length})
+            </button>
+
+            {hippodromesWithCount
+              .filter((h) => !hippoSearch.trim() || h.name.toLowerCase().includes(hippoSearch.toLowerCase().trim()))
+              .map((h) => {
+                const isSelected = selectedHippodrome.toLowerCase() === h.name.toLowerCase();
+                const isFav = favoriteHippodromes.some((fav) => fav.toLowerCase() === h.name.toLowerCase());
+
+                return (
+                  <div
+                    key={`hippo-pill-${h.name}`}
+                    className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg font-bold text-xs border transition-all shadow-xs ${
+                      isSelected
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
+                        : isFav
+                        ? 'bg-amber-950/60 text-amber-200 border-amber-500/40 hover:bg-amber-900/80'
+                        : 'bg-slate-950 text-slate-300 hover:text-white border-slate-800 hover:bg-slate-900'
+                    }`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleToggleFavoriteHippodrome(h.name)}
+                      className="p-0.5 hover:scale-110 transition-transform"
+                      title={isFav ? "Retirer des hippodromes favoris" : "Ajouter aux hippodromes favoris"}
+                    >
+                      <Star className={`w-3 h-3 ${isFav ? 'fill-amber-400 text-amber-400' : 'text-slate-500 hover:text-amber-400'}`} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedHippodrome(isSelected ? 'all' : h.name)}
+                      className="flex items-center gap-1 font-bold cursor-pointer"
+                      title={`Filtrer par l'hippodrome ${h.name} (${h.count} courses)`}
+                    >
+                      <span>📍 {h.name}</span>
+                      <span className={`text-[10px] font-mono px-1 rounded ${
+                        isSelected ? 'bg-slate-950 text-amber-400' : 'bg-slate-900 text-slate-400'
+                      }`}>
+                        {h.count}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
+          </div>
         </div>
 
         {/* Advanced Filters Row */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
           {/* Date Selector Dropdown & HTML5 Date Picker */}
           <div className="space-y-1.5">
-            <label className="text-[10px] uppercase font-black text-slate-500 ml-1">Sélecteur de Date ISO (YYYY-MM-DD)</label>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-[10px] uppercase font-black text-slate-500 ml-1">Jour / Date</label>
+              {selectedDate !== 'all' && (
+                <button
+                  type="button"
+                  onClick={() => handleDateSelect('all')}
+                  className="text-[10px] text-amber-400 hover:underline"
+                >
+                  Effacer
+                </button>
+              )}
+            </div>
+            <select
+              value={selectedDate}
+              onChange={(e) => handleDateSelect(e.target.value)}
+              className="w-full bg-slate-950 text-amber-300 font-bold text-xs px-3 py-2 rounded-xl border border-slate-800 focus:outline-none focus:border-amber-500/50 cursor-pointer"
+            >
+              <option value="all">📅 Toutes les dates ({meetings.length})</option>
+              <option value="today">🌟 Aujourd'hui</option>
+              <option value="upcoming7">⏱️ 7 prochains jours</option>
+              <option value="last7">🕒 7 derniers jours</option>
+              {distinctDatesWithCount.map((d) => (
+                <option key={`adv-date-${d.iso}`} value={d.iso}>
+                  🗓️ {d.shortLabel} ({d.count} c.{d.quinteCount > 0 ? ' • Q+' : ''})
+                </option>
+              ))}
+            </select>
+            <div className="flex items-center gap-1.5 pt-0.5">
               <input
                 type="date"
-                value={selectedDate === 'all' ? '' : normalizeDateForQuery(selectedDate)}
+                aria-label="Date personnalisée ISO"
+                value={(selectedDate === 'all' || selectedDate === 'last7' || selectedDate === 'upcoming7' || selectedDate === 'today') ? '' : normalizeDateForQuery(selectedDate)}
                 onChange={(e) => {
                   const val = e.target.value;
                   if (val) {
                     handleDateSelect(val);
                   }
                 }}
-                className="bg-slate-950 text-amber-300 font-mono font-black text-xs px-2.5 py-2 rounded-xl border border-slate-800 focus:border-amber-400 focus:outline-hidden cursor-pointer w-full"
+                className="bg-slate-950 text-amber-300 font-mono font-black text-xs px-2.5 py-1.5 rounded-xl border border-slate-800 focus:border-amber-400 focus:outline-hidden cursor-pointer w-full"
                 title="Sélecteur de date interactif au format ISO standard (YYYY-MM-DD)"
               />
               <button
                 type="button"
                 onClick={() => handleDateSelect('all')}
-                className={`px-2 py-2 rounded-xl text-[10px] font-black border transition-all shrink-0 ${
+                className={`px-2 py-1.5 rounded-xl text-[10px] font-black border transition-all shrink-0 ${
                   selectedDate === 'all'
-                    ? 'bg-amber-500 text-slate-950 border-amber-400'
+                    ? 'bg-amber-500 text-slate-950 border-amber-400 font-black'
                     : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
                 }`}
                 title="Afficher toutes les dates et archives"
@@ -3176,12 +3655,36 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                                 </span>
                               );
                             })()}
-                            <span className="font-extrabold text-white group-hover:text-amber-300 transition-colors flex items-center gap-1">
-                              <span>{meeting.hippodrome}</span>
-                              <span className="text-amber-300 font-mono font-black text-xs bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30">
-                                ({officialGeny})
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-extrabold text-white group-hover:text-amber-300 transition-colors flex items-center gap-1">
+                                <span>{meeting.hippodrome}</span>
+                                <span className="text-amber-300 font-mono font-black text-xs bg-amber-500/15 px-2 py-0.5 rounded-md border border-amber-500/30">
+                                  ({officialGeny})
+                                </span>
                               </span>
-                            </span>
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleFavoriteHippodrome(meeting.hippodrome, e)}
+                                className="p-1 hover:scale-125 transition-transform cursor-pointer"
+                                title={
+                                  favoriteHippodromes.some(
+                                    (fav) => fav.toLowerCase() === (meeting.hippodrome || '').toLowerCase().trim()
+                                  )
+                                    ? "Retirer cet hippodrome des favoris"
+                                    : "Ajouter cet hippodrome aux favoris"
+                                }
+                              >
+                                <Star
+                                  className={`w-3.5 h-3.5 ${
+                                    favoriteHippodromes.some(
+                                      (fav) => fav.toLowerCase() === (meeting.hippodrome || '').toLowerCase().trim()
+                                    )
+                                      ? 'fill-amber-400 text-amber-400'
+                                      : 'text-slate-600 hover:text-amber-400'
+                                  }`}
+                                />
+                              </button>
+                            </div>
                             {meeting.estQuinte && (
                               <span className="px-2 py-0.5 rounded-full bg-amber-500 text-slate-950 font-black text-[9px] uppercase shadow-sm">
                                 Quinté+

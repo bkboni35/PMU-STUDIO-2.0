@@ -83,6 +83,40 @@ export const TicketBetCalculator: React.FC<TicketBetCalculatorProps> = ({
     }
   };
 
+  const handleInjectAlgorithmPreset = (preset: 'couple' | 'trio' | 'quarte_cr' | 'quinte_cr') => {
+    const b1 = course.synthese?.baseIncontournable || course.partants?.[0]?.numero || 1;
+    const b2 = course.synthese?.secondeBase || course.partants?.[1]?.numero || 2;
+    const allActive = (course.partants || [])
+      .filter(p => !p.estNonPartant && p.statut !== 'Non-partant')
+      .map(p => p.numero);
+    const topList = [b1, b2, ...allActive.filter(n => n !== b1 && n !== b2)];
+
+    if (preset === 'couple') {
+      setBetType('Couplé Gagnant');
+      setFormule('Champ Réduit');
+      setBases([b1]);
+      const assoc = topList.filter(n => n !== b1).slice(0, 3);
+      onSelectHorses([b1, ...assoc]);
+    } else if (preset === 'trio') {
+      setBetType('Trio');
+      setFormule('Combiné');
+      setBases([]);
+      onSelectHorses(topList.slice(0, 5));
+    } else if (preset === 'quarte_cr') {
+      setBetType('Quarté+');
+      setFormule('Champ Réduit');
+      setBases([b1, b2]);
+      const assoc = topList.filter(n => n !== b1 && n !== b2).slice(0, 4);
+      onSelectHorses([b1, b2, ...assoc]);
+    } else if (preset === 'quinte_cr') {
+      setBetType('Quinté+');
+      setFormule('Champ Réduit');
+      setBases([b1, b2]);
+      const assoc = topList.filter(n => n !== b1 && n !== b2).slice(0, 5);
+      onSelectHorses([b1, b2, ...assoc]);
+    }
+  };
+
   const handleToggleBase = (num: number) => {
     if (bases.includes(num)) {
       setBases(bases.filter((b) => b !== num));
@@ -153,6 +187,59 @@ export const TicketBetCalculator: React.FC<TicketBetCalculatorProps> = ({
               Effacer
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Presets Jeux Algorithme */}
+      <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2">
+        <span className="text-[11px] font-bold text-slate-400 block uppercase tracking-wider">
+          ⚡ Raccourcis Propositions de Jeux Algorithme :
+        </span>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <button
+            type="button"
+            onClick={() => handleInjectAlgorithmPreset('couple')}
+            className={`py-2 px-2.5 rounded-xl text-xs font-black border transition-all cursor-pointer ${
+              betType.startsWith('Couplé') && formule === 'Champ Réduit'
+                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md'
+                : 'bg-slate-900 text-amber-300 border-amber-500/30 hover:bg-slate-800'
+            }`}
+          >
+            🎯 Couplé Champ Réduit
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInjectAlgorithmPreset('trio')}
+            className={`py-2 px-2.5 rounded-xl text-xs font-black border transition-all cursor-pointer ${
+              betType === 'Trio' && selectedHorses.length === 5
+                ? 'bg-teal-500 text-slate-950 border-teal-400 shadow-md'
+                : 'bg-slate-900 text-teal-300 border-teal-500/30 hover:bg-slate-800'
+            }`}
+          >
+            🥉 Trio (5 N°)
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInjectAlgorithmPreset('quarte_cr')}
+            className={`py-2 px-2.5 rounded-xl text-xs font-black border transition-all cursor-pointer ${
+              betType === 'Quarté+' && formule === 'Champ Réduit'
+                ? 'bg-purple-500 text-white border-purple-400 shadow-md'
+                : 'bg-slate-900 text-purple-300 border-purple-500/30 hover:bg-slate-800'
+            }`}
+          >
+            🥈 Quarté : Champ Réduit
+          </button>
+          <button
+            type="button"
+            onClick={() => handleInjectAlgorithmPreset('quinte_cr')}
+            className={`py-2 px-2.5 rounded-xl text-xs font-black border transition-all cursor-pointer ${
+              betType === 'Quinté+' && formule === 'Champ Réduit'
+                ? 'bg-rose-600 text-white border-rose-500 shadow-md'
+                : 'bg-slate-900 text-rose-300 border-rose-500/30 hover:bg-slate-800'
+            }`}
+          >
+            🥇 Quinté+ : Champ Réduit
+          </button>
         </div>
       </div>
 

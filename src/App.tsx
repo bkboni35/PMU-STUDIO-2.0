@@ -68,6 +68,60 @@ import { useInterval } from './hooks/useInterval';
 import { Sparkles, Trophy, Table, Calculator, MessageSquare, AlertTriangle, ShieldCheck, Star, Calendar, Brain, BarChart3, ArrowRight, Target, Smartphone, History, Clock, Layers, Bot, X, Maximize2, Monitor, Cpu, FileText, Crown, Globe, RotateCcw } from 'lucide-react';
 import { GeminiModelId } from './types/turf';
 
+function DebugRaceGate({ 
+  data, 
+  onClose 
+}: { 
+  data: { 
+    url: string; 
+    expectedR: string; 
+    expectedC: string; 
+    returnedR: string; 
+    returnedC: string; 
+    headers: Record<string, string>; 
+  }; 
+  onClose: () => void;
+}) {
+  return (
+    <div className="p-5 rounded-2xl bg-amber-950/90 border-2 border-amber-500 text-amber-100 text-sm flex flex-col gap-3 shadow-2xl animate-pulse">
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <span className="text-xl">⚠️</span>
+          <h4 className="font-black text-white text-base">Portail de Diagnostic : DebugRaceGate (R1C1 Rejeté)</h4>
+        </div>
+        <button onClick={onClose} className="p-1 rounded bg-amber-900 hover:bg-amber-800 text-white font-bold text-xs">
+          Fermer [X]
+        </button>
+      </div>
+      <p className="text-xs text-amber-200">
+        Une anomalie a été interceptée par le middleware de contrôle : l'URL d'entrée spécifie des paramètres différents de la réponse de l'API de scraping, qui s'est rabattue sur <strong className="text-white">R1C1</strong> par défaut.
+      </p>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950/80 p-3.5 rounded-xl border border-amber-500/30 font-mono text-xs">
+        <div>
+          <span className="text-amber-400 block mb-1">=== PARSING REGEX (URL) ===</span>
+          <p>URL Cible : <span className="text-white break-all">{data.url}</span></p>
+          <p className="mt-1">Réunion Attendue : <span className="text-emerald-400 font-bold">{data.expectedR}</span></p>
+          <p>Course Attendue  : <span className="text-emerald-400 font-bold">{data.expectedC}</span></p>
+        </div>
+        <div>
+          <span className="text-amber-400 block mb-1">=== REPONSE SCRAPER (BRUTE) ===</span>
+          <p>Réunion Reçue : <span className="text-rose-400 font-bold">{data.returnedR}</span></p>
+          <p>Course Reçue   : <span className="text-rose-400 font-bold">{data.returnedC}</span></p>
+          <p className="text-[10px] text-rose-300 mt-1">⚠️ Erreur : Les valeurs reçues sont retombées sur R1C1.</p>
+        </div>
+      </div>
+
+      <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
+        <span className="text-amber-400 font-mono text-[11px] block mb-1">Entêtes de réponse de l\'API (Response Headers) :</span>
+        <pre className="font-mono text-[10px] text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap">
+          {JSON.stringify(data.headers, null, 2)}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const appInitializer = useAppInitializer();
   const [course, setCourse] = useState<CourseHippique | null>(null);
@@ -118,6 +172,14 @@ export default function App() {
   const [isPresentationModalOpen, setIsPresentationModalOpen] = useState(false);
   const [isAiQuotasModalOpen, setIsAiQuotasModalOpen] = useState(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [debugRaceGateData, setDebugRaceGateData] = useState<{
+    url: string;
+    expectedR: string;
+    expectedC: string;
+    returnedR: string;
+    returnedC: string;
+    headers: Record<string, string>;
+  } | null>(null);
 
   // État de Déploiement GitHub & Render pour la notification Toast
   const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatusInfo | null>(null);
@@ -1161,11 +1223,19 @@ export default function App() {
   };
 
   const handleResetSession = () => {
-    // 1. Vider l'historique des analyses et résultats de la session en mémoire et localStorage
-    const clearedHistory = clearAllRaceHistory();
-    setHistory(clearedHistory);
+    // Purge définitive de TOUTES les données de la mémoire locale de l'application (localStorage, sessionStorage)
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+      console.log("[STORAGE-WIPE] 🧹 Toutes les données locales ont été purgées avec succès.");
+    } catch (e) {
+      console.error("Erreur lors de la purge de localStorage:", e);
+    }
 
-    // 2. Réinitialiser la course active vers une session vierge et propre
+    setHistory([]);
+    setFavorites([]);
+
+    // Réinitialiser la course active vers une session vierge et propre
     const blankCourse: CourseHippique = {
       id: `session-vierge-${Date.now()}`,
       sourceUrl: '',
@@ -1208,7 +1278,7 @@ export default function App() {
     setValidationStatus({ status: 'idle' });
     setActiveTab('synthese');
     setIsCalendarModalOpen(true);
-    setInfoNotice('🔄 Session réinitialisée : la course active et l\'historique des analyses ont été vidés avec succès. Vous repartez sur une base vierge.');
+    setInfoNotice('🧹 Mémoire vidée : toutes les données locales (historique, favoris, caches et préférences) ont été supprimées définitivement de l\'application.');
   };
 
   const [decoderModal, setDecoderModal] = useState<{
@@ -1390,6 +1460,32 @@ export default function App() {
     console.log('[GRANULAR-START] Regex /course[^\\d]*(\\d+)/i match result :', rx2C);
     console.log('######################################################################');
 
+    // === DEBUT LOGS DE DEBOGAGE DÉTAILLÉS DEMANDÉS PAR L'UTILISATEUR ===
+    console.log('==================================================================');
+    console.log('🔍 [DEBUG-LOGS-BEFORE-API] EXAMEN DÉTAILLÉ DE L\'URL ET DE SON PARSING REGEX :');
+    console.log('[DEBUG-LOGS-BEFORE-API] targetUrl brute reçue :', rawUrl);
+    console.log('[DEBUG-LOGS-BEFORE-API] targetUrl normalisée :', targetUrl);
+
+    // Étape de parsing regex de la Réunion (R) avant l'appel API
+    const matchReunion1 = targetUrl.match(/r(\d+)/i);
+    const matchReunion2 = targetUrl.match(/reunion[^\d]*(\d+)/i);
+    const finalReunionExtracted = matchReunion1 ? `R${matchReunion1[1]}` : (matchReunion2 ? `R${matchReunion2[1]}` : null);
+
+    console.log('[DEBUG-LOGS-BEFORE-API] Étape Regex Réunion (1) [/r(\\d+)/i] :', matchReunion1 ? `Trouvé: ${matchReunion1[0]} -> Groupe 1: ${matchReunion1[1]}` : 'Non trouvé');
+    console.log('[DEBUG-LOGS-BEFORE-API] Étape Regex Réunion (2) [/reunion[^\\d]*(\\d+)/i] :', matchReunion2 ? `Trouvé: ${matchReunion2[0]} -> Groupe 1: ${matchReunion2[1]}` : 'Non trouvé');
+    console.log('[DEBUG-LOGS-BEFORE-API] ==> Réunion cible extraite par Regex :', finalReunionExtracted);
+
+    // Étape de parsing regex de la Course (C) avant l'appel API
+    const matchCourse1 = targetUrl.match(/c(\d+)/i);
+    const matchCourse2 = targetUrl.match(/course[^\d]*(\d+)/i);
+    const finalCourseExtracted = matchCourse1 ? `C${matchCourse1[1]}` : (matchCourse2 ? `C${matchCourse2[1]}` : null);
+
+    console.log('[DEBUG-LOGS-BEFORE-API] Étape Regex Course (1) [/c(\\d+)/i] :', matchCourse1 ? `Trouvé: ${matchCourse1[0]} -> Groupe 1: ${matchCourse1[1]}` : 'Non trouvé');
+    console.log('[DEBUG-LOGS-BEFORE-API] Étape Regex Course (2) [/course[^\\d]*(\\d+)/i] :', matchCourse2 ? `Trouvé: ${matchCourse2[0]} -> Groupe 1: ${matchCourse2[1]}` : 'Non trouvé');
+    console.log('[DEBUG-LOGS-BEFORE-API] ==> Course cible extraite par Regex :', finalCourseExtracted);
+    console.log('==================================================================');
+    // === FIN LOGS DE DEBOGAGE DÉTAILLÉS DEMANDÉS PAR L'UTILISATEUR ===
+
     // Extraction et journalisation préalable (avant l'appel API)
     const preUrlLower = targetUrl.toLowerCase();
     const preRMatch = preUrlLower.match(/r(\d+)/) || preUrlLower.match(/reunion[^\d]*(\d+)/);
@@ -1428,6 +1524,18 @@ export default function App() {
 
     const preExtracted = extractRaceIdentifiersBeforeScraping(targetUrl);
 
+    // === DÉCLARATION ET LOGS DES VARIABLES urlReunion ET urlCourse DEMANDÉES PAR L'UTILISATEUR ===
+    const matchUrlR = targetUrl.toLowerCase().match(/r(\d+)/) || targetUrl.toLowerCase().match(/reunion[^\d]*(\d+)/);
+    const matchUrlC = targetUrl.toLowerCase().match(/c(\d+)/) || targetUrl.toLowerCase().match(/course[^\d]*(\d+)/);
+    const urlReunion = matchUrlR ? `R${matchUrlR[1]}` : 'Non identifiée';
+    const urlCourse = matchUrlC ? `C${matchUrlC[1]}` : 'Non identifiée';
+
+    console.log('===============================================================');
+    console.log('🔍 [DEBUG-REGEXP] VARIABLES EXTRAITES DE L\'URL PAR REGEX AVANT L\'APPEL API :');
+    console.log('[DEBUG-REGEXP] urlReunion :', urlReunion);
+    console.log('[DEBUG-REGEXP] urlCourse  :', urlCourse);
+    console.log('===============================================================');
+
     setIsLoading(true);
     setValidationStatus({ status: 'loading' });
     setCurrentUrl(targetUrl);
@@ -1447,6 +1555,16 @@ export default function App() {
 
       console.log('[handleAnalyzeUrl] Scraper API HTTP status:', response.status);
 
+      // --- MIDDLEWARE DE VÉRIFICATION DES ENTÊTES DE RÉPONSE ---
+      const responseHeaders: Record<string, string> = {};
+      try {
+        response.headers.forEach((val, key) => {
+          responseHeaders[key] = val;
+        });
+      } catch (e) {
+        console.warn('Impossible de lire les entêtes de réponse API:', e);
+      }
+
       const responseText = await response.text();
       let data: any = null;
       try {
@@ -1458,6 +1576,33 @@ export default function App() {
         console.log('[API-RAW-RESPONSE] Regex match course (raw) :', targetUrl.toLowerCase().match(/c(\d+)/) || targetUrl.toLowerCase().match(/course[^\d]*(\d+)/));
         console.log('[API-RAW-RESPONSE] Full JSON data returned by backend :', data);
         console.log('==================================================================');
+
+        // --- MIDDLEWARE : FORCE LA LECTURE DES CHAMPS REUNION ET COURSENUMERO AVANT LE RESTE DU TRAITEMENT ---
+        if (data && data.course) {
+          const forcedReunion = data.course.reunion;
+          const forcedCourseNumero = data.course.courseNumero || data.course.course;
+          console.log('[MIDDLEWARE-FORCE-READ] Brute reunion reçue :', forcedReunion);
+          console.log('[MIDDLEWARE-FORCE-READ] Brute courseNumero reçue :', forcedCourseNumero);
+
+          // Vérification s'il s'agit du défaut R1C1 alors que l'URL d'entrée cible autre chose
+          const returnedReunion = (forcedReunion || 'R1').toUpperCase();
+          const returnedCourse = (forcedCourseNumero || 'C1').toUpperCase();
+
+          if (returnedReunion === 'R1' && returnedCourse === 'C1' && (urlReunion !== 'R1' || urlCourse !== 'C1')) {
+            console.warn('[MIDDLEWARE-FORCE-READ] ⚠️ Détection d\'une rechute par défaut vers R1C1 ! Affichage du composant de diagnostic DebugRaceGate.');
+            setDebugRaceGateData({
+              url: targetUrl,
+              expectedR: urlReunion,
+              expectedC: urlCourse,
+              returnedR: returnedReunion,
+              returnedC: returnedCourse,
+              headers: responseHeaders,
+            });
+          } else {
+            // Nettoyer le debug gate s'il n'y a plus d'anomalie
+            setDebugRaceGateData(null);
+          }
+        }
       } catch (jsonErr) {
         console.error('[handleAnalyzeUrl] Non-JSON response received from scraper API:', responseText.slice(0, 500));
         throw new Error(`Le serveur d'analyse a renvoyé un format inattendu (Code HTTP ${response.status}).`);
@@ -1492,6 +1637,21 @@ export default function App() {
         console.log('[API-RESPONSE-DEBUG] data.course.course :', data.course.course);
         console.log('[API-RESPONSE-DEBUG] data.course.arriveeOfficielle :', data.course.arriveeOfficielle);
         console.log('[API-RESPONSE-DEBUG] data.course.statutCourse :', data.course.statutCourse);
+        console.log('==================================================================');
+
+        // === COMPARAISON EXPLICITE EN DIRECT DEMANDEE PAR L'UTILISATEUR ===
+        const apiReunion = data.course.reunion;
+        const apiCourse = data.course.course || data.course.courseNumero;
+        console.log('==================================================================');
+        console.log('⚖️ [DEBUG-LOGS-AFTER-API] COMPARAISON PARSING AVANT API VS VALEURS RETOURNÉES PAR L\'API :');
+        console.log('[DEBUG-LOGS-AFTER-API] Extrait de l\'URL (Regex avant API) : Reunion =', finalReunionExtracted, '| Course =', finalCourseExtracted);
+        console.log('[DEBUG-LOGS-AFTER-API] Reçu dans la réponse de l\'API : Reunion =', apiReunion, '| Course =', apiCourse);
+        console.log('[DEBUG-LOGS-AFTER-API] Correspondance exacte des identifiants ?', 
+          finalReunionExtracted === apiReunion && finalCourseExtracted === apiCourse ? '✅ OUI' : '❌ NON'
+        );
+        console.log('[DEBUG-LOGS-AFTER-API] Le système retourne-t-il R1C1 par défaut ?', 
+          apiReunion === 'R1' && apiCourse === 'C1' ? '⚠️ OUI (Le scraper est retombé sur le défaut R1C1)' : '✅ NON'
+        );
         console.log('==================================================================');
 
         // Validation robuste : extraction de la réunion et course cible depuis l'URL via Regex
@@ -1930,6 +2090,14 @@ export default function App() {
 
         {/* Dynamic Real-Time Analysis Progress Bar (< 30s) / Traitement */}
         <AnalysisProgressBar isLoading={isLoading} />
+
+        {/* Portail de Diagnostic temporaire DebugRaceGate */}
+        {debugRaceGateData && (
+          <DebugRaceGate 
+            data={debugRaceGateData} 
+            onClose={() => setDebugRaceGateData(null)} 
+          />
+        )}
 
         {course && (
           <DataIntegrityGuard 

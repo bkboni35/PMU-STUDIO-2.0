@@ -554,6 +554,21 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     const query = inputUrl.trim();
     if (!query) return;
 
+    // --- VALIDATION REGEX STRICTE (R et C requis dans toute URL saisie) ---
+    const isUrl = query.startsWith('http://') || query.startsWith('https://') || query.includes('www.') || query.includes('/') || query.includes('.com') || query.includes('.fr');
+    if (isUrl) {
+      const lowerQuery = query.toLowerCase();
+      const hasR = /r(\d+)/i.test(lowerQuery) || /reunion[^\d]*(\d+)/i.test(lowerQuery);
+      const hasC = /c(\d+)/i.test(lowerQuery) || /course[^\d]*(\d+)/i.test(lowerQuery);
+
+      if (!hasR || !hasC) {
+        setErrorMessage(
+          "❌ Format d'URL invalide : Toute URL saisie doit obligatoirement contenir un numéro de réunion (R) et un numéro de course (C) (ex: R4C4, réunion 4 course 4)."
+        );
+        return;
+      }
+    }
+
     const validation = validateTurfUrl(query);
     if (!validation.isValid) {
       setErrorMessage(

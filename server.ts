@@ -614,6 +614,44 @@ function extractTurfMetadataFromUrl(url: string): { date?: string; reunion?: str
   return meta;
 }
 
+async function resolvePmuMeetingAndCourse(dateStr: string, hippodromeName: string, prixName: string): Promise<{ reunion: string; course: string } | null> {
+  try {
+    const pmuDate = getPmuDateFormatted(dateStr);
+    const pmuUrl = `https://info.pmu.fr/api/client/v1/programme/${pmuDate}`;
+    const resp = await fetch(pmuUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json' },
+      signal: AbortSignal.timeout(4000),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data && data.programme && Array.isArray(data.programme.reunions)) {
+        const normHippo = hippodromeName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+        const normPrix = prixName.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+        for (const r of data.programme.reunions) {
+          const rHippo = (r.hippodrome?.libelleCourt || r.pays?.libelle || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+          const isHippoMatch = rHippo.includes(normHippo) || normHippo.includes(rHippo) || (normHippo.includes('vincennes') && rHippo.includes('vincennes'));
+          
+          if (isHippoMatch && Array.isArray(r.courses)) {
+            for (const c of r.courses) {
+              const cName = (c.libelleCourt || c.libelleLong || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+              if (cName.includes(normPrix) || normPrix.includes(cName) || normPrix.split(' ').some(w => w.length > 3 && cName.includes(w))) {
+                return {
+                  reunion: `R${r.numOfficiel || 1}`,
+                  course: `C${c.numOrdre || 1}`
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.warn("[RESOLVE-PMU] Erreur résolution R/C automatique:", e);
+  }
+  return null;
+}
+
 // Analyse complète de course hippique à partir d'un lien geny.com ou paristurf.com
 app.post('/api/analyze-race', async (req, res) => {
   try {
@@ -803,6 +841,22 @@ app.post('/api/analyze-race', async (req, res) => {
               
               if (extractedOfficialCourse) {
                 console.log(`[ANALYZE-RACE] RSC data extracted successfully: ${extractedOfficialCourse.partants.length} partants found.`);
+
+                // Résolution automatique de la réunion et du numéro de course corrects via PMU.fr si non explicites
+                if (extractedOfficialCourse.prixNom && extractedOfficialCourse.hippodrome) {
+                  const resolvedRc = await resolvePmuMeetingAndCourse(
+                    extractedOfficialCourse.date || urlMeta.date || "Aujourd'hui",
+                    extractedOfficialCourse.hippodrome,
+                    extractedOfficialCourse.prixNom
+                  );
+                  if (resolvedRc) {
+                    console.log(`[RESOLVE-RC] Successfully resolved official reunion and course for ${extractedOfficialCourse.prixNom}: ${resolvedRc.reunion} ${resolvedRc.course}`);
+                    extractedOfficialCourse.reunion = resolvedRc.reunion;
+                    extractedOfficialCourse.course = resolvedRc.course;
+                    extractedOfficialCourse.courseNumero = resolvedRc.course;
+                  }
+                }
+
                 if (extractedOfficialCourse.partants.length === 5) {
                   console.warn(`[ANALYZE-RACE-WARNING] ⚠️ Exactly 5 partants found in RSC data for ${trimmedUrl}. Verify PMU API sync fallback.`);
                 }

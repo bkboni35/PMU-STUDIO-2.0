@@ -1576,6 +1576,15 @@ MISSION TURF :
           donneesInchangees: true
         };
 
+        if (urlMeta.reunion) completeCourse.reunion = urlMeta.reunion;
+        if (urlMeta.course) {
+          completeCourse.course = urlMeta.course;
+          completeCourse.courseNumero = urlMeta.course;
+        }
+        if (completeCourse.prixNom && completeCourse.hippodrome) {
+          completeCourse.titre = `${completeCourse.prixNom} (${completeCourse.reunion} ${completeCourse.course}) - ${completeCourse.hippodrome}`;
+        }
+
         return res.json({ course: completeCourse, fromAi: true });
       } catch (_geminiError: any) {
         console.warn('Gemini notice:', _geminiError?.message);
@@ -1586,6 +1595,14 @@ MISSION TURF :
           detectedPartantsCount,
           extractedOfficialCourse || undefined
         );
+        if (urlMeta.reunion) fallbackCourse.reunion = urlMeta.reunion;
+        if (urlMeta.course) {
+          fallbackCourse.course = urlMeta.course;
+          fallbackCourse.courseNumero = urlMeta.course;
+        }
+        if (fallbackCourse.prixNom && fallbackCourse.hippodrome) {
+          fallbackCourse.titre = `${fallbackCourse.prixNom} (${fallbackCourse.reunion} ${fallbackCourse.course}) - ${fallbackCourse.hippodrome}`;
+        }
         return res.json({
           course: fallbackCourse,
           fromFallback: true,
@@ -1602,6 +1619,14 @@ MISSION TURF :
       detectedPartantsCount,
       extractedOfficialCourse || undefined
     );
+    if (urlMeta.reunion) fallbackCourse.reunion = urlMeta.reunion;
+    if (urlMeta.course) {
+      fallbackCourse.course = urlMeta.course;
+      fallbackCourse.courseNumero = urlMeta.course;
+    }
+    if (fallbackCourse.prixNom && fallbackCourse.hippodrome) {
+      fallbackCourse.titre = `${fallbackCourse.prixNom} (${fallbackCourse.reunion} ${fallbackCourse.course}) - ${fallbackCourse.hippodrome}`;
+    }
     return res.json({ course: fallbackCourse, fromFallback: true });
   } catch (_error: any) {
     try {

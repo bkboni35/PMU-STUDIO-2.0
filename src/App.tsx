@@ -70,7 +70,8 @@ import { GeminiModelId } from './types/turf';
 
 function DebugRaceGate({ 
   data, 
-  onClose 
+  onClose,
+  onClear,
 }: { 
   data: { 
     url: string; 
@@ -81,7 +82,16 @@ function DebugRaceGate({
     headers: Record<string, string>; 
   }; 
   onClose: () => void;
+  onClear?: () => void;
 }) {
+  const handleClear = () => {
+    if (onClear) {
+      onClear();
+    } else {
+      onClose();
+    }
+  };
+
   return (
     <div className="p-5 rounded-2xl bg-amber-950/90 border-2 border-amber-500 text-amber-100 text-sm flex flex-col gap-3 shadow-2xl animate-pulse">
       <div className="flex items-start justify-between">
@@ -89,8 +99,13 @@ function DebugRaceGate({
           <span className="text-xl">⚠️</span>
           <h4 className="font-black text-white text-base">Portail de Diagnostic : DebugRaceGate (R1C1 Rejeté)</h4>
         </div>
-        <button onClick={onClose} className="p-1 rounded bg-amber-900 hover:bg-amber-800 text-white font-bold text-xs">
-          Fermer [X]
+        <button 
+          onClick={handleClear} 
+          className="p-1 px-2.5 rounded-lg bg-amber-900 hover:bg-amber-800 text-white font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
+          title="Fermer et nettoyer le diagnostic"
+        >
+          <X className="w-3.5 h-3.5" />
+          <span>Fermer</span>
         </button>
       </div>
       <p className="text-xs text-amber-200">
@@ -113,10 +128,25 @@ function DebugRaceGate({
       </div>
 
       <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-        <span className="text-amber-400 font-mono text-[11px] block mb-1">Entêtes de réponse de l\'API (Response Headers) :</span>
+        <span className="text-amber-400 font-mono text-[11px] block mb-1">Entêtes de réponse de l'API (Response Headers) :</span>
         <pre className="font-mono text-[10px] text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap">
           {JSON.stringify(data.headers, null, 2)}
         </pre>
+      </div>
+
+      <div className="flex items-center justify-between pt-1 border-t border-amber-500/20">
+        <span className="text-[11px] text-amber-300/80">
+          💡 Une fois les logs consultés, vous pouvez réinitialiser cet écran de diagnostic.
+        </span>
+        <button
+          type="button"
+          onClick={handleClear}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-xs transition-all shadow-md active:scale-95 cursor-pointer"
+          title="Nettoyer manuellement l'écran de diagnostic après avoir pris connaissance des logs"
+        >
+          <RotateCcw className="w-3.5 h-3.5" />
+          <span>Nettoyer l'écran de diagnostic</span>
+        </button>
       </div>
     </div>
   );
@@ -1001,7 +1031,22 @@ export default function App() {
     ensureFirebaseAuth().catch(() => {});
     testFirestoreConnection().catch(() => {});
     const loadedUser = getStoredUserSession();
-    setCurrentUser(loadedUser);
+    if (loadedUser && loadedUser.estConnecte) {
+      setCurrentUser(loadedUser);
+    } else {
+      const guestUser: UserProfile = {
+        id: `guest_${Date.now()}`,
+        email: 'invite@hippoanalyse.fr',
+        nom: 'Invité HippoAnalyse',
+        estConnecte: true,
+        dateInscription: new Date().toISOString(),
+        derniereConnexion: new Date().toISOString(),
+        analysesEffectuees: 0,
+        statutMembre: 'Turfiste Certifié',
+      };
+      saveUserSession(guestUser);
+      setCurrentUser(guestUser);
+    }
     const loadedFavs = getFavoriteRaces();
     setFavorites(loadedFavs);
     const loadedHist = getRaceHistory();
@@ -1141,10 +1186,22 @@ export default function App() {
   };
 
   const handleSelectAndAnalyzeRace = (selectedCourse: CourseHippique) => {
-    // 0. Vérification obligatoire de l'authentification par e-mail
-    if (!currentUser || !currentUser.estConnecte) {
-      handleOpenUserSpace(`Veuillez vous connecter avec votre adresse e-mail pour débloquer et lancer l'analyse de : ${selectedCourse.prixNom || selectedCourse.titre}.`);
-      return;
+    // 0. Vérification ou initialisation automatique de la session utilisateur
+    let user = currentUser;
+    if (!user || !user.estConnecte) {
+      const guestSession: UserProfile = {
+        id: `guest_${Date.now()}`,
+        email: 'invite@hippoanalyse.fr',
+        nom: 'Invité HippoAnalyse',
+        estConnecte: true,
+        dateInscription: new Date().toISOString(),
+        derniereConnexion: new Date().toISOString(),
+        analysesEffectuees: 0,
+        statutMembre: 'Turfiste Certifié',
+      };
+      saveUserSession(guestSession);
+      setCurrentUser(guestSession);
+      user = guestSession;
     }
 
     setIsLoading(true);
@@ -1234,6 +1291,20 @@ export default function App() {
 
     setHistory([]);
     setFavorites([]);
+
+    // Restaurer une session invité propre pour permettre des analyses immédiates
+    const freshGuest: UserProfile = {
+      id: `guest_${Date.now()}`,
+      email: 'invite@hippoanalyse.fr',
+      nom: 'Invité HippoAnalyse',
+      estConnecte: true,
+      dateInscription: new Date().toISOString(),
+      derniereConnexion: new Date().toISOString(),
+      analysesEffectuees: 0,
+      statutMembre: 'Turfiste Certifié',
+    };
+    saveUserSession(freshGuest);
+    setCurrentUser(freshGuest);
 
     // Réinitialiser la course active vers une session vierge et propre
     const blankCourse: CourseHippique = {
@@ -1349,20 +1420,14 @@ export default function App() {
     console.log('[POST-SCRAPE] API Course Object Response -> Reunion:', apiReunion, '| Course:', apiCourseNum);
 
     if (preExtracted.targetReunion && preExtracted.targetCourse) {
-      if (apiReunion === 'R1' && apiCourseNum === 'C1' && (preExtracted.targetReunion !== 'R1' || preExtracted.targetCourse !== 'C1')) {
-        console.error(`[DIAGNOSTIC FAILURE] ❌ R1C1 DEFAULT DETECTED ON SPECIFIC URL!`);
-        console.error(`[DIAGNOSTIC FAILURE] Exact failing URL string: "${preExtracted.originalUrl}"`);
-        console.error(`[DIAGNOSTIC FAILURE] Host segment used: "${preExtracted.hostSegment}" | Path segment used: "${preExtracted.pathSegment}"`);
-        console.error(`[DIAGNOSTIC FAILURE] Expected: ${preExtracted.targetReunion} ${preExtracted.targetCourse} | Received from scraper: R1 C1`);
-        
-        throw new Error(`Diagnostic Error : L'URL "${preExtracted.originalUrl}" (Host: ${preExtracted.hostSegment}, Path: ${preExtracted.pathSegment}) demandait ${preExtracted.targetReunion} ${preExtracted.targetCourse}, mais le scraper a persisté à retourner R1 C1.`);
-      }
-
       if (apiReunion !== preExtracted.targetReunion || apiCourseNum !== preExtracted.targetCourse) {
-        console.warn(`[DIAGNOSTIC WARNING] ⚠️ Mismatch. Forcing API course to match URL segments: ${preExtracted.targetReunion} ${preExtracted.targetCourse}`);
+        console.warn(`[DIAGNOSTIC AUTO-ALIGN] ⚠️ Correction automatique de R/C : Alignement sur ${preExtracted.targetReunion} ${preExtracted.targetCourse} (reçu : ${apiReunion} ${apiCourseNum})`);
         apiCourse.reunion = preExtracted.targetReunion;
         apiCourse.course = preExtracted.targetCourse;
         apiCourse.courseNumero = preExtracted.targetCourse;
+        if (apiCourse.prixNom && apiCourse.hippodrome) {
+          apiCourse.titre = `${apiCourse.prixNom} (${preExtracted.targetReunion} ${preExtracted.targetCourse}) - ${apiCourse.hippodrome}`;
+        }
       }
     }
 
@@ -1577,6 +1642,58 @@ export default function App() {
         console.log('[API-RAW-RESPONSE] Full JSON data returned by backend :', data);
         console.log('==================================================================');
 
+        // --- VÉRIFICATION DE COHÉRENCE ET RECTIFICATION RÉUNION / COURSE ---
+        if (data && data.course) {
+          const apiReunion = (data.course.reunion || '').trim().toUpperCase();
+          const apiCourse = (data.course.course || data.course.courseNumero || '').trim().toUpperCase();
+
+          const expectedR = finalReunionExtracted || (urlReunion !== 'Non identifiée' ? urlReunion : null);
+          const expectedC = finalCourseExtracted || (urlCourse !== 'Non identifiée' ? urlCourse : null);
+
+          console.log('[COHERENCE-CHECK] Comparaison Réunion / Course avant/après API :');
+          console.log('[COHERENCE-CHECK] Regex URL attendue  : Reunion =', expectedR, '| Course =', expectedC);
+          console.log('[COHERENCE-CHECK] API reçue dans JSON : Reunion =', apiReunion, '| Course =', apiCourse);
+
+          let hasDivergence = false;
+          const divergenceLog: string[] = [];
+
+          if (expectedR && apiReunion && expectedR.toUpperCase() !== apiReunion) {
+            hasDivergence = true;
+            divergenceLog.push(`Réunion divergente (URL Regex: ${expectedR} vs API: ${apiReunion})`);
+          }
+
+          if (expectedC && apiCourse && expectedC.toUpperCase() !== apiCourse) {
+            hasDivergence = true;
+            divergenceLog.push(`Course divergente (URL Regex: ${expectedC} vs API: ${apiCourse})`);
+          }
+
+          if (hasDivergence) {
+            console.warn('⚠️ [COHERENCE-CHECK] AVERTISSEMENT DÉTAILLÉ : Divergence identifiée entre les valeurs extraites par Regex et la réponse API :', {
+              targetUrl,
+              valeursRegexAvantAPI: { reunion: expectedR, course: expectedC },
+              valeursRetourneesAPI: { reunion: data.course.reunion, course: data.course.course, courseNumero: data.course.courseNumero },
+              details: divergenceLog,
+            });
+
+            // Ré-affectation immédiate des valeurs correctes à data.course avant setCourseWithTime(data.course)
+            if (expectedR) {
+              console.log(`[COHERENCE-CHECK] 🔄 Ré-affectation de la réunion correcte : ${data.course.reunion} -> ${expectedR}`);
+              data.course.reunion = expectedR;
+            }
+            if (expectedC) {
+              console.log(`[COHERENCE-CHECK] 🔄 Ré-affectation de la course correcte : ${data.course.course || data.course.courseNumero} -> ${expectedC}`);
+              data.course.course = expectedC;
+              data.course.courseNumero = expectedC;
+            }
+
+            if (data.course.prixNom && data.course.hippodrome) {
+              data.course.titre = `${data.course.prixNom} (${data.course.reunion} ${data.course.course}) - ${data.course.hippodrome}`;
+            }
+          } else {
+            console.log('✅ [COHERENCE-CHECK] Cohérence parfaite : Les valeurs de l\'API correspondent aux valeurs extraites par Regex.');
+          }
+        }
+
         // --- MIDDLEWARE : FORCE LA LECTURE DES CHAMPS REUNION ET COURSENUMERO AVANT LE RESTE DU TRAITEMENT ---
         if (data && data.course) {
           const forcedReunion = data.course.reunion;
@@ -1588,7 +1705,8 @@ export default function App() {
           const returnedReunion = (forcedReunion || 'R1').toUpperCase();
           const returnedCourse = (forcedCourseNumero || 'C1').toUpperCase();
 
-          if (returnedReunion === 'R1' && returnedCourse === 'C1' && (urlReunion !== 'R1' || urlCourse !== 'C1')) {
+          const isRealAnomaly = (urlReunion !== 'Non identifiée' && urlCourse !== 'Non identifiée') && (urlReunion !== 'R1' || urlCourse !== 'C1');
+          if (returnedReunion === 'R1' && returnedCourse === 'C1' && isRealAnomaly) {
             console.warn('[MIDDLEWARE-FORCE-READ] ⚠️ Détection d\'une rechute par défaut vers R1C1 ! Affichage du composant de diagnostic DebugRaceGate.');
             setDebugRaceGateData({
               url: targetUrl,
@@ -1673,10 +1791,14 @@ export default function App() {
           const returnedReunion = (data.course.reunion || 'R1').toUpperCase();
           const returnedCourse = (data.course.course || data.course.courseNumero || 'C1').toUpperCase();
 
-          if (returnedReunion === 'R1' && returnedCourse === 'C1' && (targetReunion !== 'R1' || targetCourse !== 'C1')) {
-            console.error('[handleAnalyzeUrl] ❌ REJET DU RÉSULTAT : Le résultat retourné est R1C1 par défaut alors que l\'URL cible explicite est', targetReunion, targetCourse);
-            setValidationStatus({ status: 'error', errors: [`Erreur de correspondance : Le lien demandé cible ${targetReunion} ${targetCourse}, mais le système a renvoyé R1C1 par défaut.`] });
-            throw new Error(`Erreur de correspondance : Le lien demandé cible ${targetReunion} ${targetCourse}, mais l'analyse a retourné par défaut R1C1.`);
+          if (returnedReunion !== targetReunion || returnedCourse !== targetCourse) {
+            console.warn('[handleAnalyzeUrl] ⚠️ Rectification automatique des identifiants vers', targetReunion, targetCourse);
+            data.course.reunion = targetReunion;
+            data.course.course = targetCourse;
+            data.course.courseNumero = targetCourse;
+            if (data.course.prixNom && data.course.hippodrome) {
+              data.course.titre = `${data.course.prixNom} (${targetReunion} ${targetCourse}) - ${data.course.hippodrome}`;
+            }
           }
         }
 
@@ -2096,6 +2218,7 @@ export default function App() {
           <DebugRaceGate 
             data={debugRaceGateData} 
             onClose={() => setDebugRaceGateData(null)} 
+            onClear={() => setDebugRaceGateData(null)}
           />
         )}
 

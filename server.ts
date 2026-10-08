@@ -703,7 +703,14 @@ async function resolvePmuMeetingAndCourse(dateStr: string, hippodromeName: strin
 // Analyse complète de course hippique à partir d'un lien geny.com ou paristurf.com
 app.post('/api/analyze-race', async (req, res) => {
   try {
-    const { url, exactPartantsCount, rawPartantsText, partants } = req.body;
+    const { url, exactPartantsCount, rawPartantsText, partants, force_bypass_cache, forceBypassCache } = req.body;
+    const isForceBypass = Boolean(force_bypass_cache || forceBypassCache);
+    if (isForceBypass) {
+      console.log(`[SCRAPER-SERVER] ⚡ Option force_bypass_cache=true active pour: ${url}`);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
 
     // 1. VÉRIFICATION DU LIEN D'ENTRÉE (Geny, Paris-Turf ou turf)
     const validation = isAllowedTurfDomain(url);
@@ -764,7 +771,8 @@ app.post('/api/analyze-race', async (req, res) => {
           courseToReturn.arriveeOfficielle = '2 - 1 - 15 - 3 - 4';
           courseToReturn.statutCourse = 'Arrivée officielle';
         }
-        return res.json({ course: courseToReturn, fromCache: true });
+        const enrichedCache = enrichRaceWithGeminiCollege(courseToReturn);
+        return res.json({ course: sanitizeCourseObject(enrichedCache), fromCache: true });
       }
 
       // Vérification immédiate dans le calendrier officiel des réunions
@@ -810,7 +818,7 @@ app.post('/api/analyze-race', async (req, res) => {
           const cordeVal = m.corde === 'Droite' ? 'Droite' : 'Gauche';
           const allocNum = typeof m.allocation === 'number' ? m.allocation : parseInt(String(m.allocation || '30000').replace(/\D/g, ''), 10) || 30000;
 
-          const meetingCourse = {
+          const meetingCourse: any = {
             id: m.id,
             sourceUrl: trimmedUrl,
             sourceType: 'geny.com',
@@ -848,7 +856,8 @@ app.post('/api/analyze-race', async (req, res) => {
             partants: m.partants,
           };
 
-          return res.json({ course: meetingCourse, fromCalendar: true });
+          const enrichedMeeting = enrichRaceWithGeminiCollege(meetingCourse);
+          return res.json({ course: sanitizeCourseObject(enrichedMeeting), fromCalendar: true });
         }
       }
     }
@@ -868,7 +877,8 @@ app.post('/api/analyze-race', async (req, res) => {
               Accept:
                 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
               'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-              'Cache-Control': 'no-cache',
+              'Cache-Control': isForceBypass ? 'no-cache, no-store, must-revalidate' : 'no-cache',
+              ...(isForceBypass ? { Pragma: 'no-cache', Expires: '0' } : {}),
             },
             signal: AbortSignal.timeout(8000),
           });
@@ -897,8 +907,15 @@ app.post('/api/analyze-race', async (req, res) => {
               if (extractedOfficialCourse) {
                 console.log(`[ANALYZE-RACE] RSC data extracted successfully: ${extractedOfficialCourse.partants.length} partants found.`);
 
-                // Résolution automatique de la réunion et du numéro de course corrects via PMU.fr si non explicites
-                if (extractedOfficialCourse.prixNom && extractedOfficialCourse.hippodrome) {
+                // Respect strict de la réunion et de la course si explicites dans l'URL ou les métadonnées
+                if (urlMeta.reunion) extractedOfficialCourse.reunion = urlMeta.reunion;
+                if (urlMeta.course) {
+                  extractedOfficialCourse.course = urlMeta.course;
+                  extractedOfficialCourse.courseNumero = urlMeta.course;
+                }
+
+                // Résolution automatique via PMU.fr uniquement si réunion ou course non explicites
+                if ((!urlMeta.reunion || !urlMeta.course) && extractedOfficialCourse.prixNom && extractedOfficialCourse.hippodrome) {
                   const resolvedRc = await resolvePmuMeetingAndCourse(
                     extractedOfficialCourse.date || urlMeta.date || "Aujourd'hui",
                     extractedOfficialCourse.hippodrome,
@@ -1681,15 +1698,17 @@ MISSION TURF :
         exactPartantsCount,
         undefined
       );
+      const enrichedFallback = enrichRaceWithGeminiCollege(fallbackCourse);
       return res.json({
-        course: fallbackCourse,
+        course: sanitizeCourseObject(enrichedFallback),
         fromFallback: true,
         warning:
           "Analyse générée avec succès par le moteur expert autonome HippoAnalyse.",
       });
     } catch {
+      const enrichedSample = enrichRaceWithGeminiCollege(SAMPLE_RACES[0]);
       return res.status(200).json({
-        course: SAMPLE_RACES[0],
+        course: sanitizeCourseObject(enrichedSample),
         fromFallback: true,
         warning: "Course modèle chargée avec succès.",
       });
@@ -4056,6 +4075,7 @@ app.post('/api/github/sync', async (req, res) => {
       'index.html',
       'server.ts',
       'server.mjs',
+      'render.yaml',
       'firestore.rules',
       'firebase-blueprint.json',
       'firebase-applet-config.json',
@@ -4387,6 +4407,7 @@ app.get(['/api/project/download-zip', '/download/project-zip'], async (req, res)
       'index.html',
       'server.ts',
       'server.mjs',
+      'render.yaml',
       'firestore.rules',
       'firebase-blueprint.json',
       'firebase-applet-config.json',

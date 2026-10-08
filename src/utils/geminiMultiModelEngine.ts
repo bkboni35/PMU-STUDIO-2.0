@@ -383,17 +383,18 @@ export function computeHorseGeminiEvaluation(
   note37 = Math.max(25, Math.min(98, note37));
 
   let dynamiqueMusique: HorseGeminiMultiEvaluation['gemini37']['dynamiqueMusique'] = 'Régularité exemplaire';
-  if (partant.musique.includes('Da') || partant.musique.includes('0a')) {
+  const musiqueStr = partant.musique || '';
+  if (musiqueStr.includes('Da') || musiqueStr.includes('0a')) {
     dynamiqueMusique = 'Irrégulier / Fautes';
   } else if (regularite > 70) {
     dynamiqueMusique = 'Régularité exemplaire';
-  } else if (partant.musique.startsWith('1') || partant.musique.startsWith('2')) {
+  } else if (musiqueStr.startsWith('1') || musiqueStr.startsWith('2')) {
     dynamiqueMusique = 'En nette progression';
   }
 
   const avis37 =
     dynamiqueMusique === 'Régularité exemplaire'
-      ? `Constance exemplaire attestée par sa musique (${partant.musique}) : gage de sécurité.`
+      ? `Constance exemplaire attestée par sa musique (${musiqueStr || 'récente'}) : gage de sécurité.`
       : dynamiqueMusique === 'En nette progression'
       ? `Forme ascendante confirmée lors de ses deux plus récentes tentatives.`
       : `Capacités évidentes mais manque parfois de sagesse dans les allures.`;
@@ -574,9 +575,11 @@ export function sanitizePronostics(course: CourseHippique): CourseHippique {
       ...synthese,
       baseIncontournable: base1,
       secondeBase: base2,
+      favoris: (v38Hierarchy.favoris || []).map(p => Number(p.numero)),
       selection8,
-      outsiders,
-      tocards,
+      outsiders: (v38Hierarchy.outsiders || []).map(p => Number(p.numero)),
+      tocards: (v38Hierarchy.tocardsSpeculatifs || []).map(p => Number(p.numero)),
+      surprises: (v38Hierarchy.surprises || []).map(p => Number(p.numero)),
       delaisses: delaissesDecroissants,
       ordreProbable: ordres.ordreProbable,
       ordrePossible: ordres.ordrePossible,
@@ -1562,6 +1565,10 @@ export function enrichRaceWithGeminiCollege(course?: CourseHippique, sourceUrl?:
     delaisses: delaissesDecroissants,
     synthese: {
       ...sanitizedCourse.synthese,
+      favoris: (v38Hierarchy.favoris || []).map(p => Number(p.numero)),
+      outsiders: (v38Hierarchy.outsiders || []).map(p => Number(p.numero)),
+      tocards: (v38Hierarchy.tocardsSpeculatifs || []).map(p => Number(p.numero)),
+      surprises: (v38Hierarchy.surprises || []).map(p => Number(p.numero)),
       delaisses: delaissesDecroissants,
     },
   };
@@ -1571,6 +1578,10 @@ export function enrichRaceWithGeminiCollege(course?: CourseHippique, sourceUrl?:
   const expertDisciplineAnalysis = injectAndNormalizeExpertDisciplineAnalysis(courseWithDelaisses);
 
   if (expertDisciplineAnalysis && expertDisciplineAnalysis.groups) {
+    expertDisciplineAnalysis.groups.bases = (v38Hierarchy.favoris || []).map(p => Number(p.numero));
+    expertDisciplineAnalysis.groups.chances = (v38Hierarchy.outsiders || []).map(p => Number(p.numero));
+    expertDisciplineAnalysis.groups.tocards = (v38Hierarchy.tocardsSpeculatifs || []).map(p => Number(p.numero));
+    expertDisciplineAnalysis.groups.surprises = (v38Hierarchy.surprises || []).map(p => Number(p.numero));
     expertDisciplineAnalysis.groups.delaisses = [...delaissesDecroissants];
   }
 

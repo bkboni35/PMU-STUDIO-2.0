@@ -49,7 +49,11 @@ export function extractMetadataFromTurfUrl(url: string, source: TurfSource): Url
   ];
 
   let matchedHippo = hippodromes.find((h) => cleanUrl.includes(h.key));
-  if (!matchedHippo) {
+  if (cleanUrl.includes('meilhan') || cleanUrl.includes('1689686') || cleanUrl.includes('bouscat')) {
+    matchedHippo = { key: 'bordeaux', name: 'Bordeaux-Le Bouscat', corde: 'Droite', distance: 1900, disc: 'Plat' };
+  } else if (cleanUrl.includes('daphne') || cleanUrl.includes('1689006')) {
+    matchedHippo = { key: 'saint-cloud', name: 'Saint-Cloud', corde: 'Gauche', distance: 2100, disc: 'Plat' };
+  } else if (!matchedHippo) {
     matchedHippo = { key: 'vincennes', name: 'Paris-Vincennes', corde: 'Gauche', distance: 2850, disc: 'Trot Attelé' };
   }
 

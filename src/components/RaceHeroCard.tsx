@@ -64,7 +64,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
   const [delaissesSortMode, setDelaissesSortMode] = useState<DelaissesSortMode>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(V38_DELAISSES_SORT_STORAGE_KEY) as DelaissesSortMode;
-      if (saved) return saved;
+      if (saved && saved !== 'asc_odds') return saved;
     }
     return 'desc_number';
   });

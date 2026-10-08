@@ -321,7 +321,7 @@ export const StudioV38Pipeline: React.FC<StudioV38PipelineProps> = ({
                     )}
                     {selectedWorkflowStep === 7 && (
                       <p>
-                        Affectation stricte selon les 5 quotas officiels : <strong>BASE (exactement 2)</strong>, <strong>CHANCES (exactement 3)</strong>, <strong>TOCARDS (exactement 4)</strong>, <strong>SURPRISES (exactement 2)</strong>, et <strong>DÉLAISSÉS (tous les autres partants)</strong>.
+                        Affectation stricte selon les 5 quotas officiels : <strong>FAVORIS (3 N°)</strong>, <strong>OUTSIDERS (3 N°)</strong>, <strong>TOCARDS (3 N°)</strong>, <strong>SURPRISES (4 N°)</strong>, et <strong>DÉLAISSÉS (ordre décroissant du plus grand au plus petit N°)</strong>.
                       </p>
                     )}
                     {selectedWorkflowStep === 8 && (

@@ -65,25 +65,43 @@ import { initThemeListener } from './utils/themeManager';
 import { playOfficialArrivalFanfare } from './utils/audioPlayer';
 import { useAppInitializer } from './components/AppInitializer';
 import { useInterval } from './hooks/useInterval';
-import { Sparkles, Trophy, Table, Calculator, MessageSquare, AlertTriangle, ShieldCheck, Star, Calendar, Brain, BarChart3, ArrowRight, Target, Smartphone, History, Clock, Layers, Bot, X, Maximize2, Monitor, Cpu, FileText, Crown, Globe, RotateCcw } from 'lucide-react';
+import { Sparkles, Trophy, Table, Calculator, MessageSquare, AlertTriangle, ShieldCheck, Star, Calendar, Brain, BarChart3, ArrowRight, Target, Smartphone, History, Clock, Layers, Bot, X, Maximize2, Monitor, Cpu, FileText, Crown, Globe, RotateCcw, Copy, Check, Download, Search, Terminal, Code, ChevronDown, ChevronUp, Wand2, RotateCw } from 'lucide-react';
 import { GeminiModelId } from './types/turf';
+
+export interface DebugRaceGateData {
+  url: string;
+  expectedR: string;
+  expectedC: string;
+  returnedR: string;
+  returnedC: string;
+  headers: Record<string, string>;
+  rawResponse?: any;
+  rawCourse?: any;
+  statusHttp?: number;
+  receivedAt?: string;
+  rectificationsApplied?: string[];
+}
 
 function DebugRaceGate({ 
   data, 
   onClose,
   onClear,
+  onApplyRectification,
+  onForceRescan,
+  isRescanning,
 }: { 
-  data: { 
-    url: string; 
-    expectedR: string; 
-    expectedC: string; 
-    returnedR: string; 
-    returnedC: string; 
-    headers: Record<string, string>; 
-  }; 
+  data: DebugRaceGateData; 
   onClose: () => void;
   onClear?: () => void;
+  onApplyRectification?: (rectification: { expectedR: string; expectedC: string }) => void;
+  onForceRescan?: (url: string) => void;
+  isRescanning?: boolean;
 }) {
+  const [activeTab, setActiveTab] = useState<'compare' | 'partants' | 'raw-json' | 'headers'>('compare');
+  const [copied, setCopied] = useState<boolean>(false);
+  const [jsonFilter, setJsonFilter] = useState<string>('');
+  const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false);
+
   const handleClear = () => {
     if (onClear) {
       onClear();
@@ -92,51 +110,482 @@ function DebugRaceGate({
     }
   };
 
+  const rawCourse = data.rawCourse || data.rawResponse?.course;
+  const rawPartants: any[] = Array.isArray(rawCourse?.partants) ? rawCourse.partants : [];
+
+  const rawJsonString = useMemo(() => {
+    try {
+      return JSON.stringify(data.rawResponse || data, null, 2);
+    } catch {
+      return String(data.rawResponse || '');
+    }
+  }, [data]);
+
+  const filteredJsonString = useMemo(() => {
+    if (!jsonFilter.trim()) return rawJsonString;
+    const q = jsonFilter.trim().toLowerCase();
+    const lines = rawJsonString.split('\n');
+    const matched = lines.filter((l) => l.toLowerCase().includes(q));
+    if (matched.length === 0) return `// Aucun résultat correspondant au filtre : "${jsonFilter}"`;
+    return matched.join('\n');
+  }, [rawJsonString, jsonFilter]);
+
+  const handleCopy = () => {
+    try {
+      navigator.clipboard.writeText(rawJsonString);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {}
+  };
+
+  const handleDownload = () => {
+    try {
+      const blob = new Blob([rawJsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `scraper-raw-${data.returnedR || 'R'}${data.returnedC || 'C'}-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {}
+  };
+
+  const jsonSizeKb = (new Blob([rawJsonString]).size / 1024).toFixed(1);
+  const jsonLinesCount = rawJsonString.split('\n').length;
+
   return (
-    <div className="p-5 rounded-2xl bg-amber-950/90 border-2 border-amber-500 text-amber-100 text-sm flex flex-col gap-3 shadow-2xl animate-pulse">
-      <div className="flex items-start justify-between">
+    <div className="p-4 sm:p-6 rounded-3xl bg-slate-950/95 border-2 border-amber-500 text-amber-100 text-sm flex flex-col gap-4 shadow-2xl relative overflow-hidden backdrop-blur-md">
+      {/* En-tête principal */}
+      <div className="flex items-start justify-between gap-3 flex-wrap border-b border-amber-500/30 pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40">
+            <AlertTriangle className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="font-black text-white text-base sm:text-lg flex items-center gap-2 flex-wrap">
+              <span>Portail de Diagnostic : DebugRaceGate</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase font-mono bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                Anomalie Interceptée
+              </span>
+            </h4>
+            <p className="text-xs text-amber-200/80 mt-0.5">
+              Données brutes reçues du scraper avant toute rectification automatique ou normalisation client.
+            </p>
+          </div>
+        </div>
+
         <div className="flex items-center gap-2">
-          <span className="text-xl">⚠️</span>
-          <h4 className="font-black text-white text-base">Portail de Diagnostic : DebugRaceGate (R1C1 Rejeté)</h4>
-        </div>
-        <button 
-          onClick={handleClear} 
-          className="p-1 px-2.5 rounded-lg bg-amber-900 hover:bg-amber-800 text-white font-bold text-xs transition-colors flex items-center gap-1 cursor-pointer"
-          title="Fermer et nettoyer le diagnostic"
-        >
-          <X className="w-3.5 h-3.5" />
-          <span>Fermer</span>
-        </button>
-      </div>
-      <p className="text-xs text-amber-200">
-        Une anomalie a été interceptée par le middleware de contrôle : l'URL d'entrée spécifie des paramètres différents de la réponse de l'API de scraping, qui s'est rabattue sur <strong className="text-white">R1C1</strong> par défaut.
-      </p>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-slate-950/80 p-3.5 rounded-xl border border-amber-500/30 font-mono text-xs">
-        <div>
-          <span className="text-amber-400 block mb-1">=== PARSING REGEX (URL) ===</span>
-          <p>URL Cible : <span className="text-white break-all">{data.url}</span></p>
-          <p className="mt-1">Réunion Attendue : <span className="text-emerald-400 font-bold">{data.expectedR}</span></p>
-          <p>Course Attendue  : <span className="text-emerald-400 font-bold">{data.expectedC}</span></p>
-        </div>
-        <div>
-          <span className="text-amber-400 block mb-1">=== REPONSE SCRAPER (BRUTE) ===</span>
-          <p>Réunion Reçue : <span className="text-rose-400 font-bold">{data.returnedR}</span></p>
-          <p>Course Reçue   : <span className="text-rose-400 font-bold">{data.returnedC}</span></p>
-          <p className="text-[10px] text-rose-300 mt-1">⚠️ Erreur : Les valeurs reçues sont retombées sur R1C1.</p>
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+            title="Copier le JSON brut intégral dans le presse-papiers"
+          >
+            {copied ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <span className="text-emerald-300 font-black">Copié !</span>
+              </>
+            ) : (
+              <>
+                <Copy className="w-3.5 h-3.5 text-amber-400" />
+                <span>Copier JSON</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 hover:text-white border border-slate-700 font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+            title="Télécharger les logs bruts au format JSON"
+          >
+            <Download className="w-3.5 h-3.5 text-amber-400" />
+            <span className="hidden sm:inline">Exporter .json</span>
+          </button>
+
+          <button 
+            type="button"
+            onClick={handleClear} 
+            className="p-1.5 px-3 rounded-xl bg-amber-900/80 hover:bg-amber-800 text-white font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer border border-amber-600"
+            title="Fermer et nettoyer le diagnostic"
+          >
+            <X className="w-3.5 h-3.5" />
+            <span>Fermer</span>
+          </button>
         </div>
       </div>
 
-      <div className="bg-slate-950/50 p-3 rounded-xl border border-slate-800">
-        <span className="text-amber-400 font-mono text-[11px] block mb-1">Entêtes de réponse de l'API (Response Headers) :</span>
-        <pre className="font-mono text-[10px] text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap">
-          {JSON.stringify(data.headers, null, 2)}
-        </pre>
+      {/* ======================================================================= */}
+      {/* BARRE D'ACTIONS AUTO-HEALING & RÉSOLUTION DE DIVERGENCE                */}
+      {/* ======================================================================= */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-900/95 to-slate-900 p-4 rounded-2xl border-2 border-emerald-500/50 shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-3.5">
+        <div className="flex items-start sm:items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
+            <Wand2 className="w-5 h-5 text-emerald-400 animate-pulse" />
+          </div>
+          <div>
+            <h5 className="font-black text-white text-sm sm:text-base flex items-center gap-2 flex-wrap">
+              <span>Auto-Healing & Résolution Immédiate</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                Action Recommandée
+              </span>
+            </h5>
+            <p className="text-xs text-slate-300 mt-0.5">
+              Injectez directement les identifiants attendus <strong className="text-emerald-400 font-mono">{data.expectedR} {data.expectedC}</strong> dans la course active, ou relancez un scan complet avec contournement de cache.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 w-full md:w-auto justify-end flex-wrap">
+          {/* Bouton Forcer Re-Scan */}
+          <button
+            type="button"
+            onClick={() => onForceRescan?.(data.url)}
+            disabled={isRescanning}
+            className="px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 border border-cyan-500/40 text-xs font-black flex items-center gap-2 transition-all cursor-pointer shadow-md disabled:opacity-50"
+            title="Relancer le scraping de l'URL avec force_bypass_cache=true"
+          >
+            <RotateCw className={`w-3.5 h-3.5 text-cyan-400 ${isRescanning ? 'animate-spin' : ''}`} />
+            <span>{isRescanning ? 'Scan en cours...' : 'Forcer Re-Scan'}</span>
+            <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 font-mono border border-cyan-800">
+              force_bypass_cache=true
+            </span>
+          </button>
+
+          {/* Bouton Appliquer Rectification (Auto-Healing) */}
+          <button
+            type="button"
+            onClick={() => onApplyRectification?.({ expectedR: data.expectedR, expectedC: data.expectedC })}
+            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs flex items-center gap-2 transition-all cursor-pointer shadow-lg shadow-emerald-950/50 border border-emerald-400/50 hover:scale-[1.02] active:scale-[0.98]"
+            title="Injecter directement les identifiants R/C attendus dans l'état de la course sans re-scrapper"
+          >
+            <Wand2 className="w-4 h-4 text-emerald-200" />
+            <span>Appliquer Rectification</span>
+            <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/90 text-emerald-100 font-mono border border-emerald-400/40">
+              {data.expectedR} {data.expectedC}
+            </span>
+          </button>
+        </div>
       </div>
 
-      <div className="flex items-center justify-between pt-1 border-t border-amber-500/20">
+      {/* Cartes comparatives Regex vs Scraper Brut */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 font-mono text-xs">
+        <div className="bg-slate-900/90 p-3.5 rounded-2xl border border-emerald-500/30 shadow-md space-y-1.5">
+          <div className="flex items-center justify-between pb-1.5 border-b border-emerald-500/20 text-emerald-400 font-bold">
+            <span className="flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5" />
+              <span>1. PARSING REGEX (URL CIBLE)</span>
+            </span>
+            <span className="text-[10px] text-emerald-300 font-normal">Extraction d'intention</span>
+          </div>
+          <p className="text-slate-300">URL : <span className="text-white break-all font-sans text-[11px]">{data.url}</span></p>
+          <div className="flex items-center gap-4 pt-1">
+            <p>Réunion Attendue : <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-black border border-emerald-500/40">{data.expectedR}</span></p>
+            <p>Course Attendue : <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 font-black border border-emerald-500/40">{data.expectedC}</span></p>
+          </div>
+        </div>
+
+        <div className="bg-slate-900/90 p-3.5 rounded-2xl border border-rose-500/30 shadow-md space-y-1.5">
+          <div className="flex items-center justify-between pb-1.5 border-b border-rose-500/20 text-rose-400 font-bold">
+            <span className="flex items-center gap-1.5">
+              <Terminal className="w-3.5 h-3.5" />
+              <span>2. RÉPONSE SCRAPER (DONNÉES BRUTES)</span>
+            </span>
+            <span className="text-[10px] text-rose-300 font-normal">Reçu du backend</span>
+          </div>
+          <div className="flex items-center gap-4 pt-1">
+            <p>Réunion Reçue : <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 font-black border border-rose-500/40">{data.returnedR}</span></p>
+            <p>Course Reçue : <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 font-black border border-rose-500/40">{data.returnedC}</span></p>
+            {data.statusHttp && (
+              <p>Statut HTTP : <span className="px-2 py-0.5 rounded bg-slate-950 text-amber-300 font-bold border border-slate-800">{data.statusHttp}</span></p>
+            )}
+          </div>
+          <p className="text-[11px] text-rose-300 font-sans mt-1">
+            ⚠️ Le scraper a renvoyé des identifiants divergents de la requête d'entrée avant assainissement.
+          </p>
+        </div>
+      </div>
+
+      {/* ======================================================================= */}
+      {/* PANNEAU DE LOGS DÉTAILLÉ EN TEMPS RÉEL (DONNÉES BRUTES DU SCRAPER)     */}
+      {/* ======================================================================= */}
+      <div className="bg-slate-900/95 rounded-2xl border-2 border-amber-500/50 shadow-xl overflow-hidden flex flex-col">
+        {/* Barre supérieure du panneau de logs */}
+        <div className="bg-slate-950 px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+          <div className="flex items-center gap-2.5">
+            <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span className="text-xs sm:text-sm font-black text-white tracking-wide uppercase flex items-center gap-1.5">
+              <Terminal className="w-4 h-4 text-amber-400" />
+              <span>Panneau de Logs Détaillé · Données Brutes du Scraper</span>
+            </span>
+            <span className="text-[10px] px-2 py-0.5 rounded-md font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+              Temps Réel
+            </span>
+            {data.receivedAt && (
+              <span className="text-[10px] font-mono text-slate-400 hidden sm:inline">
+                Reçu à {data.receivedAt}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+              {jsonSizeKb} Ko · {jsonLinesCount} lignes
+            </span>
+            <button
+              type="button"
+              onClick={() => setIsPanelCollapsed(!isPanelCollapsed)}
+              className="p-1 px-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold border border-slate-800 flex items-center gap-1 cursor-pointer transition-colors"
+              title={isPanelCollapsed ? "Déplier le panneau de logs" : "Réduire le panneau de logs"}
+            >
+              {isPanelCollapsed ? (
+                <>
+                  <ChevronDown className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Déplier</span>
+                </>
+              ) : (
+                <>
+                  <ChevronUp className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Réduire</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {!isPanelCollapsed && (
+          <div className="p-4 space-y-3.5">
+            {/* Onglets de navigation des logs */}
+            <div className="flex items-center gap-1.5 border-b border-slate-800 pb-2.5 overflow-x-auto">
+              <button
+                type="button"
+                onClick={() => setActiveTab('compare')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  activeTab === 'compare'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                }`}
+              >
+                <Code className="w-3.5 h-3.5" />
+                <span>Données Brutes & Rectifications</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('partants')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  activeTab === 'partants'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                }`}
+              >
+                <Table className="w-3.5 h-3.5" />
+                <span>Partants Bruts ({rawPartants.length})</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('raw-json')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  activeTab === 'raw-json'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                }`}
+              >
+                <Terminal className="w-3.5 h-3.5" />
+                <span>JSON Brut Intégral</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('headers')}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shrink-0 ${
+                  activeTab === 'headers'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800'
+                }`}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                <span>Entêtes HTTP ({Object.keys(data.headers || {}).length})</span>
+              </button>
+            </div>
+
+            {/* ONGLET 1 : Données Brutes & Rectifications */}
+            {activeTab === 'compare' && (
+              <div className="space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs font-mono">
+                  <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase block font-sans font-bold">Prix / Titre Brut</span>
+                    <span className="text-white font-bold truncate block">{rawCourse?.prixNom || rawCourse?.titre || 'Non extrait'}</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase block font-sans font-bold">Hippodrome Brut</span>
+                    <span className="text-amber-300 font-bold truncate block">{rawCourse?.hippodrome || 'Non extrait'}</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase block font-sans font-bold">Discipline & Distance</span>
+                    <span className="text-slate-200 font-bold block">{rawCourse?.discipline || '—'} · {rawCourse?.distance || '—'}m</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase block font-sans font-bold">Source & Corde</span>
+                    <span className="text-slate-200 font-bold block">{rawCourse?.sourceType || 'geny.com'} · Corde {rawCourse?.corde || '—'}</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase block font-sans font-bold">Partants Détectés</span>
+                    <span className="text-emerald-300 font-black block">{rawPartants.length} chevaux</span>
+                  </div>
+
+                  <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                    <span className="text-[10px] text-slate-400 uppercase block font-sans font-bold">Arrivée Officielle Brute</span>
+                    <span className="text-rose-300 font-bold block">{rawCourse?.arriveeOfficielle || 'Non reçue (À venir)'}</span>
+                  </div>
+                </div>
+
+                {/* Historique des rectifications automatiques appliquées */}
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-amber-500/30 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-bold text-amber-300">
+                    <span className="flex items-center gap-1.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                      <span>Actions de Rectification Automatique du Middleware :</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {(data.rectificationsApplied?.length || 0)} action(s)
+                    </span>
+                  </div>
+
+                  {data.rectificationsApplied && data.rectificationsApplied.length > 0 ? (
+                    <ul className="space-y-1 text-xs font-mono">
+                      {data.rectificationsApplied.map((rec, i) => (
+                        <li key={i} className="flex items-start gap-2 text-slate-300">
+                          <span className="text-emerald-400 font-bold shrink-0">✓</span>
+                          <span>{rec}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <div className="text-xs text-slate-400 italic">
+                      Aucune rectification appliquée. Les données reçues du scraper correspondent à la signature d'appel ou ont été conservées brutes.
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ONGLET 2 : Partants Bruts Reçus */}
+            {activeTab === 'partants' && (
+              <div className="space-y-2">
+                <div className="text-xs text-slate-400 flex items-center justify-between">
+                  <span>Partants bruts extraits avant application de l'algorithme :</span>
+                  <span className="font-mono text-amber-300 font-bold">{rawPartants.length} partant(s)</span>
+                </div>
+
+                {rawPartants.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 text-center text-xs text-slate-500 italic">
+                    Aucun partant présent dans les données brutes renvoyées par le scraper.
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto border border-slate-800 rounded-xl">
+                    <table className="w-full text-left border-collapse text-xs font-mono">
+                      <thead className="bg-slate-950 text-slate-400 text-[10px] uppercase sticky top-0 border-b border-slate-800">
+                        <tr>
+                          <th className="py-2 px-3 w-12 text-center">N°</th>
+                          <th className="py-2 px-3">Nom</th>
+                          <th className="py-2 px-3 text-center">Cote Brute</th>
+                          <th className="py-2 px-3 text-center">Corde</th>
+                          <th className="py-2 px-3">Driver / Jockey</th>
+                          <th className="py-2 px-3">Musique</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-850">
+                        {rawPartants.map((p, idx) => (
+                          <tr key={`raw-p-${p.numero || idx}`} className="hover:bg-slate-800/40 transition-colors">
+                            <td className="py-2 px-3 text-center font-black text-amber-300">{p.numero || idx + 1}</td>
+                            <td className="py-2 px-3 font-bold text-white truncate max-w-[150px]">{p.nom || 'Sans nom'}</td>
+                            <td className="py-2 px-3 text-center font-bold text-emerald-300">
+                              {p.coteProbable !== undefined ? `${p.coteProbable}/1` : (p.cotesRaw || '—')}
+                            </td>
+                            <td className="py-2 px-3 text-center text-slate-300">{p.corde || p.numCorde || '—'}</td>
+                            <td className="py-2 px-3 text-slate-400 truncate max-w-[120px]">{p.driver || p.jockey || '—'}</td>
+                            <td className="py-2 px-3 text-slate-400 truncate max-w-[100px]">{p.musique || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ONGLET 3 : JSON Brut Intégral avec recherche */}
+            {activeTab === 'raw-json' && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={jsonFilter}
+                      onChange={(e) => setJsonFilter(e.target.value)}
+                      placeholder="Filtrer en temps réel dans les logs JSON bruts (ex: partants, cote, reunion)..."
+                      className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                  </div>
+                  {jsonFilter && (
+                    <button
+                      type="button"
+                      onClick={() => setJsonFilter('')}
+                      className="px-2 py-1.5 rounded-xl bg-slate-800 text-slate-400 hover:text-white text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Effacer
+                    </button>
+                  )}
+                </div>
+
+                <div className="relative">
+                  <pre className="font-mono text-[11px] leading-relaxed text-emerald-300 bg-slate-950 p-4 rounded-xl border border-slate-800 max-h-96 overflow-y-auto whitespace-pre-wrap select-all">
+                    {filteredJsonString}
+                  </pre>
+                </div>
+              </div>
+            )}
+
+            {/* ONGLET 4 : Entêtes HTTP Reçues */}
+            {activeTab === 'headers' && (
+              <div className="space-y-2">
+                <div className="text-xs text-slate-400">
+                  Entêtes HTTP brutes envoyées par le serveur de scraping :
+                </div>
+                <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 max-h-64 overflow-y-auto font-mono text-[11px]">
+                  {data.headers && Object.keys(data.headers).length > 0 ? (
+                    <div className="space-y-1">
+                      {Object.entries(data.headers).map(([k, v]) => (
+                        <div key={k} className="flex items-start justify-between gap-4 border-b border-slate-900 pb-1">
+                          <span className="text-amber-400 font-bold shrink-0">{k}:</span>
+                          <span className="text-slate-300 break-all text-right">{v}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-slate-500 italic">Aucune entête enregistrée.</div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Pied de page du portail de diagnostic */}
+      <div className="flex items-center justify-between pt-1 border-t border-amber-500/20 flex-wrap gap-2">
         <span className="text-[11px] text-amber-300/80">
-          💡 Une fois les logs consultés, vous pouvez réinitialiser cet écran de diagnostic.
+          💡 Les données brutes ci-dessus représentent la charge utile exacte renvoyée par le scraper avant tout assainissement.
         </span>
         <button
           type="button"
@@ -202,14 +651,9 @@ export default function App() {
   const [isPresentationModalOpen, setIsPresentationModalOpen] = useState(false);
   const [isAiQuotasModalOpen, setIsAiQuotasModalOpen] = useState(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
-  const [debugRaceGateData, setDebugRaceGateData] = useState<{
-    url: string;
-    expectedR: string;
-    expectedC: string;
-    returnedR: string;
-    returnedC: string;
-    headers: Record<string, string>;
-  } | null>(null);
+  const [debugRaceGateData, setDebugRaceGateData] = useState<DebugRaceGateData | null>(null);
+  const [lastRawScraperData, setLastRawScraperData] = useState<DebugRaceGateData | null>(null);
+  const [isRescanning, setIsRescanning] = useState<boolean>(false);
 
   // État de Déploiement GitHub & Render pour la notification Toast
   const [deploymentStatus, setDeploymentStatus] = useState<DeploymentStatusInfo | null>(null);
@@ -1170,8 +1614,9 @@ export default function App() {
   };
 
   const setCourseWithTime = (c: CourseHippique) => {
+    const enriched = enrichRaceWithGeminiCollege(c);
     setCourse({
-      ...c,
+      ...enriched,
       derniereMiseAJour: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     });
   };
@@ -1446,8 +1891,8 @@ export default function App() {
     console.log('=== [POST-SCRAPE DIAGNOSTIC VALIDATION] END (PASSED) ===');
   };
 
-  const handleAnalyzeUrl = async (rawUrl: string, exactPartantsCount?: number, rawPartantsText?: string) => {
-    console.log('[handleAnalyzeUrl] Triggered with rawUrl:', rawUrl, 'exactPartantsCount:', exactPartantsCount);
+  const handleAnalyzeUrl = async (rawUrl: string, exactPartantsCount?: number, rawPartantsText?: string, options?: { forceBypassCache?: boolean }) => {
+    console.log('[handleAnalyzeUrl] Triggered with rawUrl:', rawUrl, 'exactPartantsCount:', exactPartantsCount, 'options:', options);
 
     // 0. Auto-initialisation ou vérification de session utilisateur
     let activeUser = currentUser;
@@ -1634,13 +2079,19 @@ export default function App() {
     console.log('[handleAnalyzeUrl] Fetching /api/analyze-race for URL:', targetUrl);
 
     try {
+      const isBypass = Boolean(options?.forceBypassCache);
       const response = await fetch('/api/analyze-race', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(isBypass ? { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' } : {}),
+        },
         body: JSON.stringify({
           url: targetUrl,
           exactPartantsCount,
           rawPartantsText,
+          force_bypass_cache: isBypass,
+          forceBypassCache: isBypass,
         }),
       });
 
@@ -1660,6 +2111,12 @@ export default function App() {
       let data: any = null;
       try {
         data = JSON.parse(responseText);
+        const rawScraperDataSnapshot = JSON.parse(responseText);
+        const rawScraperCourseSnapshot = rawScraperDataSnapshot?.course
+          ? JSON.parse(JSON.stringify(rawScraperDataSnapshot.course))
+          : null;
+        const rectificationsApplied: string[] = [];
+
         console.log('================ [API FULL RESPONSE BEFORE GATES] ================');
         console.log('[API-RAW-RESPONSE] rawUrl input :', rawUrl);
         console.log('[API-RAW-RESPONSE] targetUrl used :', targetUrl);
@@ -1675,10 +2132,12 @@ export default function App() {
           if (!isNaN(rawCourseDigits) && rawCourseDigits > 20) {
             const cleanCNum = data.course.numeroCourse || (targetUrl.includes('1689686') || targetUrl.includes('meilhan') ? 9 : 1);
             console.warn(`[COURSE-SANITY] ⚠️ Remplacement de l'ID technique "${data.course.course}" par le vrai numéro officiel "C${cleanCNum}".`);
+            rectificationsApplied.push(`Remplacement de l'identifiant technique "${data.course.course}" par "C${cleanCNum}"`);
             data.course.course = `C${cleanCNum}`;
             data.course.courseNumero = `C${cleanCNum}`;
           }
           if (data.course.titre && /c\d{3,}/i.test(data.course.titre)) {
+            rectificationsApplied.push(`Nettoyage de l'ID technique dans le titre de la course`);
             data.course.titre = data.course.titre.replace(/c\d{3,}/gi, data.course.course || 'C9');
           }
 
@@ -1717,24 +2176,25 @@ export default function App() {
             // Ré-affectation immédiate des valeurs correctes à data.course avant setCourseWithTime(data.course)
             if (expectedR) {
               console.log(`[COHERENCE-CHECK] 🔄 Ré-affectation de la réunion correcte : ${data.course.reunion} -> ${expectedR}`);
+              rectificationsApplied.push(`Ré-affectation de la réunion : "${data.course.reunion}" -> "${expectedR}"`);
               data.course.reunion = expectedR;
             }
             if (expectedC) {
               console.log(`[COHERENCE-CHECK] 🔄 Ré-affectation de la course correcte : ${data.course.course || data.course.courseNumero} -> ${expectedC}`);
+              rectificationsApplied.push(`Ré-affectation du numéro de course : "${data.course.course || data.course.courseNumero}" -> "${expectedC}"`);
               data.course.course = expectedC;
               data.course.courseNumero = expectedC;
             }
 
             if (data.course.prixNom && data.course.hippodrome) {
               data.course.titre = `${data.course.prixNom} (${data.course.reunion} ${data.course.course}) - ${data.course.hippodrome}`;
+              rectificationsApplied.push(`Reconstruction du titre de la course : "${data.course.titre}"`);
             }
           } else {
             console.log('✅ [COHERENCE-CHECK] Cohérence parfaite : Les valeurs de l\'API correspondent aux valeurs extraites par Regex.');
           }
-        }
 
-        // --- MIDDLEWARE : FORCE LA LECTURE DES CHAMPS REUNION ET COURSENUMERO AVANT LE RESTE DU TRAITEMENT ---
-        if (data && data.course) {
+          // --- MIDDLEWARE : FORCE LA LECTURE DES CHAMPS REUNION ET COURSENUMERO AVANT LE RESTE DU TRAITEMENT ---
           const forcedReunion = data.course.reunion;
           const forcedCourseNumero = data.course.courseNumero || data.course.course;
           console.log('[MIDDLEWARE-FORCE-READ] Brute reunion reçue :', forcedReunion);
@@ -1745,16 +2205,26 @@ export default function App() {
           const returnedCourse = (forcedCourseNumero || 'C1').toUpperCase();
 
           const isRealAnomaly = (urlReunion !== 'Non identifiée' && urlCourse !== 'Non identifiée') && (urlReunion !== 'R1' || urlCourse !== 'C1');
-          if (returnedReunion === 'R1' && returnedCourse === 'C1' && isRealAnomaly) {
-            console.warn('[MIDDLEWARE-FORCE-READ] ⚠️ Détection d\'une rechute par défaut vers R1C1 ! Affichage du composant de diagnostic DebugRaceGate.');
-            setDebugRaceGateData({
-              url: targetUrl,
-              expectedR: urlReunion,
-              expectedC: urlCourse,
-              returnedR: returnedReunion,
-              returnedC: returnedCourse,
-              headers: responseHeaders,
-            });
+          
+          const snapshotForGate: DebugRaceGateData = {
+            url: targetUrl,
+            expectedR: expectedR || urlReunion,
+            expectedC: expectedC || urlCourse,
+            returnedR: returnedReunion,
+            returnedC: returnedCourse,
+            headers: responseHeaders,
+            rawResponse: rawScraperDataSnapshot,
+            rawCourse: rawScraperCourseSnapshot,
+            statusHttp: response.status,
+            receivedAt: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+            rectificationsApplied,
+          };
+
+          setLastRawScraperData(snapshotForGate);
+
+          if ((returnedReunion === 'R1' && returnedCourse === 'C1' && isRealAnomaly) || hasDivergence) {
+            console.warn('[MIDDLEWARE-FORCE-READ] ⚠️ Détection d\'une divergence ou rechute par défaut vers R1C1 ! Affichage du composant de diagnostic DebugRaceGate.');
+            setDebugRaceGateData(snapshotForGate);
           } else {
             // Nettoyer le debug gate s'il n'y a plus d'anomalie
             setDebugRaceGateData(null);
@@ -2230,6 +2700,42 @@ export default function App() {
     });
   };
 
+  // Auto-Healing : Injection directe des identifiants R/C attendus dans la course sans re-scrapper
+  const handleApplyRectification = (rectification: { expectedR: string; expectedC: string }) => {
+    console.log('[AUTO-HEALING] 🛠️ Application de la rectification directe sans re-scrapper :', rectification);
+    const expR = rectification.expectedR;
+    const expC = rectification.expectedC;
+
+    if (course) {
+      const updatedCourse: CourseHippique = {
+        ...course,
+        reunion: expR,
+        course: expC,
+        courseNumero: expC,
+        titre: course.prixNom && course.hippodrome
+          ? `${course.prixNom} (${expR} ${expC}) - ${course.hippodrome}`
+          : course.titre,
+      };
+      setCourseWithTime(updatedCourse);
+      const updatedHist = saveRaceToHistory(updatedCourse);
+      setHistory(updatedHist);
+      setInfoNotice(`✅ Auto-Healing appliqué avec succès : Identifiants rectifiés (${expR} ${expC}) injectés directement dans le Dashboard sans re-scrapper.`);
+    }
+    setDebugRaceGateData(null);
+  };
+
+  // Forcer Re-Scan : Relance l'analyse complète de l'URL avec force_bypass_cache=true
+  const handleForceRescan = async (urlToRescan: string) => {
+    console.log('[FORCE-RESCAN] ⚡ Lancement du re-scan forcé avec bypass de cache pour :', urlToRescan);
+    setIsRescanning(true);
+    setInfoNotice(`⚡ Re-scan forcé en cours pour "${urlToRescan}" avec contournement du cache (force_bypass_cache=true)...`);
+    try {
+      await handleAnalyzeUrl(urlToRescan, undefined, undefined, { forceBypassCache: true });
+    } finally {
+      setIsRescanning(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-amber-500 selection:text-slate-950 animate-fadeInApp">
       {/* Top Header with strict geny.com / paristurf.com URL input */}
@@ -2286,7 +2792,25 @@ export default function App() {
             data={debugRaceGateData} 
             onClose={() => setDebugRaceGateData(null)} 
             onClear={() => setDebugRaceGateData(null)}
+            onApplyRectification={handleApplyRectification}
+            onForceRescan={handleForceRescan}
+            isRescanning={isRescanning}
           />
+        )}
+
+        {/* Bouton d'inspection manuelle des logs bruts du Scraper en temps réel */}
+        {lastRawScraperData && !debugRaceGateData && (
+          <div className="flex justify-end -mt-2 mb-2">
+            <button
+              type="button"
+              onClick={() => setDebugRaceGateData(lastRawScraperData)}
+              className="px-3.5 py-1.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 text-amber-300 hover:text-amber-200 border border-amber-500/40 text-xs font-bold flex items-center gap-2 transition-all cursor-pointer shadow-md hover:border-amber-400"
+              title="Ouvrir le panneau de logs pour inspecter les données brutes retournées par le scraper"
+            >
+              <Terminal className="w-3.5 h-3.5 text-amber-400" />
+              <span>Panneau de Logs Scraper (Données Brutes Temps Réel)</span>
+            </button>
+          </div>
         )}
 
         {course && (

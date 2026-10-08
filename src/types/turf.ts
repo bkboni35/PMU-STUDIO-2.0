@@ -172,9 +172,11 @@ export interface PropositionJeu {
 export interface PronosticSynthese {
   baseIncontournable: number; // BASE (ex: n°14)
   secondeBase: number; // SECONDE BASE (ex: n°7)
+  favoris?: number[]; // FAVORIS (3 numéros classés par cote croissante)
   chances?: number[]; // CHANCES (premières chances de podium)
-  outsiders: number[]; // OUTSIDERS (2 ou 3 numéros)
-  tocards: number[]; // TOCARDS (1 ou 2 numéros coups de poker)
+  outsiders: number[]; // OUTSIDERS (3 numéros classés par cote croissante)
+  tocards: number[]; // TOCARDS (3 numéros classés par cote croissante)
+  surprises?: number[]; // SURPRISES (4 numéros : 10e, 11e + 2 plus grands numéros des délaissés)
   selection8: number[]; // SÉLECTION 8 (les 8 chevaux du Quinté recommandés)
   selectionJustification: string;
   conseilPari: string;

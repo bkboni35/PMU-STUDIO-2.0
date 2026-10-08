@@ -193,9 +193,9 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
 
   const [copiedHierarchy, setCopiedHierarchy] = useState(false);
 
-  // Hiérarchie officielle V38
+  // Hiérarchie officielle V38 (tri des délaissés garanti par défaut du plus grand numéro au plus petit)
   const v38Hierarchy = useMemo(() => {
-    return computeV38Hierarchy(course);
+    return computeV38Hierarchy(course, { sortDelaisses: 'desc_number' });
   }, [course]);
 
   const favorisNums = useMemo(() => new Set(v38Hierarchy.favoris.map(p => Number(p.numero))), [v38Hierarchy]);
@@ -497,12 +497,12 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                 </span>
                 {filterOnlyDelaisses && (
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase animate-pulse">
-                    ✓ {delaissesParCote.length} Délaissés filtrés (Triés par côte croissante)
+                    ✓ {delaissesOrdreDecroissant.length} Délaissés filtrés (Ordre décroissant : plus grand au plus petit N°)
                   </span>
                 )}
               </div>
 
-              {/* Bouton Toggle dédié au tableau de classement par côte */}
+              {/* Bouton Toggle dédié au tableau de classement */}
               <button
                 type="button"
                 onClick={() => setFilterOnlyDelaisses(!filterOnlyDelaisses)}
@@ -511,13 +511,13 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                     ? 'bg-amber-500 text-slate-950 font-black shadow-amber-500/20 ring-2 ring-amber-300'
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
                 }`}
-                title="Filtrer et afficher uniquement les chevaux Délaissés par côte croissante"
+                title="Filtrer et afficher uniquement les chevaux Délaissés (du plus grand numéro au plus petit)"
               >
                 <Filter className="w-3.5 h-3.5" />
                 <span>
                   {filterOnlyDelaisses
                     ? `Afficher tous les partants (${partants.length})`
-                    : `Uniquement Délaissés (${delaissesParCote.length})`}
+                    : `Uniquement Délaissés (${delaissesOrdreDecroissant.length})`}
                 </span>
               </button>
             </div>
@@ -537,7 +537,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
-                    {(filterOnlyDelaisses ? delaissesParCote : [...partants]
+                    {(filterOnlyDelaisses ? delaissesOrdreDecroissant : [...partants]
                       .map((p) => ({
                         ...p,
                         hippoScore: computePartantHippoScore(p, course),

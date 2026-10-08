@@ -670,10 +670,11 @@ export const DisciplineExpertAnalysisModal: React.FC<DisciplineExpertAnalysisMod
 
                   {/* Répartition finale des 12 chevaux classés par cote croissante */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 text-xs">
+                    {/* 1. FAVORIS */}
                     <div className="p-2.5 rounded-xl bg-emerald-950/60 border border-emerald-500/40">
-                      <span className="text-[10px] font-black uppercase text-emerald-400 block mb-1">BASE (2 N°)</span>
+                      <span className="text-[10px] font-black uppercase text-emerald-400 block mb-1">FAVORIS (3 N°)</span>
                       <div className="font-black text-white flex items-center gap-1.5 flex-wrap">
-                        {v38Hierarchy.basesSolides.map((p, idx) => (
+                        {(v38Hierarchy.favoris || v38Hierarchy.basesSolides).map((p, idx) => (
                           <span key={`exp-base-${p.numero}-${idx}`} className="px-2 py-0.5 rounded bg-emerald-500 text-slate-950 font-black text-xs shadow-xs" title={`${p.nom} (Cote: ${p.coteProbable}/1)`}>
                             N°{p.numero}
                           </span>
@@ -681,30 +682,33 @@ export const DisciplineExpertAnalysisModal: React.FC<DisciplineExpertAnalysisMod
                       </div>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-sky-950/60 border border-sky-500/40">
-                      <span className="text-[10px] font-black uppercase text-sky-400 block mb-1">CHANCES SÉRIEUSES (4 N°)</span>
+                    {/* 2. OUTSIDERS */}
+                    <div className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-500/40">
+                      <span className="text-[10px] font-black uppercase text-amber-400 block mb-1">OUTSIDERS (3 N°)</span>
                       <div className="font-black text-white flex items-center gap-1.5 flex-wrap">
-                        {v38Hierarchy.chancesSerieuses.map((p, idx) => (
-                          <span key={`exp-chance-${p.numero}-${idx}`} className="px-2 py-0.5 rounded bg-sky-500 text-slate-950 font-black text-xs shadow-xs" title={`${p.nom} (Cote: ${p.coteProbable}/1)`}>
+                        {(v38Hierarchy.outsiders || v38Hierarchy.chancesSerieuses).map((p, idx) => (
+                          <span key={`exp-chance-${p.numero}-${idx}`} className="px-2 py-0.5 rounded bg-amber-500 text-slate-950 font-black text-xs shadow-xs" title={`${p.nom} (Cote: ${p.coteProbable}/1)`}>
                             N°{p.numero}
                           </span>
                         ))}
                       </div>
                     </div>
 
-                    <div className="p-2.5 rounded-xl bg-amber-950/60 border border-amber-500/40">
-                      <span className="text-[10px] font-black uppercase text-amber-400 block mb-1">TOCARDS (3 N°)</span>
+                    {/* 3. TOCARDS */}
+                    <div className="p-2.5 rounded-xl bg-orange-950/60 border border-orange-500/40">
+                      <span className="text-[10px] font-black uppercase text-orange-400 block mb-1">TOCARDS (3 N°)</span>
                       <div className="font-bold text-white flex items-center gap-1.5 flex-wrap">
                         {v38Hierarchy.tocardsSpeculatifs.map((p, idx) => (
-                          <span key={`exp-tocard-${p.numero}-${idx}`} className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-mono font-bold" title={`${p.nom} (Cote: ${p.coteProbable}/1)`}>
+                          <span key={`exp-tocard-${p.numero}-${idx}`} className="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 text-xs font-mono font-bold" title={`${p.nom} (Cote: ${p.coteProbable}/1)`}>
                             N°{p.numero}
                           </span>
                         ))}
                       </div>
                     </div>
 
+                    {/* 4. SURPRISES */}
                     <div className="p-2.5 rounded-xl bg-purple-950/60 border border-purple-500/40">
-                      <span className="text-[10px] font-black uppercase text-purple-400 block mb-1">SURPRISES (3 N°)</span>
+                      <span className="text-[10px] font-black uppercase text-purple-400 block mb-1">SURPRISES ({v38Hierarchy.surprises.length} N°)</span>
                       <div className="font-bold text-white flex items-center gap-1.5 flex-wrap">
                         {v38Hierarchy.surprises.map((p, idx) => (
                           <span key={`exp-surprise-${p.numero}-${idx}`} className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-xs font-mono font-bold" title={`${p.nom} (Cote: ${p.coteProbable}/1)`}>
@@ -714,8 +718,9 @@ export const DisciplineExpertAnalysisModal: React.FC<DisciplineExpertAnalysisMod
                       </div>
                     </div>
 
+                    {/* 5. LES DÉLAISSÉS */}
                     <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800">
-                      <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">DÉLAISSÉS (Classés par cote)</span>
+                      <span className="text-[10px] font-black uppercase text-slate-400 block mb-1">DÉLAISSÉS (↓ N°)</span>
                       <div className="text-[11px] font-medium text-slate-400 flex items-center gap-1 flex-wrap">
                         {(v38Hierarchy.delaisses && v38Hierarchy.delaisses.length > 0) ? (
                           v38Hierarchy.delaisses.map((p, idx) => (

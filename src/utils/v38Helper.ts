@@ -1,5 +1,18 @@
 import { CourseHippique, Partant } from '../types/turf';
 
+export type SurprisesMode = 'all_3' | 'top2_odds' | 'top2_numbers' | 'custom';
+export type DelaissesSortMode = 'desc_number' | 'asc_number' | 'asc_odds';
+
+export const V38_SURPRISES_MODE_STORAGE_KEY = 'hippo_v38_surprises_mode';
+export const V38_DELAISSES_SORT_STORAGE_KEY = 'hippo_v38_delaisses_sort_mode';
+export const V38_CUSTOM_SURPRISES_STORAGE_KEY = 'hippo_v38_custom_surprises_nums';
+
+export interface V38Options {
+  surprisesMode?: SurprisesMode;
+  customSurprisesNums?: number[];
+  sortDelaisses?: DelaissesSortMode;
+}
+
 export interface V38Result {
   isPlat: boolean;
   groupType: 'CORDE' | 'NUMERO';
@@ -14,6 +27,8 @@ export interface V38Result {
   poolG3: Partant[];
   selection11: Partant[];
   selection12: Partant[];
+  favoris: Partant[];
+  outsiders: Partant[];
   basesSolides: Partant[];
   chancesSerieuses: Partant[];
   tocardsSpeculatifs: Partant[];
@@ -22,6 +37,8 @@ export interface V38Result {
   selectionV38: Partant[];
   remainingV38: Partant[];
   assignedCordes?: Map<number, number>;
+  surprisesMode?: SurprisesMode;
+  delaissesSortMode?: DelaissesSortMode;
 }
 
 /**
@@ -190,7 +207,7 @@ export function getOfficialHippodromeCorde(hippodrome?: string, fallbackCorde?: 
  *    - DÉLAISSÉS : tous autres numéros non retenus + le plus grand numéro des 3 candidats surprises (classés par cote croissante).
  *    NB : Pas de doublon.
  */
-export function computeV38Hierarchy(course: CourseHippique): V38Result {
+export function computeV38Hierarchy(course: CourseHippique, options?: V38Options): V38Result {
   const rawPartants = course.partants || [];
   // Déduplication stricte des partants par numéro
   const seenRawNums = new Set<number>();
@@ -294,45 +311,96 @@ export function computeV38Hierarchy(course: CourseHippique): V38Result {
   let surprises: typeof enriched = [];
   let delaisses: typeof enriched = [];
 
-  // Tri par numéro de dossard croissant (du plus petit au plus grand) pour les surprises
+  // Tri par numéro de dossard croissant (du plus petit au plus grand)
   const sortAscByNumber = (a: any, b: any) => Number(a.numero) - Number(b.numero);
+  // Tri par numéro de dossard décroissant ("du plus grand numéro au plus petit")
+  const sortDescByNumber = (a: any, b: any) => Number(b.numero) - Number(a.numero);
 
-  let rawSurprises: typeof enriched = [];
+  let favoris: typeof enriched = [];
+  let outsiders: typeof enriched = [];
+  let baseSurprises: typeof enriched = [];
 
-  if (totalSelected >= 12) {
-    basesSolides = selectionAll.slice(0, 2);          // 1er - 2e (2 N°)
-    chancesSerieuses = selectionAll.slice(2, 6);      // 3e - 4e - 5e - 6e (4 N°)
-    tocardsSpeculatifs = selectionAll.slice(6, 9);    // 7e - 8e - 9e (3 N°)
-    rawSurprises = selectionAll.slice(9, 12);          // 10e - 11e - 12e (3 N° candidats)
+  // Structure demandée par l'utilisateur :
+  // FAVORIS (3 N°) : 1er, 2e, 3e
+  // OUTSIDERS (3 N°) : 4e, 5e, 6e
+  // TOCARDS (3 N°) : 7e, 8e, 9e
+  // SURPRISES (4 N°) : 10e, 11e + les 2 plus grands numéros des délaissés
+  if (totalSelected >= 11) {
+    favoris = selectionAll.slice(0, 3);                // 1er, 2e, 3e (3 N° FAVORIS)
+    outsiders = selectionAll.slice(3, 6);              // 4e, 5e, 6e (3 N° OUTSIDERS)
+    tocardsSpeculatifs = selectionAll.slice(6, 9);     // 7e, 8e, 9e (3 N° TOCARDS)
+    baseSurprises = selectionAll.slice(9, 11);         // 10e, 11e (2 N° de base des Surprises)
   } else if (totalSelected >= 9) {
-    basesSolides = selectionAll.slice(0, 2);
-    chancesSerieuses = selectionAll.slice(2, Math.min(6, totalSelected));
+    favoris = selectionAll.slice(0, Math.min(3, totalSelected));
+    outsiders = selectionAll.slice(3, Math.min(6, totalSelected));
     tocardsSpeculatifs = selectionAll.slice(6, Math.min(9, totalSelected));
-    rawSurprises = selectionAll.slice(9, Math.min(12, totalSelected));
+    baseSurprises = selectionAll.slice(9, Math.min(11, totalSelected));
   } else if (totalSelected >= 6) {
-    basesSolides = selectionAll.slice(0, 2);
-    chancesSerieuses = selectionAll.slice(2, Math.min(6, totalSelected));
+    favoris = selectionAll.slice(0, Math.min(3, totalSelected));
+    outsiders = selectionAll.slice(3, Math.min(6, totalSelected));
     tocardsSpeculatifs = selectionAll.slice(6, Math.min(9, totalSelected));
-    rawSurprises = [];
+    baseSurprises = [];
   } else {
-    basesSolides = selectionAll.slice(0, Math.min(2, totalSelected));
-    chancesSerieuses = selectionAll.slice(2, Math.min(4, totalSelected));
-    tocardsSpeculatifs = selectionAll.slice(4, Math.min(5, totalSelected));
-    rawSurprises = [];
+    favoris = selectionAll.slice(0, Math.min(3, totalSelected));
+    outsiders = selectionAll.slice(3, Math.min(6, totalSelected));
+    tocardsSpeculatifs = [];
+    baseSurprises = [];
   }
 
-  // Application de la règle spécifique des Surprises :
-  // Parmi les 3 candidats (10e, 11e, 12e), tri par numéro croissant :
-  // - Les plus petits numéros sont conservés dans les Surprises.
-  // - Le plus grand numéro parmi les 3 est reclassé parmi les Délaissés.
-  const sortedCandidateSurprises = [...rawSurprises].sort(sortAscByNumber);
-  if (sortedCandidateSurprises.length >= 3) {
-    surprises = sortedCandidateSurprises.slice(0, 2);
-    const extraDelaisse = sortedCandidateSurprises.slice(2);
-    delaisses = [...remainingActiveSorted, ...extraDelaisse];
+  // Partants actifs non assignés aux 11 premiers (Favoris, Outsiders, Tocards et BaseSurprises)
+  const assigned11Nums = new Set([
+    ...favoris.map(p => Number(p.numero)),
+    ...outsiders.map(p => Number(p.numero)),
+    ...tocardsSpeculatifs.map(p => Number(p.numero)),
+    ...baseSurprises.map(p => Number(p.numero)),
+  ]);
+  const initialDelaisses = allActiveSorted.filter(p => !assigned11Nums.has(Number(p.numero)));
+
+  // "Mais les 2 plus grand n° des délaissés viennent dans 'surprises' portant à 4 numéros SURPRISES"
+  const initialDelaissesSortedDesc = [...initialDelaisses].sort(sortDescByNumber);
+  const extraSurprisesFromDelaisses = initialDelaissesSortedDesc.slice(0, 2);
+  const remainingDelaisses = initialDelaissesSortedDesc.slice(2);
+
+  // Construction des 4 SURPRISES (10e & 11e + 2 plus grands numéros des délaissés)
+  let rawSurprises = [...baseSurprises, ...extraSurprisesFromDelaisses];
+
+  // Récupération des options de configuration pour les Surprises et Délaissés
+  const effectiveSurprisesMode: SurprisesMode = options?.surprisesMode 
+    || (typeof window !== 'undefined' ? (localStorage.getItem(V38_SURPRISES_MODE_STORAGE_KEY) as SurprisesMode) : null)
+    || 'all_3';
+
+  const effectiveDelaissesSort: DelaissesSortMode = options?.sortDelaisses
+    || (typeof window !== 'undefined' ? (localStorage.getItem(V38_DELAISSES_SORT_STORAGE_KEY) as DelaissesSortMode) : null)
+    || 'desc_number';
+
+  // Application de la sélection des SUR (SURPRISES) :
+  if (effectiveSurprisesMode === 'custom' && options?.customSurprisesNums && options.customSurprisesNums.length > 0) {
+    const customSet = new Set(options.customSurprisesNums.map(n => Number(n)));
+    surprises = allActiveSorted.filter(p => customSet.has(Number(p.numero))).sort(sortAscByNumber);
+    const assignedNums = new Set([
+      ...favoris.map(p => Number(p.numero)),
+      ...outsiders.map(p => Number(p.numero)),
+      ...tocardsSpeculatifs.map(p => Number(p.numero)),
+      ...surprises.map(p => Number(p.numero)),
+    ]);
+    delaisses = allActiveSorted.filter(p => !assignedNums.has(Number(p.numero)));
   } else {
-    surprises = sortedCandidateSurprises;
-    delaisses = remainingActiveSorted;
+    // Mode standard conforme à la demande : 4 numéros SURPRISES
+    surprises = [...rawSurprises].sort(sortAscByNumber);
+    delaisses = [...remainingDelaisses];
+  }
+
+  // Tri des DÉLAISSÉS : "Classe les délaissés du plus grand numéro au plus petit"
+  let finalDelaisses = [...delaisses];
+  if (effectiveDelaissesSort === 'desc_number') {
+    // Du plus grand numéro au plus petit (décroissant)
+    finalDelaisses.sort(sortDescByNumber);
+  } else if (effectiveDelaissesSort === 'asc_number') {
+    // Du plus petit au plus grand (croissant)
+    finalDelaisses.sort(sortAscByNumber);
+  } else {
+    // Par cote croissante
+    finalDelaisses.sort(sortAscByOdds);
   }
 
   const selection12 = selectionAll.slice(0, Math.min(12, totalSelected));
@@ -352,15 +420,20 @@ export function computeV38Hierarchy(course: CourseHippique): V38Result {
     poolG3,
     selection11,
     selection12,
-    basesSolides: [...basesSolides].sort(sortAscByOdds),
-    chancesSerieuses: [...chancesSerieuses].sort(sortAscByOdds),
+    favoris: [...favoris].sort(sortAscByOdds),
+    outsiders: [...outsiders].sort(sortAscByOdds),
+    // Rétrocompatibilité complète :
+    basesSolides: [...favoris].sort(sortAscByOdds),
+    chancesSerieuses: [...outsiders].sort(sortAscByOdds),
     tocardsSpeculatifs: [...tocardsSpeculatifs].sort(sortAscByOdds),
-    // Les surprises sont UNIQUEMENT classées par ordre de numéro croissant (du plus petit au plus grand)
+    // Les surprises portent désormais à 4 numéros (classés par ordre de numéro croissant)
     surprises: [...surprises].sort(sortAscByNumber),
-    delaisses: [...delaisses].sort(sortAscByOdds),
+    delaisses: finalDelaisses,
     selectionV38: selection12,
-    remainingV38: delaisses,
+    remainingV38: finalDelaisses,
     assignedCordes,
+    surprisesMode: effectiveSurprisesMode,
+    delaissesSortMode: effectiveDelaissesSort,
   };
 }
 

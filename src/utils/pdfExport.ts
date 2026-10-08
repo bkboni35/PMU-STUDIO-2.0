@@ -148,7 +148,7 @@ export function exportCourseToPdf(course: CourseHippique): void {
     yPos += 23;
 
     // --- SÉLECTION OFFICIELLE EN 12 CHEVAUX (3 GROUPES & COTE DU SITE GENY) ---
-    const { poolG1, poolG2, poolG3, selection12, selection11, basesSolides, chancesSerieuses, tocardsSpeculatifs, surprises, delaisses } = computeV38Hierarchy(course);
+    const { poolG1, poolG2, poolG3, selection12, selection11, basesSolides, chancesSerieuses, favoris = basesSolides, outsiders = chancesSerieuses, tocardsSpeculatifs, surprises, delaisses } = computeV38Hierarchy(course);
 
     doc.setFillColor(254, 243, 199); // amber-100
     doc.setDrawColor(245, 158, 11); // amber-500
@@ -171,17 +171,17 @@ export function exportCourseToPdf(course: CourseHippique): void {
     let startX = margin + 4;
     const badgeW = (pageWidth - margin * 2 - 8) / selection.length;
     selection.forEach((num, idx) => {
-      if (idx <= 1) {
-        doc.setFillColor(16, 185, 129); // emerald-500
+      if (idx <= 2) {
+        doc.setFillColor(16, 185, 129); // emerald-500 (FAVORIS)
         doc.setDrawColor(6, 95, 70);
       } else if (idx <= 5) {
-        doc.setFillColor(14, 165, 233); // sky-500
-        doc.setDrawColor(3, 105, 161);
+        doc.setFillColor(245, 158, 11); // amber-500 (OUTSIDERS)
+        doc.setDrawColor(180, 83, 9);
       } else if (idx <= 8) {
-        doc.setFillColor(249, 115, 22); // orange-500
+        doc.setFillColor(249, 115, 22); // orange-500 (TOCARDS)
         doc.setDrawColor(194, 65, 12);
       } else {
-        doc.setFillColor(168, 85, 247); // purple-500
+        doc.setFillColor(168, 85, 247); // purple-500 (SURPRISES)
         doc.setDrawColor(126, 34, 206);
       }
       doc.roundedRect(startX, yPos + 8, badgeW - 1.5, 10, 1.5, 1.5, 'FD');
@@ -294,10 +294,10 @@ export function exportCourseToPdf(course: CourseHippique): void {
     const pColWidth = (pageWidth - margin * 2) / 4;
 
     const pronosticsList = [
-      { title: '1. BASES SOLIDES', desc: '1er - 2e N°', content: basesSolides.map(p => p.numero).join(' · ') || '—' },
-      { title: '2. CHANCES SÉRIEUSES', desc: '3e - 4e - 5e N°', content: chancesSerieuses.map(p => p.numero).join(' · ') || '—' },
-      { title: '3. TOCARDS SPÉCULATIFS', desc: '6e - 7e - 8e - 9e N°', content: tocardsSpeculatifs.map(p => p.numero).join(' · ') || '—' },
-      { title: '4. SURPRISES', desc: '11e - 12e N°', content: surprises.map(p => p.numero).join(' · ') || '—' },
+      { title: '1. FAVORIS', desc: '1er - 2e - 3e N°', content: favoris.map(p => p.numero).join(' · ') || '—' },
+      { title: '2. OUTSIDERS', desc: '4e - 5e - 6e N°', content: outsiders.map(p => p.numero).join(' · ') || '—' },
+      { title: '3. TOCARDS', desc: '7e - 8e - 9e N°', content: tocardsSpeculatifs.map(p => p.numero).join(' · ') || '—' },
+      { title: '4. SURPRISES', desc: `${surprises.length} N° (10e-11e + délaissés)`, content: surprises.map(p => p.numero).join(' · ') || '—' },
     ];
 
     pronosticsList.forEach((pro, idx) => {
@@ -566,7 +566,7 @@ export function exportQuinteOnlyToPdf(course: CourseHippique): void {
     yPos += 14;
 
     // --- PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE) ---
-    const { selection11, basesSolides, chancesSerieuses, tocardsSpeculatifs, surprises, delaisses } = computeV38Hierarchy(course);
+    const { selection11, basesSolides, chancesSerieuses, favoris = basesSolides, outsiders = chancesSerieuses, tocardsSpeculatifs, surprises, delaisses } = computeV38Hierarchy(course);
 
     // Box Header Bar (Navy #0b1329)
     doc.setFillColor(11, 19, 41);
@@ -595,7 +595,7 @@ export function exportQuinteOnlyToPdf(course: CourseHippique): void {
     doc.setLineWidth(0.4);
     doc.roundedRect(margin, yPos, boxWidth, boxHeight, 2, 2, 'FD');
 
-    // Row 1: BASES SOLIDES, CHANCES SÉRIEUSES, TOCARDS SPÉCULATIFS
+    // Row 1: FAVORIS, OUTSIDERS, TOCARDS
     const colW3 = (boxWidth - 8) / 3;
 
     const formatCategoryText = (list: typeof basesSolides) =>
@@ -603,32 +603,32 @@ export function exportQuinteOnlyToPdf(course: CourseHippique): void {
         ? list.map(p => `N°${p.numero} (${p.coteProbable || p.genyOdds || '—'}/1)`).join('   ')
         : '—';
 
-    // 1. BASES SOLIDES
+    // 1. FAVORIS
     const xCol1 = margin + 4;
     doc.setTextColor(52, 211, 153); // emerald-400
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('BASES SOLIDES :', xCol1, yPos + 5);
+    doc.text('FAVORIS (3 N°) :', xCol1, yPos + 5);
     doc.setTextColor(236, 253, 245); // emerald-50
     doc.setFontSize(8);
-    doc.text(formatCategoryText(basesSolides), xCol1, yPos + 10);
+    doc.text(formatCategoryText(favoris), xCol1, yPos + 10);
 
-    // 2. CHANCES SÉRIEUSES
+    // 2. OUTSIDERS
     const xCol2 = margin + 4 + colW3 + 2;
-    doc.setTextColor(56, 189, 248); // sky-400
+    doc.setTextColor(245, 158, 11); // amber-400
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('CHANCES SÉRIEUSES :', xCol2, yPos + 5);
-    doc.setTextColor(240, 249, 255); // sky-50
+    doc.text('OUTSIDERS (3 N°) :', xCol2, yPos + 5);
+    doc.setTextColor(254, 243, 199); // amber-50
     doc.setFontSize(8);
-    doc.text(formatCategoryText(chancesSerieuses), xCol2, yPos + 10);
+    doc.text(formatCategoryText(outsiders), xCol2, yPos + 10);
 
-    // 3. TOCARDS SPÉCULATIFS
+    // 3. TOCARDS
     const xCol3 = margin + 4 + (colW3 * 2) + 4;
     doc.setTextColor(251, 113, 133); // rose-400
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('TOCARDS SPÉCULATIFS :', xCol3, yPos + 5);
+    doc.text('TOCARDS (3 N°) :', xCol3, yPos + 5);
     doc.setTextColor(255, 241, 242); // rose-50
     doc.setFontSize(8);
     doc.text(formatCategoryText(tocardsSpeculatifs), xCol3, yPos + 10);
@@ -646,7 +646,7 @@ export function exportQuinteOnlyToPdf(course: CourseHippique): void {
     doc.setTextColor(192, 132, 252); // purple-400
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('SURPRISES :', xRow2Col1, yPos + 19);
+    doc.text(`SURPRISES (${surprises.length} N°) :`, xRow2Col1, yPos + 19);
     doc.setTextColor(250, 245, 255); // purple-50
     doc.setFontSize(8);
     doc.text(formatCategoryText(surprises), xRow2Col1, yPos + 24);
@@ -656,7 +656,7 @@ export function exportQuinteOnlyToPdf(course: CourseHippique): void {
     doc.setTextColor(148, 163, 184); // slate-400
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
-    doc.text('DÉLAISSÉS :', xRow2Col2, yPos + 19);
+    doc.text('DÉLAISSÉS (↓ N°) :', xRow2Col2, yPos + 19);
     doc.setTextColor(241, 245, 249); // slate-100
     doc.setFontSize(8);
     doc.text(formatCategoryText(delaisses), xRow2Col2, yPos + 24);

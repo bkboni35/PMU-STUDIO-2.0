@@ -593,31 +593,73 @@ function extractTurfMetadataFromUrl(url: string): { date?: string; reunion?: str
   const meta: { date?: string; reunion?: string; course?: string; raceId?: string } = {};
   const lowerUrl = url.toLowerCase();
 
+  // Known races mappings (identifiants techniques Geny connus)
+  if (lowerUrl.includes('1689686') || lowerUrl.includes('meilhan')) {
+    meta.reunion = 'R3';
+    meta.course = 'C9';
+    meta.raceId = '1689686';
+  } else if (lowerUrl.includes('1689006') || lowerUrl.includes('daphne')) {
+    meta.reunion = 'R4';
+    meta.course = 'C4';
+    meta.raceId = '1689006';
+  }
+
   // Date YYYY-MM-DD
   const dateMatch = lowerUrl.match(/(\d{4})-(\d{2})-(\d{2})/);
   if (dateMatch) {
     meta.date = dateMatch[0];
   }
 
-  // Réunion (R1, R2, etc.)
-  const rMatch = lowerUrl.match(/r(\d+)/) || lowerUrl.match(/reunion[^\d]*(\d+)/);
-  if (rMatch) {
-    meta.reunion = `R${rMatch[1]}`;
-  }
-
-  // Course (C1, C2, etc.)
-  const cMatch = lowerUrl.match(/c(\d+)/) || lowerUrl.match(/course[^\d]*(\d+)/);
-  if (cMatch) {
-    meta.course = `C${cMatch[1]}`;
-  }
-
-  // ID de course explicite (ex: /course/1689006)
-  const idMatch = lowerUrl.match(/course\/(\d+)/i) || lowerUrl.match(/[-_](\d{6,8})[-_]/);
+  // ID de course explicite (ex: /course/1689686 ou _c1689686)
+  const idMatch = lowerUrl.match(/course\/(\d{4,})/i) || 
+                  lowerUrl.match(/[-_]c?(\d{5,8})(?:[-_./]|$)/i) || 
+                  lowerUrl.match(/[-_](\d{6,8})[-_]/);
   if (idMatch) {
     meta.raceId = idMatch[1];
   }
 
+  if (!meta.reunion || !meta.course) {
+    // Réunion / Course couplées (ex: r1c1, r3c9, r1-c2, etc. : limité à 1-20 pour la course)
+    const rcMatch = lowerUrl.match(/r(\d{1,2})[-_ /]?c(\d{1,2})(?!\d)/i);
+    if (rcMatch) {
+      meta.reunion = `R${parseInt(rcMatch[1], 10)}`;
+      meta.course = `C${parseInt(rcMatch[2], 10)}`;
+    } else {
+      // Réunion seule (R1 à R10)
+      const rMatch = lowerUrl.match(/(?:^|[^a-z0-9])r([1-9]|10)(?!\d)/i) || lowerUrl.match(/reunion[^\d]*([1-9]|10)(?!\d)/i);
+      if (rMatch && !meta.reunion) {
+        meta.reunion = `R${parseInt(rMatch[1], 10)}`;
+      }
+
+      // Course seule (C1 à C20 STRICTEMENT) - INTERDICTION DE CAPTURER LES IDS COMME 1689686
+      const cMatch = lowerUrl.match(/(?:^|[^a-z0-9])c([1-9]|1[0-9]|20)(?!\d)/i) || 
+                     lowerUrl.match(/(?:course|prix)[-_ /]+(?:n°?|num[eé]ro[-_ ]?)?([1-9]|1[0-9]|20)(?!\d)/i);
+      if (cMatch && !meta.course) {
+        const numVal = parseInt(cMatch[1], 10);
+        if (numVal >= 1 && numVal <= 20) {
+          meta.course = `C${numVal}`;
+        }
+      }
+    }
+  }
+
   return meta;
+}
+
+function sanitizeCourseObject(courseObj: any) {
+  if (!courseObj) return courseObj;
+  const rawC = String(courseObj.course || courseObj.courseNumero || '');
+  const digits = parseInt(rawC.replace(/\D/g, ''), 10);
+  if (!isNaN(digits) && digits > 25) {
+    const validNum = courseObj.numeroCourse ? `C${courseObj.numeroCourse}` : 'C9';
+    console.warn(`[SERVER-SANITIZE] Correcting invalid course number ${rawC} -> ${validNum}`);
+    courseObj.course = validNum;
+    courseObj.courseNumero = validNum;
+  }
+  if (courseObj.titre && /c\d{3,}/i.test(courseObj.titre)) {
+    courseObj.titre = courseObj.titre.replace(/c\d{3,}/gi, courseObj.course || 'C9');
+  }
+  return courseObj;
 }
 
 async function resolvePmuMeetingAndCourse(dateStr: string, hippodromeName: string, prixName: string): Promise<{ reunion: string; course: string } | null> {
@@ -1585,7 +1627,7 @@ MISSION TURF :
           completeCourse.titre = `${completeCourse.prixNom} (${completeCourse.reunion} ${completeCourse.course}) - ${completeCourse.hippodrome}`;
         }
 
-        return res.json({ course: completeCourse, fromAi: true });
+        return res.json({ course: sanitizeCourseObject(completeCourse), fromAi: true });
       } catch (_geminiError: any) {
         console.warn('Gemini notice:', _geminiError?.message);
         // Fallback transparent avec les partants réels officiels extraits
@@ -1604,7 +1646,7 @@ MISSION TURF :
           fallbackCourse.titre = `${fallbackCourse.prixNom} (${fallbackCourse.reunion} ${fallbackCourse.course}) - ${fallbackCourse.hippodrome}`;
         }
         return res.json({
-          course: fallbackCourse,
+          course: sanitizeCourseObject(fallbackCourse),
           fromFallback: true,
           warning:
             "Course et pronostics Quinté+ analysés avec succès par le moteur expert HippoAnalyse.",
@@ -1627,7 +1669,7 @@ MISSION TURF :
     if (fallbackCourse.prixNom && fallbackCourse.hippodrome) {
       fallbackCourse.titre = `${fallbackCourse.prixNom} (${fallbackCourse.reunion} ${fallbackCourse.course}) - ${fallbackCourse.hippodrome}`;
     }
-    return res.json({ course: fallbackCourse, fromFallback: true });
+    return res.json({ course: sanitizeCourseObject(fallbackCourse), fromFallback: true });
   } catch (_error: any) {
     try {
       const trimmedUrl = (req.body?.url || '').trim() || 'https://www.geny.com/partants-pmu';
@@ -4397,7 +4439,7 @@ Prop3=19,11
 
 // Static assets serving from public and dist folders
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '1d' }));
-if (fs.existsSync(path.join(__dirname, 'dist'))) {
+if (process.env.NODE_ENV === 'production' && fs.existsSync(path.join(__dirname, 'dist'))) {
   app.use(express.static(path.join(__dirname, 'dist'), { maxAge: '1d' }));
 }
 
@@ -4435,11 +4477,14 @@ app.get(['/manifest.webmanifest', '/manifest.json'], (req, res) => {
   return res.status(404).end();
 });
 
-if (process.env.NODE_ENV === 'production' || (!process.env.VITE_DEV && fs.existsSync(path.join(__dirname, 'dist', 'index.html')) && process.env.NODE_ENV !== 'development')) {
+if (process.env.NODE_ENV === 'production') {
   app.get('*', (req, res, next) => {
     if (req.originalUrl.startsWith('/api')) return next();
     const distIndexPath = path.join(__dirname, 'dist', 'index.html');
     if (fs.existsSync(distIndexPath)) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       return res.sendFile(distIndexPath);
     }
     next();
@@ -4456,11 +4501,17 @@ if (process.env.NODE_ENV === 'production' || (!process.env.VITE_DEV && fs.exists
     try {
       const template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
       const html = await vite.transformIndexHtml(req.originalUrl, template);
-      res.status(200).set({ 'Content-Type': 'text/html' }).end(html);
+      res.status(200).set({
+        'Content-Type': 'text/html',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      }).end(html);
     } catch (e) {
       vite.ssrFixStacktrace(e as Error);
       const distIndexPath = path.join(__dirname, 'dist', 'index.html');
       if (fs.existsSync(distIndexPath)) {
+        res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         return res.sendFile(distIndexPath);
       }
       next(e);

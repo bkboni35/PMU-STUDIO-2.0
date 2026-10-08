@@ -331,7 +331,7 @@ export function buildExpertDisciplineAnalysis(course: CourseHippique): ExpertDis
   const promptChances = v38Hierarchy.chancesSerieuses.map(p => p.numero);
   const promptTocards = v38Hierarchy.tocardsSpeculatifs.map(p => p.numero);
   const promptSurprises = v38Hierarchy.surprises.map(p => p.numero);
-  const promptDelaisses = v38Hierarchy.delaisses.map(p => p.numero);
+  const promptDelaisses = (v38Hierarchy.delaisses || []).map(p => Number(p.numero)).sort((a, b) => b - a);
 
   // Construction du tableau synthétique selon les colonnes de chaque discipline
   const synthesisTable: ExpertHorseRow[] = partants.map((p) => {

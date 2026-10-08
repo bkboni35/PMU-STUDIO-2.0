@@ -22,6 +22,8 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
     selection11,
     basesSolides,
     chancesSerieuses,
+    favoris = basesSolides,
+    outsiders = chancesSerieuses,
     tocardsSpeculatifs,
     surprises,
     delaisses,
@@ -174,13 +176,13 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
 
           <div className="p-4 sm:p-5 bg-[#0b1329] space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {/* BASES SOLIDES */}
+              {/* FAVORIS */}
               <div className="space-y-2">
                 <div className="text-xs font-black text-emerald-400 uppercase tracking-wider flex items-center justify-between">
-                  <span>BASES SOLIDES :</span>
+                  <span>FAVORIS (3 N°) :</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {basesSolides.map((p, idx) => (
+                  {favoris.map((p, idx) => (
                     <div key={`pdf-base-${p.numero}-${idx}`} className="flex flex-col items-center">
                       <div className="w-12 h-10 rounded-lg bg-[#059669] text-white font-black text-lg flex items-center justify-center shadow-md border border-emerald-400/30">
                         {p.numero}
@@ -193,13 +195,13 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
                 </div>
               </div>
 
-              {/* CHANCES SÉRIEUSES */}
+              {/* OUTSIDERS */}
               <div className="space-y-2">
                 <div className="text-xs font-black text-sky-400 uppercase tracking-wider flex items-center justify-between">
-                  <span>CHANCES SÉRIEUSES :</span>
+                  <span>OUTSIDERS (3 N°) :</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  {chancesSerieuses.map((p, idx) => (
+                  {outsiders.map((p, idx) => (
                     <div key={`pdf-chance-${p.numero}-${idx}`} className="flex flex-col items-center">
                       <div className="w-12 h-10 rounded-lg bg-[#0284c7] text-white font-black text-lg flex items-center justify-center shadow-md border border-sky-400/30">
                         {p.numero}
@@ -212,10 +214,10 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
                 </div>
               </div>
 
-              {/* TOCARDS SPÉCULATIFS */}
+              {/* TOCARDS */}
               <div className="space-y-2">
                 <div className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center justify-between">
-                  <span>TOCARDS SPÉCULATIFS :</span>
+                  <span>TOCARDS (3 N°) :</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {tocardsSpeculatifs.map((p, idx) => (
@@ -236,7 +238,7 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
               {/* SURPRISES */}
               <div className="space-y-2">
                 <div className="text-xs font-black text-purple-400 uppercase tracking-wider">
-                  <span>SURPRISES :</span>
+                  <span>SURPRISES ({surprises.length} N°) :</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {surprises.map((p, idx) => (
@@ -255,7 +257,7 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
               {/* DÉLAISSÉS */}
               <div className="space-y-2">
                 <div className="text-xs font-black text-slate-400 uppercase tracking-wider">
-                  <span>DÉLAISSÉS :</span>
+                  <span>DÉLAISSÉS (↓ N°) :</span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   {delaisses.map((p, idx) => (

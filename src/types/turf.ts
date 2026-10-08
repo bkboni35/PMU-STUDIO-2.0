@@ -185,6 +185,7 @@ export interface PronosticSynthese {
   ordrePossible?: number[]; // Top 5 chevaux dans l'ordre alternatif spéculatif
   ordreProbableExplication?: string;
   ordrePossibleExplication?: string;
+  delaisses?: number[]; // Délaissés triés du plus grand au plus petit numéro (ordre décroissant)
 }
 
 export interface PointControleAudit {
@@ -321,6 +322,7 @@ export interface CourseHippique {
   arrivalAuditModificationDetected?: boolean;
   arrivalAuditPreviousArrival?: string;
   expertDisciplineAnalysis?: ExpertDisciplineAnalysis;
+  delaisses?: number[]; // Numéros des chevaux délaissés classés par ordre décroissant (du plus grand au plus petit)
 }
 
 export interface MultiAiStepDetail {

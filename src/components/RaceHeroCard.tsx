@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Calendar, Clock, MapPin, Gauge, ShieldAlert, Award, ExternalLink, Zap, Star, ShieldCheck, CheckCircle2, CloudSun, FileText, AlertTriangle, RefreshCw, AlertCircle, Sparkles, Users, BookmarkCheck, Heart, RotateCcw, Share2, Check } from 'lucide-react';
+import { Trophy, Calendar, Clock, MapPin, Gauge, ShieldAlert, Award, ExternalLink, Zap, Star, ShieldCheck, CheckCircle2, CloudSun, FileText, AlertTriangle, RefreshCw, AlertCircle, Sparkles, Users, BookmarkCheck, Heart, RotateCcw, Share2, Check, SlidersHorizontal, ArrowDownUp, Settings2, X } from 'lucide-react';
 import { isCourseFinished, shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus } from '../utils/raceCountdown';
-import { CourseHippique } from '../types/turf';
+import { CourseHippique, Partant } from '../types/turf';
 import { CountdownTimer } from './CountdownTimer';
 import { HierarchieQuinteV38Banner } from './HierarchieQuinteV38Banner';
-import { computeV38Hierarchy, getOfficialHippodromeCorde } from '../utils/v38Helper';
+import { 
+  computeV38Hierarchy, 
+  getOfficialHippodromeCorde, 
+  SurprisesMode, 
+  DelaissesSortMode, 
+  V38_SURPRISES_MODE_STORAGE_KEY, 
+  V38_DELAISSES_SORT_STORAGE_KEY, 
+  V38_CUSTOM_SURPRISES_STORAGE_KEY,
+  getHorseGenyOdds
+} from '../utils/v38Helper';
 import { convertToUTC } from '../utils/timeConversion';
 import { DisciplineExpertAnalysisModal } from './DisciplineExpertAnalysisModal';
 import { toggleFavoriteRace, isCourseFavorite } from '../utils/favoritesStorage';
@@ -42,6 +51,34 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
 }) => {
   const [isGenyModalOpen, setIsGenyModalOpen] = useState(false);
   const [isExpertModalOpen, setIsExpertModalOpen] = useState(false);
+  const [isSurprisesModalOpen, setIsSurprisesModalOpen] = useState(false);
+
+  const [surprisesMode, setSurprisesMode] = useState<SurprisesMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(V38_SURPRISES_MODE_STORAGE_KEY) as SurprisesMode;
+      if (saved) return saved;
+    }
+    return 'all_3';
+  });
+
+  const [delaissesSortMode, setDelaissesSortMode] = useState<DelaissesSortMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(V38_DELAISSES_SORT_STORAGE_KEY) as DelaissesSortMode;
+      if (saved) return saved;
+    }
+    return 'desc_number';
+  });
+
+  const [customSurprisesNums, setCustomSurprisesNums] = useState<number[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = localStorage.getItem(V38_CUSTOM_SURPRISES_STORAGE_KEY);
+        if (saved) return JSON.parse(saved);
+      } catch {}
+    }
+    return [];
+  });
+
   const [localFavorite, setLocalFavorite] = useState<boolean>(() => {
     return isFavorite || (course ? isCourseFavorite(course) : false);
   });
@@ -561,7 +598,11 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
 
       {/* PRONOSTICS APRÈS ANALYSE : BASE, CHANCES SÉRIEUSES, TOCARDS, SURPRISES, LES DÉLAISSÉS */}
       {course.partants && course.partants.length > 0 && (() => {
-        const v38 = computeV38Hierarchy(course);
+        const v38 = computeV38Hierarchy(course, {
+          surprisesMode,
+          sortDelaisses: delaissesSortMode,
+          customSurprisesNums: customSurprisesNums.length > 0 ? customSurprisesNums : undefined,
+        });
         return (
           <div className="mt-4 pt-4 border-t border-slate-800/90 space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -578,24 +619,35 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                   </p>
                 </div>
               </div>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
-                ✓ 12 N° Classés par Cote
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setIsSurprisesModalOpen(true)}
+                  className="px-2.5 py-1 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-colors shadow-xs"
+                  title="Modifier la sélection des SUR et le tri des délaissés"
+                >
+                  <SlidersHorizontal className="w-3.5 h-3.5" />
+                  <span>Modifier la sélection des SUR</span>
+                </button>
+                <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                  ✓ 12 N° Classés par Cote
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
-              {/* 1. BASE */}
+              {/* 1. FAVORIS */}
               <div className="p-3 rounded-2xl bg-slate-950/90 border border-emerald-500/40 flex flex-col justify-between shadow-md">
                 <div>
                   <div className="flex items-center justify-between text-emerald-400 text-xs font-black uppercase mb-2 pb-1 border-b border-emerald-500/20">
                     <div className="flex items-center gap-1.5">
                       <Award className="w-3.5 h-3.5" />
-                      <span>BASE (2 N°)</span>
+                      <span>FAVORIS (3 N°)</span>
                     </div>
-                    <span className="text-[9px] text-emerald-300/80 font-mono">1er & 2e</span>
+                    <span className="text-[9px] text-emerald-300/80 font-mono">1er, 2e, 3e</span>
                   </div>
                   <div className="space-y-1.5">
-                    {v38.basesSolides.map((p, idx) => (
+                    {v38.favoris.map((p, idx) => (
                       <div key={`hero-base-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="w-6 h-6 rounded-lg bg-emerald-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
@@ -617,18 +669,18 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                 </div>
               </div>
 
-              {/* 2. CHANCES SÉRIEUSES */}
+              {/* 2. OUTSIDERS */}
               <div className="p-3 rounded-2xl bg-slate-950/90 border border-amber-500/40 flex flex-col justify-between shadow-md">
                 <div>
                   <div className="flex items-center justify-between text-amber-400 text-xs font-black uppercase mb-2 pb-1 border-b border-amber-500/20">
                     <div className="flex items-center gap-1.5">
                       <Star className="w-3.5 h-3.5" />
-                      <span>CHANCES SÉRIEUSES (4 N°)</span>
+                      <span>OUTSIDERS (3 N°)</span>
                     </div>
-                    <span className="text-[9px] text-amber-300/80 font-mono">3e à 6e</span>
+                    <span className="text-[9px] text-amber-300/80 font-mono">4e, 5e, 6e</span>
                   </div>
                   <div className="space-y-1.5">
-                    {v38.chancesSerieuses.map((p, idx) => (
+                    {v38.outsiders.map((p, idx) => (
                       <div key={`hero-chance-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
@@ -689,9 +741,17 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                   <div className="flex items-center justify-between text-purple-400 text-xs font-black uppercase mb-2 pb-1 border-b border-purple-500/20">
                     <div className="flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" />
-                      <span>SURPRISES (3 N°)</span>
+                      <span>SURPRISES ({v38.surprises.length} N°)</span>
                     </div>
-                    <span className="text-[9px] text-purple-300/80 font-mono">Par N° croissant</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsSurprisesModalOpen(true)}
+                      className="px-1.5 py-0.5 rounded-md bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Modifier la sélection des SUR"
+                    >
+                      <SlidersHorizontal className="w-2.5 h-2.5" />
+                      <span>Modifier SUR</span>
+                    </button>
                   </div>
                   <div className="space-y-1.5">
                     {v38.surprises.map((p, idx) => (
@@ -719,9 +779,28 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
               {/* 5. LES DÉLAISSÉS */}
               <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-700/60 flex flex-col justify-between shadow-md">
                 <div>
-                  <div className="flex items-center gap-1.5 text-slate-400 text-xs font-black uppercase mb-2 pb-1 border-b border-slate-800">
-                    <ShieldAlert className="w-3.5 h-3.5" />
-                    <span>LES DÉLAISSÉS</span>
+                  <div className="flex items-center justify-between text-slate-400 text-xs font-black uppercase mb-2 pb-1 border-b border-slate-800">
+                    <div className="flex items-center gap-1.5">
+                      <ShieldAlert className="w-3.5 h-3.5" />
+                      <span>LES DÉLAISSÉS</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextSort: DelaissesSortMode = delaissesSortMode === 'desc_number' ? 'asc_number' : delaissesSortMode === 'asc_number' ? 'asc_odds' : 'desc_number';
+                        setDelaissesSortMode(nextSort);
+                        if (typeof window !== 'undefined') {
+                          localStorage.setItem(V38_DELAISSES_SORT_STORAGE_KEY, nextSort);
+                        }
+                      }}
+                      className="px-1.5 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      title="Changer le tri des délaissés (du plus grand numéro au plus petit, etc.)"
+                    >
+                      <ArrowDownUp className="w-2.5 h-2.5 text-slate-400" />
+                      <span>
+                        {delaissesSortMode === 'desc_number' ? '↓ N° (Grand → Petit)' : delaissesSortMode === 'asc_number' ? '↑ N° (Petit → Grand)' : 'Cote'}
+                      </span>
+                    </button>
                   </div>
                   <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
                     {v38.delaisses.length === 0 ? (
@@ -902,6 +981,335 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modale de Modification de la Sélection des SUR & Classement des Délaissés */}
+      {isSurprisesModalOpen && (() => {
+        const modalV38 = computeV38Hierarchy(course, {
+          surprisesMode,
+          sortDelaisses: delaissesSortMode,
+          customSurprisesNums: customSurprisesNums.length > 0 ? customSurprisesNums : undefined,
+        });
+
+        const handleSelectMode = (mode: SurprisesMode) => {
+          setSurprisesMode(mode);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(V38_SURPRISES_MODE_STORAGE_KEY, mode);
+          }
+        };
+
+        const handleSelectSort = (sort: DelaissesSortMode) => {
+          setDelaissesSortMode(sort);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(V38_DELAISSES_SORT_STORAGE_KEY, sort);
+          }
+        };
+
+        const handleToggleCustomNum = (num: number) => {
+          let updated: number[];
+          if (customSurprisesNums.includes(num)) {
+            updated = customSurprisesNums.filter(n => n !== num);
+          } else {
+            updated = [...customSurprisesNums, num].sort((a, b) => a - b);
+          }
+          setCustomSurprisesNums(updated);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(V38_CUSTOM_SURPRISES_STORAGE_KEY, JSON.stringify(updated));
+          }
+        };
+
+        const handleResetDefaults = () => {
+          setSurprisesMode('all_3');
+          setDelaissesSortMode('desc_number');
+          setCustomSurprisesNums([]);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(V38_SURPRISES_MODE_STORAGE_KEY, 'all_3');
+            localStorage.setItem(V38_DELAISSES_SORT_STORAGE_KEY, 'desc_number');
+            localStorage.removeItem(V38_CUSTOM_SURPRISES_STORAGE_KEY);
+          }
+        };
+
+        return (
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5 bg-slate-950/90 backdrop-blur-md animate-fadeIn overflow-y-auto">
+            <div className="bg-slate-900 border-2 border-purple-500/70 rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-xl w-full shadow-2xl space-y-4 my-auto max-h-[95vh] overflow-y-auto">
+              {/* Header */}
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center justify-center font-black">
+                    <SlidersHorizontal className="w-5 h-5 text-purple-400" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-white text-base">
+                      MODIFICATION DE LA SÉLECTION DES SUR
+                    </h3>
+                    <p className="text-xs text-slate-400">
+                      Règles des Surprises & tri des Délaissés (du plus grand au plus petit)
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSurprisesModalOpen(false)}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Mode de sélection des SURPRISES */}
+              <div className="space-y-2">
+                <label className="text-xs font-black uppercase text-purple-300 tracking-wider flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>1. Mode d'attribution des SUR (Surprises)</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {/* Option 1: all_3 (Standard 4 N° avec 2 plus grands n° des délaissés) */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMode('all_3')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      surprisesMode === 'all_3'
+                        ? 'bg-purple-950/60 border-purple-400 shadow-md ring-1 ring-purple-400'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-white text-xs flex items-center gap-1">
+                        <span>⭐ 4 N° Officiels V38</span>
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-500/30 text-purple-300 font-bold border border-purple-500/40">
+                        Formule Standard
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Intègre les 10e et 11e chevaux + les 2 plus grands numéros des délaissés, portant à 4 numéros SURPRISES.
+                    </p>
+                  </button>
+
+                  {/* Option 2: top2_odds */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMode('top2_odds')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      surprisesMode === 'top2_odds'
+                        ? 'bg-purple-950/60 border-purple-400 shadow-md ring-1 ring-purple-400'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-white text-xs flex items-center gap-1">
+                        <span>🎯 2 N° par Meilleure Cote</span>
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/30 text-amber-300 font-bold border border-amber-500/40">
+                        Plus basses cotes
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Retient les 2 chevaux aux plus petites cotes parmi le trio (10e et 11e). Le 3e candidat bascule en Délaissé.
+                    </p>
+                  </button>
+
+                  {/* Option 3: top2_numbers */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMode('top2_numbers')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      surprisesMode === 'top2_numbers'
+                        ? 'bg-purple-950/60 border-purple-400 shadow-md ring-1 ring-purple-400'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-white text-xs flex items-center gap-1">
+                        <span>🔢 2 N° par Petits Numéros</span>
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-bold border border-slate-700">
+                        Historique
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Retient les 2 plus petits numéros de dossard parmi les candidats. Le plus grand numéro bascule en Délaissé.
+                    </p>
+                  </button>
+
+                  {/* Option 4: custom */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectMode('custom')}
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                      surprisesMode === 'custom'
+                        ? 'bg-purple-950/60 border-purple-400 shadow-md ring-1 ring-purple-400'
+                        : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-bold text-white text-xs flex items-center gap-1">
+                        <span>✏️ Choix Personnalisé</span>
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-500/30 text-sky-300 font-bold border border-sky-500/40">
+                        Manuel
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      Sélectionnez librement les numéros de votre choix pour composer vos Surprises sur-mesure.
+                    </p>
+                  </button>
+                </div>
+
+                {/* Si mode personnalisé : liste des partants pour cocher */}
+                {surprisesMode === 'custom' && (
+                  <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                    <span className="text-[11px] text-slate-300 font-bold block">
+                      Cliquez sur les numéros à intégrer dans les SUR :
+                    </span>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(course.partants || []).map(p => {
+                        const num = Number(p.numero);
+                        const isSelected = customSurprisesNums.includes(num);
+                        return (
+                          <button
+                            key={`custom-chip-${num}`}
+                            type="button"
+                            onClick={() => handleToggleCustomNum(num)}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer flex items-center gap-1 ${
+                              isSelected
+                                ? 'bg-purple-500 text-slate-950 ring-2 ring-purple-300 shadow-md font-black'
+                                : 'bg-slate-900 text-slate-400 border border-slate-800 hover:text-white'
+                            }`}
+                          >
+                            <span>N°{num}</span>
+                            <span className="text-[10px] opacity-75">{p.nom.slice(0, 8)}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Tri des DÉLAISSÉS */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                <label className="text-xs font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
+                  <ArrowDownUp className="w-3.5 h-3.5 text-slate-400" />
+                  <span>2. Classement des DÉLAISSÉS (Option demandée)</span>
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSort('desc_number')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      delaissesSortMode === 'desc_number'
+                        ? 'bg-slate-800 border-emerald-500/80 text-white shadow-sm ring-1 ring-emerald-500'
+                        : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center gap-1">
+                      <span>↓ Grand &rarr; Petit N°</span>
+                    </div>
+                    <span className="text-[10px] text-emerald-400 block mt-0.5">
+                      ✓ Par défaut (ex: 14, 7, 2)
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSort('asc_number')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      delaissesSortMode === 'asc_number'
+                        ? 'bg-slate-800 border-sky-500/80 text-white shadow-sm ring-1 ring-sky-500'
+                        : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center gap-1">
+                      <span>↑ Petit &rarr; Grand N°</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      Numéro croissant (ex: 2, 7, 14)
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectSort('asc_odds')}
+                    className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+                      delaissesSortMode === 'asc_odds'
+                        ? 'bg-slate-800 border-amber-500/80 text-white shadow-sm ring-1 ring-amber-500'
+                        : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="font-bold text-xs flex items-center gap-1">
+                      <span>📊 Par Cote croissante</span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      Plus petite cote d'abord
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Aperçu en direct */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2">
+                <span className="text-[11px] font-black uppercase text-slate-400 tracking-wider block">
+                  Aperçu en direct du résultat appliqué :
+                </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  {/* Surprises preview */}
+                  <div className="p-2 rounded-xl bg-purple-950/40 border border-purple-500/30 space-y-1">
+                    <span className="text-[10px] font-black uppercase text-purple-300 block">
+                      SURPRISES ({modalV38.surprises.length} N°)
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {modalV38.surprises.map(p => (
+                        <span key={`prev-surp-${p.numero}`} className="px-1.5 py-0.5 rounded bg-purple-500 text-slate-950 font-black font-mono text-[11px]">
+                          {p.numero} <span className="font-normal text-[9px]">({p.nom.slice(0, 6)})</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Delaisses preview */}
+                  <div className="p-2 rounded-xl bg-slate-900/60 border border-slate-800 space-y-1">
+                    <span className="text-[10px] font-black uppercase text-slate-400 block">
+                      DÉLAISSÉS ({modalV38.delaisses.length} N°)
+                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {modalV38.delaisses.length === 0 ? (
+                        <span className="text-[10px] text-slate-500 italic">Aucun délaissé</span>
+                      ) : (
+                        modalV38.delaisses.map(p => (
+                          <span key={`prev-del-${p.numero}`} className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-200 font-bold font-mono text-[11px] border border-slate-700">
+                            {p.numero} <span className="font-normal text-[9px] text-slate-400">({p.nom.slice(0, 6)})</span>
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Actions Footer */}
+              <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-800 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleResetDefaults}
+                  className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+                >
+                  Rétablir défaut
+                </button>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsSurprisesModalOpen(false)}
+                    className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-black text-xs transition-all shadow-md shadow-purple-600/20 cursor-pointer"
+                  >
+                    Valider & Fermer
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Modale d'Expertise Recherche Hippique (Prompts Certifiés Trot Attelé, Trot Monté, Plat, Obstacles) */}
       <DisciplineExpertAnalysisModal

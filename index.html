@@ -258,17 +258,19 @@
     </script>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // Purge absolue de tous les anciens Service Workers et caches pour forcer l'affichage immédiat du dernier code
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          // Si on est sur un environnement de développement Cloud Run, purger les anciens caches
-          if (window.location.hostname.includes('run.app') || window.location.hostname.includes('localhost')) {
-            navigator.serviceWorker.getRegistrations().then((registrations) => {
-              for (const reg of registrations) {
-                reg.update();
-              }
-            });
+        navigator.serviceWorker.getRegistrations().then(function(registrations) {
+          for (var i = 0; i < registrations.length; i++) {
+            registrations[i].unregister();
           }
-          navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function(keys) {
+          for (var i = 0; i < keys.length; i++) {
+            caches.delete(keys[i]);
+          }
         });
       }
     </script>

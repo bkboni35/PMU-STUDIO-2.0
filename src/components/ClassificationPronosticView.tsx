@@ -64,6 +64,8 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
     selection11,
     basesSolides,
     chancesSerieuses,
+    favoris = basesSolides,
+    outsiders = chancesSerieuses,
     tocardsSpeculatifs,
     surprises,
     delaisses,
@@ -88,29 +90,29 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
 
   // Copier le pronostic complet dans le presse-papiers
   const handleCopyPronostic = () => {
-    const trio5Nums = [...basesSolides, ...chancesSerieuses.slice(0, 3)].map(p => p.numero);
-    const quarteAssociesNums = chancesSerieuses.map(p => p.numero);
-    const quinteAssociesNums = [...chancesSerieuses, tocardsSpeculatifs[0]].filter(Boolean).map(p => p.numero);
+    const trio5Nums = [...favoris, ...outsiders.slice(0, 2)].map(p => p.numero);
+    const quarteAssociesNums = outsiders.map(p => p.numero);
+    const quinteAssociesNums = [...outsiders, tocardsSpeculatifs[0]].filter(Boolean).map(p => p.numero);
 
     const text = [
       `🏁 CLASSIFICATION & PRONOSTIC OFFICIEL V38 (12 CHEVAUX)`,
       `🏇 ${course.titre || course.prixNom || 'Course Hippique'} - ${course.hippodrome || ''} (${course.reunion || 'R1'} ${course.courseNumero || course.course || 'C1'})`,
       `📅 ${course.date || "Aujourd'hui"} à ${course.heure || ''} - ${course.discipline || ''} ${course.distance ? `${course.distance}m` : ''}`,
       ``,
-      `🥇 BASES SOLIDES (2 N°) : ${basesSolides.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
-      `🥈 CHANCES SÉRIEUSES (4 N°) : ${chancesSerieuses.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
-      `🥉 TOCARDS SPÉCULATIFS (3 N°) : ${tocardsSpeculatifs.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
-      `⚡ SURPRISES (3 N° classées par N° croissant) : ${surprises.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
-      `💤 DÉLAISSÉS : ${delaisses.map(p => `N°${p.numero}`).join(', ')}`,
+      `🥇 FAVORIS (3 N°) : ${favoris.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
+      `🥈 OUTSIDERS (3 N°) : ${outsiders.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
+      `🥉 TOCARDS (3 N°) : ${tocardsSpeculatifs.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
+      `⚡ SURPRISES (4 N° classées par N° croissant) : ${surprises.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
+      `💤 DÉLAISSÉS (classés du plus grand N° au plus petit) : ${delaisses.map(p => `N°${p.numero}`).join(', ')}`,
       ``,
       `🎯 SÉLECTION DES 12 N° CLASSÉS PAR COTE :`,
-      activeSelection.map((p, idx) => `${idx + 1}. N°${p.numero} ${p.nom} (Cote: ${p.coteProbable || getHorseGenyOdds(p)}/1) [${idx < 2 ? 'BASE' : idx < 6 ? 'CHANCE' : idx < 9 ? 'TOCARD' : 'SURPRISE'}]`).join('\n'),
+      activeSelection.map((p, idx) => `${idx + 1}. N°${p.numero} ${p.nom} (Cote: ${p.coteProbable || getHorseGenyOdds(p)}/1) [${idx < 3 ? 'FAVORI' : idx < 6 ? 'OUTSIDER' : idx < 9 ? 'TOCARD' : 'SURPRISE'}]`).join('\n'),
       ``,
       `🎟️ PROPOSITIONS DE JEUX PRODUITS PAR ALGORITHME :`,
-      `1. COUPLÉ : Bases N°${basesSolides.map(p => p.numero).join(' - ')} | Champ Réduit Base N°${basesSolides[0]?.numero} + Associés (${chancesSerieuses.slice(0, 3).map(p => `N°${p.numero}`).join(', ')})`,
+      `1. COUPLÉ : Favoris N°${favoris.slice(0, 2).map(p => p.numero).join(' - ')} | Champ Réduit Base N°${favoris[0]?.numero} + Associés (${outsiders.map(p => `N°${p.numero}`).join(', ')})`,
       `2. TRIO (5 N°) : ${trio5Nums.map(n => `N°${n}`).join(' - ')} (Combiné 10 combis = 4 000 FCFA | Champ Réduit = 1 200 FCFA)`,
-      `3. QUARTÉ (CHAMP RÉDUIT) : Bases ${basesSolides.map(p => `N°${p.numero}`).join(' - ')} - X - X / Associés: ${quarteAssociesNums.map(n => `N°${n}`).join(', ')} (6 combinaisons = 1 800 FCFA)`,
-      `4. QUINTÉ+ (CHAMP RÉDUIT) : Bases ${basesSolides.map(p => `N°${p.numero}`).join(' - ')} - X - X - X / Associés: ${quinteAssociesNums.map(n => `N°${n}`).join(', ')} (10 combinaisons = 3 000 FCFA / Flexi 50% = 1 500 FCFA)`,
+      `3. QUARTÉ (CHAMP RÉDUIT) : Bases ${favoris.slice(0, 2).map(p => `N°${p.numero}`).join(' - ')} - X - X / Associés: ${quarteAssociesNums.map(n => `N°${n}`).join(', ')} (6 combinaisons = 1 800 FCFA)`,
+      `4. QUINTÉ+ (CHAMP RÉDUIT) : Bases ${favoris.slice(0, 2).map(p => `N°${p.numero}`).join(' - ')} - X - X - X / Associés: ${quinteAssociesNums.map(n => `N°${n}`).join(', ')} (10 combinaisons = 3 000 FCFA / Flexi 50% = 1 500 FCFA)`,
     ].join('\n');
 
     navigator.clipboard.writeText(text);
@@ -150,7 +152,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
             </h1>
             
             <p className="text-xs sm:text-sm text-slate-300 max-w-4xl leading-relaxed">
-              Méthode universelle de calcul : Répartition en <strong className="text-amber-400">3 Groupes (G1: 1-6, G2: 7-10, G3: 11+)</strong>, sélection des <strong className="text-amber-400">5, 3 et 4 plus petites cotes</strong>, réordonnancement des <strong className="text-emerald-400">12 numéros trouvés par cote croissante</strong> et distribution hiérarchique : <span className="text-amber-300 font-bold">Base (2)</span>, <span className="text-emerald-300 font-bold">Chances Sérieuses (4)</span>, <span className="text-rose-300 font-bold">Tocards (3)</span>, <span className="text-purple-300 font-bold">Surprises (2 petits N° du trio 10e-12e)</span> & <span className="text-slate-400 font-bold">Délaissés</span>.
+              Méthode universelle de calcul : Répartition en <strong className="text-amber-400">3 Groupes (G1: 1-6, G2: 7-10, G3: 11+)</strong>, sélection des <strong className="text-amber-400">5, 3 et 4 plus petites cotes</strong>, réordonnancement des <strong className="text-emerald-400">chevaux par cote croissante</strong> et distribution officielle : <span className="text-emerald-300 font-bold">FAVORIS (3 N°)</span>, <span className="text-amber-300 font-bold">OUTSIDERS (3 N°)</span>, <span className="text-orange-300 font-bold">TOCARDS (3 N°)</span>, <span className="text-purple-300 font-bold">SURPRISES (4 N°)</span> & <span className="text-slate-400 font-bold">DÉLAISSÉS (↓ N°)</span>.
             </p>
           </div>
 
@@ -494,14 +496,14 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
               let badgeColor = 'bg-purple-500 text-white';
               let cardBg = 'bg-slate-900 border-slate-800';
 
-              if (position <= 2) {
-                roleLabel = `${position}ère BASE`;
-                badgeColor = 'bg-amber-400 text-slate-950 font-black';
-                cardBg = 'bg-amber-950/20 border-amber-500/50 shadow-amber-500/10 shadow-lg';
-              } else if (position <= 6) {
-                roleLabel = `CHANCE #${position}`;
+              if (position <= 3) {
+                roleLabel = position === 1 ? '1er FAVORI' : `${position}e FAVORI`;
                 badgeColor = 'bg-emerald-500 text-slate-950 font-black';
-                cardBg = 'bg-emerald-950/20 border-emerald-500/40';
+                cardBg = 'bg-emerald-950/20 border-emerald-500/50 shadow-emerald-500/10 shadow-lg';
+              } else if (position <= 6) {
+                roleLabel = `OUTSIDER #${position}`;
+                badgeColor = 'bg-amber-400 text-slate-950 font-black';
+                cardBg = 'bg-amber-950/20 border-amber-500/40';
               } else if (position <= 9) {
                 roleLabel = `TOCARD #${position}`;
                 badgeColor = 'bg-rose-500 text-white font-black';
@@ -565,57 +567,27 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
                 <span>Étape 3 : Hiérarchie Officielle du Pronostic</span>
               </h2>
               <p className="text-xs text-slate-400">
-                Constitution des catégories officielles : 2 Bases Solides, 4 Chances Sérieuses, 3 Tocards Spéculatifs, 3 Surprises (classées par numéro) et les Délaissés.
+                Constitution des catégories officielles : 3 Favoris (1er au 3e), 3 Outsiders (4e au 6e), 3 Tocards (7e au 9e), 4 Surprises (10e-11e + 2 délaissés) et les Délaissés.
               </p>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* 1. BASES (2 N°) */}
-            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-amber-950/40 via-slate-900 to-slate-950 border-2 border-amber-500 shadow-xl space-y-3">
-              <div className="flex items-center justify-between border-b border-amber-500/30 pb-2.5">
-                <div className="flex items-center gap-2">
-                  <Crown className="w-5 h-5 text-amber-400" />
-                  <h3 className="text-base font-black text-amber-300">1. BASES</h3>
-                </div>
-                <span className="px-2 py-0.5 rounded-lg bg-amber-400 text-slate-950 font-black text-xs">
-                  2 N° (1er & 2e)
-                </span>
-              </div>
-
-              <div className="space-y-2">
-                {basesSolides.map((p, idx) => (
-                  <div key={`base-h-${p.numero}`} className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/40 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-7 h-7 rounded-lg bg-amber-400 text-slate-950 font-mono font-black text-xs flex items-center justify-center">
-                        {p.numero}
-                      </span>
-                      <div>
-                        <div className="font-extrabold text-white text-xs">{p.nom}</div>
-                        <div className="text-[10px] text-slate-400">{p.driver}</div>
-                      </div>
-                    </div>
-                    <span className="text-xs font-mono font-black text-amber-300">{p.coteProbable || getHorseGenyOdds(p)}/1</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 2. CHANCES SÉRIEUSES (4 N°) */}
+            {/* 1. FAVORIS (3 N°) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-emerald-950/40 via-slate-900 to-slate-950 border-2 border-emerald-500 shadow-xl space-y-3">
               <div className="flex items-center justify-between border-b border-emerald-500/30 pb-2.5">
                 <div className="flex items-center gap-2">
-                  <Star className="w-5 h-5 text-emerald-400" />
-                  <h3 className="text-base font-black text-emerald-300">2. CHANCES SÉRIEUSES</h3>
+                  <Crown className="w-5 h-5 text-emerald-400" />
+                  <h3 className="text-base font-black text-emerald-300">1. FAVORIS</h3>
                 </div>
                 <span className="px-2 py-0.5 rounded-lg bg-emerald-500 text-slate-950 font-black text-xs">
-                  4 N° (3e au 6e)
+                  3 N° (1er, 2e, 3e)
                 </span>
               </div>
 
               <div className="space-y-2">
-                {chancesSerieuses.map((p, idx) => (
-                  <div key={`chance-h-${p.numero}`} className="p-2.5 rounded-xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between">
+                {favoris.map((p, idx) => (
+                  <div key={`favori-h-${p.numero}`} className="p-2.5 rounded-xl bg-slate-950 border border-emerald-500/40 flex items-center justify-between">
                     <div className="flex items-center gap-2.5">
                       <span className="w-7 h-7 rounded-lg bg-emerald-500 text-slate-950 font-mono font-black text-xs flex items-center justify-center">
                         {p.numero}
@@ -626,6 +598,36 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
                       </div>
                     </div>
                     <span className="text-xs font-mono font-black text-emerald-300">{p.coteProbable || getHorseGenyOdds(p)}/1</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 2. OUTSIDERS (3 N°) */}
+            <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-amber-950/40 via-slate-900 to-slate-950 border-2 border-amber-500 shadow-xl space-y-3">
+              <div className="flex items-center justify-between border-b border-amber-500/30 pb-2.5">
+                <div className="flex items-center gap-2">
+                  <Star className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-base font-black text-amber-300">2. OUTSIDERS</h3>
+                </div>
+                <span className="px-2 py-0.5 rounded-lg bg-amber-400 text-slate-950 font-black text-xs">
+                  3 N° (4e, 5e, 6e)
+                </span>
+              </div>
+
+              <div className="space-y-2">
+                {outsiders.map((p, idx) => (
+                  <div key={`outsider-h-${p.numero}`} className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/40 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-7 h-7 rounded-lg bg-amber-400 text-slate-950 font-mono font-black text-xs flex items-center justify-center">
+                        {p.numero}
+                      </span>
+                      <div>
+                        <div className="font-extrabold text-white text-xs">{p.nom}</div>
+                        <div className="text-[10px] text-slate-400">{p.driver}</div>
+                      </div>
+                    </div>
+                    <span className="text-xs font-mono font-black text-amber-300">{p.coteProbable || getHorseGenyOdds(p)}/1</span>
                   </div>
                 ))}
               </div>
@@ -669,7 +671,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
                   <h3 className="text-base font-black text-purple-300">4. SURPRISES</h3>
                 </div>
                 <span className="px-2 py-0.5 rounded-lg bg-purple-500 text-white font-black text-xs">
-                  Petits N° des 10e-12e
+                  {surprises.length} N° du vivier V38
                 </span>
               </div>
 
@@ -699,7 +701,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
                 💤 DÉLAISSÉS ({delaisses.length})
               </span>
               <span className="text-xs text-slate-400">
-                Tous les autres numéros non retenus dans les 12, classés en fonction de leur cote :
+                Tous les autres numéros non retenus, classés du plus grand numéro au plus petit (↓ N°) :
               </span>
             </div>
 

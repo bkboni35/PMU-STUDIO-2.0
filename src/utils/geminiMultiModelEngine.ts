@@ -1,6 +1,7 @@
 import { CourseHippique, Partant, GeminiExpertTask, HorseGeminiMultiEvaluation, ArchitectureMultiAiEngine, ExpertDisciplineAnalysis, ExpertHorseRow } from '../types/turf';
 import { parseHorseCordeNumber } from './cordeExtractor';
 import { getDisciplineCategory, getExpertPromptForCourse, buildExpertDisciplineAnalysis } from './expertDisciplinePrompts';
+import { computeV38Hierarchy } from './v38Helper';
 
 /**
  * Définit les tâches attribuées à chacun des modèles Gemini pour l'analyse hippique
@@ -547,8 +548,10 @@ export function sanitizePronostics(course: CourseHippique): CourseHippique {
     }
   });
 
-  return {
+  // Calcul officiel des DÉLAISSÉS selon la hiérarchie V38
+  const v38Hierarchy = computeV38Hierarchy({
     ...course,
+    partants,
     synthese: {
       ...synthese,
       baseIncontournable: base1,
@@ -556,6 +559,25 @@ export function sanitizePronostics(course: CourseHippique): CourseHippique {
       selection8,
       outsiders,
       tocards,
+    }
+  }, { sortDelaisses: 'desc_number' });
+
+  // Tri décroissant strict (du plus grand numéro au plus petit)
+  const delaissesDecroissants = (v38Hierarchy.delaisses || [])
+    .map(p => Number(p.numero))
+    .sort((a, b) => b - a);
+
+  return {
+    ...course,
+    delaisses: delaissesDecroissants,
+    synthese: {
+      ...synthese,
+      baseIncontournable: base1,
+      secondeBase: base2,
+      selection8,
+      outsiders,
+      tocards,
+      delaisses: delaissesDecroissants,
       ordreProbable: ordres.ordreProbable,
       ordrePossible: ordres.ordrePossible,
       ordreProbableExplication: ordres.ordreProbableExplication,
@@ -1305,6 +1327,11 @@ export function injectAndNormalizeExpertDisciplineAnalysis(
         chancesRegulieres: Array.isArray(rawAnalysisJson.groups?.chancesRegulieres) ? rawAnalysisJson.groups.chancesRegulieres : baseAnalysis.groups.chancesRegulieres,
         outsiders: Array.isArray(rawAnalysisJson.groups?.outsiders) ? rawAnalysisJson.groups.outsiders : baseAnalysis.groups.outsiders,
         grosOutsidersOrRisks: Array.isArray(rawAnalysisJson.groups?.grosOutsidersOrRisks) ? rawAnalysisJson.groups.grosOutsidersOrRisks : baseAnalysis.groups.grosOutsidersOrRisks,
+        bases: baseAnalysis.groups.bases,
+        chances: baseAnalysis.groups.chances,
+        tocards: baseAnalysis.groups.tocards,
+        surprises: baseAnalysis.groups.surprises,
+        delaisses: (baseAnalysis.groups.delaisses || []).slice().sort((a, b) => b - a), // Ordre décroissant garanti : du plus grand numéro au plus petit
       },
       synthesisTable: normalizedTable,
       top5: Array.isArray(rawAnalysisJson.top5) && rawAnalysisJson.top5.length > 0 ? rawAnalysisJson.top5 : baseAnalysis.top5,
@@ -1523,15 +1550,35 @@ export function enrichRaceWithGeminiCollege(course?: CourseHippique, sourceUrl?:
   };
 
   const sanitizedCourse = sanitizePronostics(courseWithPartants);
-  const pipeline5Stages = build5StagePipelineMetadata(sanitizedCourse);
-  const architectureMultiAi = buildArchitectureMultiAi(sanitizedCourse);
-  const expertDisciplineAnalysis = injectAndNormalizeExpertDisciplineAnalysis(sanitizedCourse);
+
+  // Détermination certifiée des Délaissés selon la hiérarchie V38 (tri décroissant : du plus grand numéro au plus petit)
+  const v38Hierarchy = computeV38Hierarchy(sanitizedCourse, { sortDelaisses: 'desc_number' });
+  const delaissesDecroissants = (v38Hierarchy.delaisses || [])
+    .map(p => Number(p.numero))
+    .sort((a, b) => b - a);
+
+  const courseWithDelaisses: CourseHippique = {
+    ...sanitizedCourse,
+    delaisses: delaissesDecroissants,
+    synthese: {
+      ...sanitizedCourse.synthese,
+      delaisses: delaissesDecroissants,
+    },
+  };
+
+  const pipeline5Stages = build5StagePipelineMetadata(courseWithDelaisses);
+  const architectureMultiAi = buildArchitectureMultiAi(courseWithDelaisses);
+  const expertDisciplineAnalysis = injectAndNormalizeExpertDisciplineAnalysis(courseWithDelaisses);
+
+  if (expertDisciplineAnalysis && expertDisciplineAnalysis.groups) {
+    expertDisciplineAnalysis.groups.delaisses = [...delaissesDecroissants];
+  }
 
   const enriched: CourseHippique = {
-    ...sanitizedCourse,
+    ...courseWithDelaisses,
     collegeGemini: college,
     partants: partantsEnrichis,
-    certificatVerification: c.certificatVerification || buildFactCheckingCertificate(sanitizedCourse, sourceUrl),
+    certificatVerification: c.certificatVerification || buildFactCheckingCertificate(courseWithDelaisses, sourceUrl),
     pipeline5Stages,
     architectureMultiAi,
     expertDisciplineAnalysis,

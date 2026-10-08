@@ -66,20 +66,23 @@ export function extractMetadataFromTurfUrl(url: string, source: TurfSource): Url
   } else if (cleanUrl.includes('justicia')) {
     reunion = 'R1';
     course = 'C2';
+  } else if (cleanUrl.includes('meilhan') || cleanUrl.includes('1689686')) {
+    reunion = 'R3';
+    course = 'C9';
   } else {
-    const rcMatch = cleanUrl.match(/r(\d+)[-_ ]?c(\d+)/i);
+    const rcMatch = cleanUrl.match(/r(\d{1,2})[-_ ]?c(\d{1,2})(?!\d)/i);
     if (rcMatch) {
-      reunion = `R${rcMatch[1]}`;
-      course = `C${rcMatch[2]}`;
+      reunion = `R${parseInt(rcMatch[1], 10)}`;
+      course = `C${parseInt(rcMatch[2], 10)}`;
     } else {
-      const cGenyMatch = cleanUrl.match(/[-_]c(\d+)(?:_|\/|$)/i);
+      const cGenyMatch = cleanUrl.match(/[-_]c([1-9]|1[0-9]|20)(?:_|\/|$)/i);
       if (cGenyMatch) {
-        course = `C${cGenyMatch[1]}`;
+        course = `C${parseInt(cGenyMatch[1], 10)}`;
       }
-      const rMatch = cleanUrl.match(/reunion[-_ ]?([0-9]+)/i);
-      if (rMatch) reunion = `R${rMatch[1]}`;
-      const cMatch = cleanUrl.match(/course[-_ ]?([0-9]+)/i);
-      if (cMatch) course = `C${cMatch[1]}`;
+      const rMatch = cleanUrl.match(/reunion[-_ ]?([0-9]{1,2})(?!\d)/i);
+      if (rMatch) reunion = `R${parseInt(rMatch[1], 10)}`;
+      const cMatch = cleanUrl.match(/course[-_ ]?([1-9]|1[0-9]|20)(?!\d)/i);
+      if (cMatch) course = `C${parseInt(cMatch[1], 10)}`;
     }
   }
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useMemo } from 'react';
-import { Sparkles, Trophy, ShieldCheck, Flame, AlertOctagon, HelpCircle, Check, ArrowRight, FileDown, FileSpreadsheet, Printer, CheckCircle2, Calendar, Brain, Star, Crown, Copy, FileText, Compass, Mail, Loader2, TrendingDown, TrendingUp } from 'lucide-react';
+import { Sparkles, Trophy, ShieldCheck, Flame, AlertOctagon, HelpCircle, Check, ArrowRight, FileDown, FileSpreadsheet, Printer, CheckCircle2, Calendar, Brain, Star, Crown, Copy, FileText, Compass, Mail, Loader2, TrendingDown, TrendingUp, Filter, ArrowDownUp, ShieldAlert } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { exportCourseToExcel } from '../utils/excelExport';
@@ -13,6 +13,7 @@ import { EcartsFormeAnalysisCard } from './EcartsFormeAnalysisCard';
 import { ClassificationPronosticView } from './ClassificationPronosticView';
 import { sendRaceAnalysisEmail } from '../utils/gmailService';
 import { getStoredUserSession } from '../utils/userAuthStorage';
+import { computeV38Hierarchy } from '../utils/v38Helper';
 
 interface SyntheseHippoAnalyseProps {
   course: CourseHippique;
@@ -192,6 +193,43 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
 
   const [copiedHierarchy, setCopiedHierarchy] = useState(false);
 
+  // Hiérarchie officielle V38
+  const v38Hierarchy = useMemo(() => {
+    return computeV38Hierarchy(course);
+  }, [course]);
+
+  const favorisNums = useMemo(() => new Set(v38Hierarchy.favoris.map(p => Number(p.numero))), [v38Hierarchy]);
+  const outsidersNums = useMemo(() => new Set(v38Hierarchy.outsiders.map(p => Number(p.numero))), [v38Hierarchy]);
+  const tocardsNums = useMemo(() => new Set(v38Hierarchy.tocardsSpeculatifs.map(p => Number(p.numero))), [v38Hierarchy]);
+  const surprisesNums = useMemo(() => new Set(v38Hierarchy.surprises.map(p => Number(p.numero))), [v38Hierarchy]);
+
+  // Toggle Synthèse : filtrer et afficher uniquement les chevaux 'Délaissés'
+  // (numéros non présents dans Favoris, Outsiders, Tocards ou Surprises)
+  // Assure formellement l'ordre décroissant (du plus grand numéro au plus petit) avant l'affichage
+  const [filterOnlyDelaisses, setFilterOnlyDelaisses] = useState<boolean>(false);
+
+  const delaissesOrdreDecroissant = useMemo(() => {
+    const rawList = (v38Hierarchy.delaisses && v38Hierarchy.delaisses.length > 0)
+      ? [...v38Hierarchy.delaisses]
+      : [...partants]
+          .filter(p => !p.estNonPartant && p.statut !== 'Non-partant')
+          .filter(p => {
+            const n = Number(p.numero);
+            return !favorisNums.has(n) && !outsidersNums.has(n) && !tocardsNums.has(n) && !surprisesNums.has(n);
+          });
+
+    return rawList
+      .map(p => ({
+        ...p,
+        hippoScore: typeof p.hippoScore === 'number' && p.hippoScore > 0 ? p.hippoScore : computePartantHippoScore(p, course),
+      }))
+      // Tri explicite et strict par ordre décroissant de numéro (du plus grand au plus petit)
+      .sort((a, b) => Number(b.numero) - Number(a.numero));
+  }, [v38Hierarchy, partants, course, favorisNums, outsidersNums, tocardsNums, surprisesNums]);
+
+  // Alias pour assurer la rétrocompatibilité complète dans le composant
+  const delaissesParCote = delaissesOrdreDecroissant;
+
   const v38Horses = selection9Order.map((num, idx) => {
     const p = findPartant(num);
     const position = idx + 1;
@@ -293,6 +331,145 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         ))}
       </div>
 
+      {/* Barre Toggle : Filtre Délaissés Uniquement (par Côte croissante) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border border-slate-800 shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className={`p-2.5 rounded-xl transition-all ${filterOnlyDelaisses ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40' : 'bg-slate-900 text-slate-400 border border-slate-800'}`}>
+            <Filter className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs sm:text-sm font-black text-white">
+                Filtre Délaissés
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                Numéros non retenus dans Favoris, Outsiders, Tocards ou Surprises
+              </span>
+              {filterOnlyDelaisses && (
+                <span className="text-[10px] px-2.5 py-0.5 rounded-full font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 animate-pulse">
+                  ✓ {delaissesOrdreDecroissant.length} délaissé(s) actif(s) · triés par numéro décroissant (↓ N°)
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Isole les chevaux écartés de la sélection officielle (Favoris 3 N°, Outsiders 3 N°, Tocards 3 N°, Surprises 4 N°), ordonnés par numéro décroissant (du plus grand au plus petit).
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setFilterOnlyDelaisses(!filterOnlyDelaisses)}
+          className={`px-4 py-2 rounded-xl font-black text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md shrink-0 ${
+            filterOnlyDelaisses
+              ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 ring-2 ring-amber-300 shadow-amber-500/30'
+              : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
+          }`}
+          title="Activer/Désactiver le filtre des Délaissés (du plus grand numéro au plus petit)"
+        >
+          {filterOnlyDelaisses ? (
+            <>
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>Délaissés Uniquement (Actif)</span>
+            </>
+          ) : (
+            <>
+              <span className="w-2.5 h-2.5 rounded-full bg-slate-500" />
+              <span>Afficher uniquement les Délaissés ({delaissesOrdreDecroissant.length})</span>
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Module interactif Délaissés affiché quand le filtre est actif */}
+      {filterOnlyDelaisses && (
+        <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-500/60 rounded-3xl p-5 shadow-2xl relative overflow-hidden space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-amber-500/20 flex-wrap gap-2">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                <ShieldAlert className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+                  <span>CHEVAUX DÉLAISSÉS RETENUS ({delaissesOrdreDecroissant.length})</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">
+                    Tri Décroissant ↓ (Grand → Petit N°)
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Numéros exclus des Favoris ({Array.from(favorisNums).join(', ') || '—'}), Outsiders ({Array.from(outsidersNums).join(', ') || '—'}), Tocards ({Array.from(tocardsNums).join(', ') || '—'}) et Surprises ({Array.from(surprisesNums).join(', ') || '—'}), ordonnés du plus grand numéro au plus petit.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setFilterOnlyDelaisses(false)}
+              className="text-xs font-bold text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 transition-colors cursor-pointer"
+            >
+              Désactiver le filtre
+            </button>
+          </div>
+
+          {delaissesOrdreDecroissant.length === 0 ? (
+            <div className="py-6 text-center text-xs text-slate-500 italic">
+              Aucun cheval délaissé détecté pour cette épreuve.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              {delaissesOrdreDecroissant.map((p, idx) => {
+                const isSelected = selectedHorseNumbers.includes(Number(p.numero));
+                return (
+                  <div
+                    key={`delaisse-grid-item-${p.numero}-${idx}`}
+                    className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between gap-2.5 ${
+                      isSelected
+                        ? 'bg-slate-900/95 border-amber-500/80 shadow-md ring-1 ring-amber-500'
+                        : 'bg-slate-950/80 border-slate-800 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                        #{idx + 1} Délaissé (N° {p.numero})
+                      </span>
+                      <span className="text-xs font-mono font-black text-amber-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                        {p.coteProbable !== undefined ? `${p.coteProbable}/1` : '—'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2.5">
+                      <span className="w-8 h-8 rounded-xl bg-slate-800 text-white font-mono font-black text-sm flex items-center justify-center shrink-0 border border-slate-700">
+                        {p.numero}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-black text-white text-xs truncate">{p.nom}</div>
+                        <div className="text-[10px] text-slate-400 truncate">{p.driver || '—'}</div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-800/80">
+                      <span className="truncate max-w-[120px] font-mono">{p.musique || '—'}</span>
+                      <span className="font-bold text-slate-300">{p.hippoScore} pts</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onSelectHorseForTicket(Number(p.numero))}
+                      className={`w-full py-1.5 px-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1 cursor-pointer ${
+                        isSelected
+                          ? 'bg-amber-500 text-slate-950 font-black'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                      }`}
+                    >
+                      {isSelected ? '✓ Retenu' : '+ Ajouter au ticket'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
 
       {/* SECTION CLASSIFICATION & PRONOSTIC V38 */}
@@ -312,11 +489,37 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         <div className="space-y-10">
           <div className="bg-slate-900 rounded-3xl border border-slate-800 p-4 sm:p-6 shadow-xl overflow-hidden">
             <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <Trophy className="w-5 h-5 text-amber-400" />
                 <h3 className="text-lg font-black text-white">Classement des Chevaux par Côte</h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">Format Paysage Étendu</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
+                  Format Paysage Étendu
+                </span>
+                {filterOnlyDelaisses && (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase animate-pulse">
+                    ✓ {delaissesParCote.length} Délaissés filtrés (Triés par côte croissante)
+                  </span>
+                )}
               </div>
+
+              {/* Bouton Toggle dédié au tableau de classement par côte */}
+              <button
+                type="button"
+                onClick={() => setFilterOnlyDelaisses(!filterOnlyDelaisses)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
+                  filterOnlyDelaisses
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-amber-500/20 ring-2 ring-amber-300'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700'
+                }`}
+                title="Filtrer et afficher uniquement les chevaux Délaissés par côte croissante"
+              >
+                <Filter className="w-3.5 h-3.5" />
+                <span>
+                  {filterOnlyDelaisses
+                    ? `Afficher tous les partants (${partants.length})`
+                    : `Uniquement Délaissés (${delaissesParCote.length})`}
+                </span>
+              </button>
             </div>
             
             {partants && partants.length > 0 ? (
@@ -324,7 +527,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                 <table className="w-full text-left border-collapse border border-slate-700/80">
                   <thead>
                     <tr className="border-b-2 border-slate-700 bg-slate-950 text-[11px] font-black uppercase tracking-wider text-slate-200">
-                      <th className="py-5 px-4 w-16 border-r border-slate-700">Rang</th>
+                      <th className="py-5 px-4 w-24 border-r border-slate-700">Rang</th>
                       <th className="py-5 px-4 min-w-[150px] border-r border-slate-700">N° / Nom</th>
                       <th className="py-5 px-4 min-w-[100px] border-r border-slate-700">Musique (5)</th>
                       <th className="py-5 px-4 min-w-[120px] border-r border-slate-700">Jockey / Driver</th>
@@ -334,7 +537,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
-                    {[...partants]
+                    {(filterOnlyDelaisses ? delaissesParCote : [...partants]
                       .map((p) => ({
                         ...p,
                         hippoScore: computePartantHippoScore(p, course),
@@ -345,14 +548,17 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                         if (cA !== cB) return cA - cB;
                         return (b.hippoScore ?? 0) - (a.hippoScore ?? 0);
                       })
-                      .map((p, idx) => {
+                    ).map((p, idx) => {
                         const rank = idx + 1;
                         let bgColor = 'bg-slate-900/40';
                         let badgeColor = 'bg-slate-950';
                         let textColor = 'text-white';
                         
-                        // Mise en forme conditionnelle : 2 premiers numéros en vert, 6e au 9e en orange
-                        if (rank <= 2) {
+                        if (filterOnlyDelaisses) {
+                          bgColor = 'bg-slate-950/80 hover:bg-slate-900/90';
+                          badgeColor = 'bg-slate-800 text-slate-100 border border-slate-700 shadow-sm';
+                          textColor = 'text-slate-200';
+                        } else if (rank <= 2) {
                           bgColor = 'bg-emerald-500/25 border-emerald-500/50';
                           badgeColor = 'bg-emerald-500 text-slate-950 font-black shadow-lg shadow-emerald-500/30';
                           textColor = 'text-emerald-300 font-semibold';
@@ -371,8 +577,16 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                         }
 
                         return (
-                          <tr key={`rank-row-${p.numero}-${idx}`} className={`transition-all hover:bg-slate-800/80 ${bgColor} ${textColor} border-l-4 ${rank <= 2 ? 'border-emerald-500' : rank >= 6 && rank <= 9 ? 'border-orange-500' : 'border-red-500/50'}`}>
-                            <td className="py-4 px-4 text-sm opacity-80 border-r border-slate-700/60 font-bold">#{rank}</td>
+                          <tr key={`rank-row-${p.numero}-${idx}`} className={`transition-all hover:bg-slate-800/80 ${bgColor} ${textColor} border-l-4 ${filterOnlyDelaisses ? 'border-amber-500' : rank <= 2 ? 'border-emerald-500' : rank >= 6 && rank <= 9 ? 'border-orange-500' : 'border-red-500/50'}`}>
+                            <td className="py-4 px-4 text-xs opacity-80 border-r border-slate-700/60 font-bold whitespace-nowrap">
+                              {filterOnlyDelaisses ? (
+                                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono text-[10px]">
+                                  #{rank} DÉL.
+                                </span>
+                              ) : (
+                                `#{rank}`
+                              )}
+                            </td>
                             <td className="py-4 px-4 border-r border-slate-700/60">
                               <div className="flex items-center gap-3">
                                 <span className={`w-9 h-9 rounded-xl font-black flex items-center justify-center text-sm shadow-xl ${badgeColor}`}>

@@ -440,14 +440,14 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
     }
   };
 
-  // Hiérarchie Quinté+ V38 garantie (12 Chevaux pour toutes disciplines) :
+  // Hiérarchie Quinté+ V38 garantie :
   // G1: 5 N° (sur les 6), G2: 3 N° (sur les 4), G3: 4 N° (sur 11+)
-  // 12 N° trouvés classés par cote croissante :
-  // BASE : 1er et 2e (2 N°)
-  // CHANCES SÉRIEUSES : 3e, 4e, 5e, 6e (4 N°)
-  // TOCARDS : 7e, 8e, 9e, 10e (4 N°)
-  // SURPRISES : 11e, 12e (2 N°)
-  // DÉLAISSÉS : tous les autres non retenus classés par cote croissante
+  // Numéros trouvés classés par cote croissante :
+  // FAVORIS : 1er, 2e, 3e (3 N°)
+  // OUTSIDERS : 4e, 5e, 6e (3 N°)
+  // TOCARDS : 7e, 8e, 9e (3 N°)
+  // SURPRISES : 10e, 11e + 2 plus grands numéros des délaissés (4 N°)
+  // DÉLAISSÉS : classés du plus grand numéro au plus petit (↓ N°)
   const v38Result = useMemo(() => {
     const targetCourse: CourseHippique = course ? {
       ...course,
@@ -472,8 +472,8 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
     if (baseNums.has(num)) {
       const idx = v38Result.basesSolides.findIndex(h => Number(h.numero) === num);
       return { 
-        label: idx === 0 ? '1ère BASE' : '2e BASE', 
-        category: 'BASE',
+        label: idx === 0 ? '1er FAVORIS' : idx === 1 ? '2e FAVORIS' : '3e FAVORIS', 
+        category: 'FAVORIS',
         rank: idx + 1,
         style: 'bg-amber-400 text-slate-950 font-black ring-1 ring-amber-300 shadow-xs' 
       };
@@ -481,9 +481,9 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
     if (chancesNums.has(num)) {
       const idx = v38Result.chancesSerieuses.findIndex(h => Number(h.numero) === num);
       return { 
-        label: `CHANCE #${idx + 3}`, 
-        category: 'CHANCE SÉRIEUSE',
-        rank: idx + 3,
+        label: `OUTSIDER #${idx + 4}`, 
+        category: 'OUTSIDER',
+        rank: idx + 4,
         style: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 font-black' 
       };
     }
@@ -834,9 +834,9 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                     ? 'bg-amber-400 text-slate-950 font-black shadow-xs'
                     : 'text-amber-300 hover:text-amber-100'
                 }`}
-                title="BASE : Les 2 premiers numéros parmi les 12 par cotes croissantes"
+                title="FAVORIS : 1er, 2e et 3e numéros par cotes croissantes (3 chevaux)"
               >
-                <span>🥇 BASE</span>
+                <span>🥇 FAVORIS</span>
                 <span className="font-mono text-[10px]">({baseNums.size})</span>
               </button>
 
@@ -848,9 +848,9 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                     ? 'bg-emerald-500 text-slate-950 font-black shadow-xs'
                     : 'text-emerald-300 hover:text-emerald-100'
                 }`}
-                title="CHANCES SÉRIEUSES : Les 3e, 4e, 5e et 6e numéros par cotes croissantes (4 chevaux)"
+                title="OUTSIDERS : 4e, 5e et 6e numéros par cotes croissantes (3 chevaux)"
               >
-                <span>🥈 CHANCES</span>
+                <span>🥈 OUTSIDERS</span>
                 <span className="font-mono text-[10px]">({chancesNums.size})</span>
               </button>
 
@@ -862,7 +862,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                     ? 'bg-rose-500 text-white font-black shadow-xs'
                     : 'text-rose-300 hover:text-rose-100'
                 }`}
-                title="TOCARDS : Les 7e, 8e et 9e numéros par cotes croissantes (3 chevaux)"
+                title="TOCARDS : 7e, 8e et 9e numéros par cotes croissantes (3 chevaux)"
               >
                 <span>🥉 TOCARDS</span>
                 <span className="font-mono text-[10px]">({tocardsNums.size})</span>
@@ -876,7 +876,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                     ? 'bg-purple-500 text-white font-black shadow-xs'
                     : 'text-purple-300 hover:text-purple-100'
                 }`}
-                title="SURPRISES : Les plus petits numéros parmi le trio 10e-12e (classés par numéro croissant)"
+                title="SURPRISES : 10e, 11e + 2 plus grands numéros des délaissés (4 chevaux)"
               >
                 <span>🔮 SURPRISES</span>
                 <span className="font-mono text-[10px]">({surprisesNums.size})</span>
@@ -891,7 +891,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                       ? 'bg-slate-700 text-white font-black shadow-xs'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
-                  title="DÉLAISSÉS : Tous autres numéros non retenus dans les 12 (classés par cote croissante)"
+                  title="DÉLAISSÉS : Classés du plus grand numéro au plus petit (↓ N°)"
                 >
                   <span>⚪ DÉLAISSÉS</span>
                   <span className="font-mono text-[10px]">({delaissesNums.size})</span>

@@ -1925,19 +1925,43 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                   ))}
                 </select>
 
-                {/* Sélecteur de date natif HTML5 */}
-                <div className="flex items-center gap-1.5 bg-slate-950 border border-slate-700 hover:border-amber-400 px-3 py-2 rounded-xl shadow-inner">
-                  <CalendarIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  <input
-                    type="date"
-                    aria-label="Choisir un jour précis"
-                    value={(selectedDate === 'all' || selectedDate === 'last7' || selectedDate === 'upcoming7' || selectedDate === 'today') ? '' : normalizeDateForQuery(selectedDate)}
-                    onChange={(e) => {
-                      if (e.target.value) handleDateSelect(e.target.value);
-                    }}
-                    className="bg-transparent text-amber-300 font-mono font-black text-xs focus:outline-none cursor-pointer w-[120px]"
-                    title="Choisir un jour spécifique dans le calendrier"
-                  />
+                {/* Navigation jour par jour & Sélecteur de date natif HTML5 */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => handleShiftIsoDate(-1)}
+                    disabled={isLoading}
+                    className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-black transition-all active:scale-95 disabled:opacity-50"
+                    title="Afficher les réunions hippiques du jour précédent"
+                  >
+                    <ChevronLeft className="w-4 h-4 text-amber-400" />
+                    <span className="hidden sm:inline">Préc.</span>
+                  </button>
+
+                  <div className="flex items-center gap-1.5 bg-slate-950 border-2 border-amber-500/60 hover:border-amber-400 px-3 py-2 rounded-xl shadow-inner">
+                    <CalendarIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                    <input
+                      type="date"
+                      aria-label="Choisir un jour précis"
+                      value={(selectedDate === 'all' || selectedDate === 'last7' || selectedDate === 'upcoming7' || selectedDate === 'today') ? '' : normalizeDateForQuery(selectedDate)}
+                      onChange={(e) => {
+                        if (e.target.value) handleDateSelect(e.target.value);
+                      }}
+                      className="bg-transparent text-amber-300 font-mono font-black text-xs focus:outline-none cursor-pointer w-[120px]"
+                      title="Sélecteur de date : Choisissez un jour spécifique pour filtrer les réunions"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleShiftIsoDate(1)}
+                    disabled={isLoading}
+                    className="flex items-center gap-1 px-2.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-800 text-amber-300 hover:text-white border border-amber-500/40 text-xs font-black transition-all active:scale-95 disabled:opacity-50"
+                    title="Afficher les réunions hippiques du jour suivant"
+                  >
+                    <span className="hidden sm:inline">Suiv.</span>
+                    <ChevronRight className="w-4 h-4 text-amber-400" />
+                  </button>
                 </div>
 
                 {selectedDate !== 'all' && (

@@ -472,7 +472,7 @@ tr:hover td {
     font-size: 11px !important;
   }
 
-  header, nav, .no-print, button:not(.allow-print) {
+  header, nav, aside, .no-print, button:not(.allow-print), [role="navigation"] {
     display: none !important;
   }
 
@@ -509,20 +509,38 @@ tr:hover td {
     font-weight: 900 !important;
   }
 
-  /* Force clean white background and dark text for print */
-  .bg-slate-950,
-  .bg-slate-900,
-  .bg-slate-800 {
-    background-color: #ffffff !important;
-    color: #0f172a !important;
-    border-color: #cbd5e1 !important;
+  /* Préservation stricte du design officiel de la fiche V38 (PRONOS - PMU - STUDIO 2.0) */
+  #fiche-v38-page-1,
+  #fiche-v38-page-2 {
+    page-break-after: always;
+    break-after: page;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 auto !important;
+    box-shadow: none !important;
+    border: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
   }
 
-  .text-white,
-  .text-slate-100,
-  .text-slate-200,
-  .text-slate-300 {
-    color: #0f172a !important;
+  #fiche-v38-page-1 *,
+  #fiche-v38-page-2 * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  #fiche-v38-page-1 .text-white,
+  #fiche-v38-page-2 .text-white {
+    color: #ffffff !important;
+  }
+
+  #fiche-v38-page-1 .text-amber-400,
+  #fiche-v38-page-2 .text-amber-400,
+  #fiche-v38-page-1 .text-amber-300,
+  #fiche-v38-page-2 .text-amber-300 {
+    color: #fbbf24 !important;
   }
 
   .print-selection-number {

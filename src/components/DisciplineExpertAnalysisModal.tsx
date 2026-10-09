@@ -5,6 +5,7 @@ import { buildExpertDisciplineAnalysis } from '../utils/expertDisciplinePrompts'
 import { exportCourseToExcel } from '../utils/excelExport';
 import { calculerModelePlatPondere, exportPlatModelToExcel } from '../utils/platQuantitativeModel';
 import { computeV38Hierarchy } from '../utils/v38Helper';
+import { DisciplineGridTable } from './DisciplineGridTable';
 
 interface DisciplineExpertAnalysisModalProps {
   isOpen: boolean;
@@ -734,6 +735,11 @@ export const DisciplineExpertAnalysisModal: React.FC<DisciplineExpertAnalysisMod
                       </div>
                     </div>
                   </div>
+                </div>
+
+                {/* Grille V38 Discipline Officielle */}
+                <div className="mt-4 pt-2">
+                  <DisciplineGridTable course={course} variant="dark" />
                 </div>
               </div>
             </div>

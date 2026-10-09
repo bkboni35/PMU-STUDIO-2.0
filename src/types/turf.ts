@@ -324,6 +324,7 @@ export interface CourseHippique {
   arrivalAuditModificationDetected?: boolean;
   arrivalAuditPreviousArrival?: string;
   expertDisciplineAnalysis?: ExpertDisciplineAnalysis;
+  cotesScellees?: boolean; // Verrouille définitivement les cotes des chevaux après analyse (aucune variation ultérieure)
   delaisses?: number[]; // Numéros des chevaux délaissés classés par ordre décroissant (du plus grand au plus petit)
 }
 

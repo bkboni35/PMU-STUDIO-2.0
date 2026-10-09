@@ -385,49 +385,55 @@ export function extractGenyRscData(rawHtml: string, targetUrl: string): Extracte
   }
 
   // Recherche de l'arrivée officielle éventuelle depuis les rangs réels des participants
-  // RÈGLE DE SÉCURITÉ : Ne pas extraire ou inventer d'arrivée si la course n'est pas disputée ou si aucun mot-clé d'arrivée n'est présent
-  const hasArrivalKeywords = 
-    /arriv[eé]e\s*(?:d[eé]finitive|officielle|provisoire|Arrivee)/i.test(rawHtml) || 
-    /"statut"\s*:\s*"(?:ARRIVEE_DEFINITIVE|PROVISOIRE|ARRIVEE|TERMINER)"/i.test(fullPayload) ||
-    /rapports\s*&\s*arriv[eé]e/i.test(rawHtml) ||
-    /arriveeDefinitive/i.test(fullPayload);
+  // RÈGLE DE SÉCURITÉ ABSOLUE : Ne jamais extraire ni inventer d'arrivée si la course n'est pas encore disputée !
+  // Si l'URL est de type /partants-pronostics, la course est par défaut en attente de départ (non disputée).
+  const isPartantsPronosUrl = targetUrl.includes('/partants-pronostics') && !targetUrl.includes('/arrivee-rapports');
+  
+  // Statut spécifique de la course cible dans son chunk RSC
+  const rscStatutMatch = rscCourseChunk.match(/"statut":\s*"([^"]+)"/);
+  const raceStatut = rscStatutMatch ? rscStatutMatch[1].toUpperCase() : '';
+  const isExplicitlyFinished = /ARRIVEE|TERMINE|CLOTURE/i.test(raceStatut);
+  const isExplicitlyUpcoming = /A_PARTIR|PARTANTS|A_VENIR|PROGRAMMEE|NON_COMMENCEE/i.test(raceStatut);
 
-  const placedParticipants = hasArrivalKeywords 
-    ? participantsList
-        .map((p) => {
-          const rawRank = p.rang ?? p.rangArrivee ?? p.ordreArrivee ?? p.placeArrivee;
-          const rank = parseInt(String(rawRank ?? ''), 10);
-          const num = parseInt(String(p.numero ?? p.numPartant ?? p.numPari ?? ''), 10);
-          return { num, rank };
-        })
-        .filter((p) => !isNaN(p.rank) && p.rank > 0 && !isNaN(p.num) && p.num > 0)
-        .sort((a, b) => a.rank - b.rank)
-    : [];
+  const placedParticipants = participantsList
+    .map((p) => {
+      const rawRank = p.rang ?? p.rangArrivee ?? p.ordreArrivee ?? p.placeArrivee;
+      const rank = parseInt(String(rawRank ?? ''), 10);
+      const num = parseInt(String(p.numero ?? p.numPartant ?? p.numPari ?? ''), 10);
+      return { num, rank };
+    })
+    .filter((p) => !isNaN(p.rank) && p.rank > 0 && !isNaN(p.num) && p.num > 0)
+    .sort((a, b) => a.rank - b.rank);
 
-  if (hasArrivalKeywords && placedParticipants.length >= 3) {
+  if (placedParticipants.length >= 3 && !isExplicitlyUpcoming) {
+    // Les participants de CETTE course ont déjà des rangs d'arrivée valides
     arriveeOfficielle = placedParticipants.map((p) => p.num).join(' - ');
-  } else if (hasArrivalKeywords) {
-    // Motifs JSON Geny
+  } else if (!isPartantsPronosUrl || isExplicitlyFinished) {
+    // Motifs JSON Geny STRICTEMENT circonscrits au chunk de la course cible (pas toute la page fullPayload !)
     let arriveeMatch =
-      courseSection.match(/"arrivee"\s*:\s*"([^"]+)"/) ||
-      fullPayload.match(/"arriveeDefinitive"\s*:\s*"([^"]+)"/) ||
-      fullPayload.match(/"ordreArrivee"\s*:\s*\[([\d,\s]+)\]/);
+      rscCourseChunk.match(/"arrivee":\s*"([^"]+)"/) ||
+      rscCourseChunk.match(/"arriveeDefinitive":\s*"([^"]+)"/) ||
+      rscCourseChunk.match(/"ordreArrivee":\s*\[([\d,\s]+)\]/);
 
     if (!arriveeMatch && raceId) {
-      const afterIdMatch = fullPayload.match(new RegExp(`"id":\\s*${raceId}[\\s\\S]{0,1500}?"arrivee":\\s*"([^"]+)"`));
+      // Si raceId spécifié, chercher uniquement dans le périmètre direct de ce raceId
+      const afterIdMatch = fullPayload.match(new RegExp(`"id":\\s*${raceId}[\\s\\S]{0,2500}?"arrivee":\\s*"([^"]+)"`));
       if (afterIdMatch && afterIdMatch[1]) {
         arriveeMatch = afterIdMatch;
       }
     }
 
     if (arriveeMatch && arriveeMatch[1]) {
-      if (arriveeMatch[1].includes(',')) {
-        arriveeOfficielle = arriveeMatch[1].split(',').map((s) => s.trim()).join(' - ');
-      } else {
-        arriveeOfficielle = arriveeMatch[1].trim();
+      const rawMatchVal = arriveeMatch[1].trim();
+      if (rawMatchVal && rawMatchVal !== 'null' && rawMatchVal !== 'undefined') {
+        if (rawMatchVal.includes(',')) {
+          arriveeOfficielle = rawMatchVal.split(',').map((s: string) => s.trim()).join(' - ');
+        } else {
+          arriveeOfficielle = rawMatchVal;
+        }
       }
-    } else {
-      // Motif HTML brut Geny / Paris-Turf / PMU
+    } else if (targetUrl.includes('/arrivee-rapports')) {
+      // Motif HTML brut Geny / Paris-Turf / PMU UNIQUEMENT si l'URL est explicitement une page d'arrivée
       const htmlArrMatch = rawHtml.match(/arriv[eé]e\s*(?:d[eé]finitive|officielle|provisoire|chiffr[eé]e)?\s*[:\s]\s*(\d{1,2}(?:\s*[-,\s]\s*\d{1,2}){2,10})/i);
       if (htmlArrMatch && htmlArrMatch[1]) {
         const nums = htmlArrMatch[1].split(/[-,\s]+/).map((n) => n.trim()).filter(Boolean);

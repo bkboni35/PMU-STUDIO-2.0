@@ -15,7 +15,7 @@ try {
 }
 
 const { SAMPLE_RACES } = await import('./src/data/sampleRaces');
-const { buildFallbackRace, buildFallbackAdvisorAnswer } = await import('./src/utils/raceGenerator');
+const { buildFallbackRace, buildFallbackAdvisorAnswer, extractMetadataFromTurfUrl } = await import('./src/utils/raceGenerator');
 const { getCuratedPmuMeetings } = await import('./src/data/pmuMeetingsData');
 const { getFriday02Meetings } = await import('./src/data/plrFriday02Data');
 const { enrichRaceWithGeminiCollege, buildFactCheckingCertificate, computePartantHippoScore } = await import('./src/utils/geminiMultiModelEngine');
@@ -463,10 +463,18 @@ async function callGeminiWithFallback(
     config?: any;
     modelsToTry?: string[];
     timeoutMs?: number;
+    allowFallbackWithoutTools?: boolean;
   }
 ): Promise<{ text: string | undefined; candidates?: any[] }> {
-  // Modèles recommandés par Google GenAI pour une haute disponibilité et compatibilité standard
-  const defaultModelList = ['gemini-3.8-flash', 'gemini-3.1-flash-lite', 'gemini-flash-latest'];
+  const hasTools = Boolean(options.config?.tools && Array.isArray(options.config.tools) && options.config.tools.length > 0);
+  const isWebSearchGrounding = Boolean(hasTools && options.config.tools.some((t: any) => t.googleSearch));
+
+  // Modèles recommandés par Google GenAI
+  // Note: pour les requêtes avec tools / Search Grounding, gemini-3.8-flash et gemini-flash-latest sont les modèles officiels
+  const defaultModelList = isWebSearchGrounding
+    ? ['gemini-3.8-flash', 'gemini-flash-latest']
+    : ['gemini-3.8-flash', 'gemini-flash-latest', 'gemini-3.1-flash-lite'];
+
   const rawList = options.modelsToTry && options.modelsToTry.length > 0 ? options.modelsToTry : defaultModelList;
   const sanitizedList: string[] = [];
 
@@ -474,18 +482,45 @@ async function callGeminiWithFallback(
     let cleanModel = m;
     if (m.startsWith('gemini-2.5-flash') || m.startsWith('gemini-2.0') || m.startsWith('gemini-1.5')) cleanModel = 'gemini-3.8-flash';
     else if (m.startsWith('gemini-2.5-pro')) cleanModel = 'gemini-3.8-flash';
-    else if (m === 'gemini-3.5-flash-lite' || m === 'gemini-3.5-flash') cleanModel = 'gemini-3.1-flash-lite';
+    else if (m === 'gemini-3.5-flash-lite' || m === 'gemini-3.5-flash') cleanModel = 'gemini-3.8-flash';
+
+    // Ne pas inclure gemini-3.1-flash-lite pour les requêtes avec Google Search Grounding
+    if (isWebSearchGrounding && cleanModel === 'gemini-3.1-flash-lite') {
+      continue;
+    }
 
     if (!sanitizedList.includes(cleanModel)) {
       sanitizedList.push(cleanModel);
     }
   }
 
-  // S'assurer qu'au moins gemini-3.8-flash et gemini-3.1-flash-lite sont testables
-  if (!sanitizedList.includes('gemini-3.8-flash')) sanitizedList.unshift('gemini-3.8-flash');
-  if (!sanitizedList.includes('gemini-3.1-flash-lite')) sanitizedList.push('gemini-3.1-flash-lite');
+  // S'assurer que gemini-3.8-flash est présent et prioritaire
+  if (!sanitizedList.includes('gemini-3.8-flash')) {
+    sanitizedList.unshift('gemini-3.8-flash');
+  }
+  if (!sanitizedList.includes('gemini-flash-latest')) {
+    sanitizedList.push('gemini-flash-latest');
+  }
+  if (!isWebSearchGrounding && !sanitizedList.includes('gemini-3.1-flash-lite')) {
+    sanitizedList.push('gemini-3.1-flash-lite');
+  }
 
-  const timeoutMs = options.timeoutMs || 30000; // 30s pour grounding stable et recherche approfondie
+  const timeoutMs = options.timeoutMs || 25000;
+
+  // Helper d'exécution avec nettoyage strict du timer
+  const runWithTimeout = async <T>(promise: Promise<T>, ms: number, label: string): Promise<T> => {
+    let timerId: NodeJS.Timeout | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          timerId = setTimeout(() => reject(new Error(`Timeout (${ms}ms) sur ${label}`)), ms);
+        }),
+      ]);
+    } finally {
+      if (timerId) clearTimeout(timerId);
+    }
+  };
 
   for (const model of sanitizedList) {
     try {
@@ -495,36 +530,46 @@ async function callGeminiWithFallback(
         config: options.config,
       });
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Timeout (${timeoutMs}ms) sur ${model}`)), timeoutMs)
-      );
-
-      const response = await Promise.race([callPromise, timeoutPromise]);
+      const response = await runWithTimeout(callPromise, timeoutMs, model);
       if (response && (response.text || (response as any).candidates)) {
         return response as any;
       }
     } catch (err: any) {
       const errMsg = err?.message || String(err);
+      const isTimeout = errMsg.toLowerCase().includes('timeout');
+
+      // Pour les requêtes qui ne sont pas de la recherche Web pure, si échec de format de tools (non lié à un timeout),
+      // on peut tenter un repli sans tools avec timeout court (uniquement pour les modèles robustes aux tools)
+      if (hasTools && !isWebSearchGrounding && !isTimeout && options.allowFallbackWithoutTools !== false && model !== 'gemini-3.1-flash-lite') {
+        try {
+          const configNoTools = { ...options.config };
+          delete configNoTools.tools;
+          const retryPromise = aiClient.models.generateContent({
+            model,
+            contents: options.contents,
+            config: configNoTools,
+          });
+          const retryResponse = await runWithTimeout(retryPromise, 6000, `${model} sans tools`);
+          if (retryResponse && (retryResponse.text || (retryResponse as any).candidates)) {
+            return retryResponse as any;
+          }
+        } catch {
+          // Fallback silencieux vers le modèle suivant
+        }
+      }
+
       const isQuotaError = errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('RESOURCE_EXHAUSTED');
       if (isQuotaError) {
         console.warn(`[Quota limit on ${model}] : basculement vers modèle alternatif / moteur autonome.`);
       } else {
-        console.warn(`[Gemini notice on ${model}]:`, errMsg.slice(0, 150));
+        console.info(`[Gemini notice on ${model}]:`, errMsg.slice(0, 150));
       }
     }
   }
 
   console.warn("⚠️ Basculement transparent sur le moteur algorithmique et statistique HippoAnalyse.");
   return {
-    text: JSON.stringify({
-      synthese: "Analyse experte calculée par le moteur algorithmique et stochastique HippoAnalyse V38.",
-      selection8: [1, 2, 3, 4, 5, 6, 7, 8],
-      baseQuinte: [2, 7],
-      outsidersSeduisants: [1, 6],
-      tocardPiste: [9],
-      conseilJeu: "Jeu simple gagnant/placé et Quinté+ étendu basé sur les indices de forme et cotes en direct.",
-      confianceIndex: 92
-    })
+    text: undefined
   };
 }
 
@@ -758,10 +803,9 @@ app.post('/api/analyze-race', async (req, res) => {
         const cleanSampleUrl = rUrl.replace('/arrivee-rapports', '/partants-pronostics');
         const rSlug = (r.prixNom || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '-');
         return (
-          cleanSampleUrl === cleanReqUrl ||
-          cleanReqUrl.includes(rId) ||
-          (rId.length >= 4 && cleanReqUrl.includes(rId)) ||
-          (rSlug.length >= 4 && cleanReqUrl.includes(rSlug))
+          (rUrl && cleanSampleUrl === cleanReqUrl) ||
+          (rId && rId.length >= 6 && cleanReqUrl.includes(rId)) ||
+          (rSlug && rSlug.length >= 8 && cleanReqUrl.includes(rSlug))
         );
       });
 
@@ -1175,6 +1219,8 @@ CONSIGNE ABSOLUE ET OBLIGATOIRE :
       ? `DONNÉES OFFICIELLES COPIÉES-COLLÉES PAR L'UTILISATEUR (PRIORITÉ ABSOLUE) :\nVoici le texte ou le tableau exact copié depuis Geny ou Paris-Turf :\n"""\n${rawPartantsText.trim().slice(0, 20000)}\n"""\nExtrais avec une fidélité de 100% l'ensemble des partants figurant dans ce texte (leurs numéros réels, noms, drivers, cotes, ferrures, etc.).`
       : '';
 
+    const urlMetadataParsed = extractMetadataFromTurfUrl(trimmedUrl, validation.source || 'autre');
+
     const prompt = `
 Tu es le moteur expert d'HippoAnalyse, spécialiste français de l'analyse des courses hippiques PMU, Quinté+, et des pronostics de Geny Courses (geny.com) et Paris-Turf (paristurf.com / paris-turf.com).
 
@@ -1201,7 +1247,14 @@ ${
   fetchedHtml
     ? `Voici le contenu extrait de la page officielle :\n"""\n${fetchedHtml.slice(0, 25000)}\n"""`
     : `La page n'a pas pu être aspirée directement (protection anti-bot Cloudflare ou format non supporté). 
-       RECHERCHE OBLIGATOIRE ET APPROFONDIE SUR LE WEB via Google Search Grounding pour trouver les partants réels et les informations officielles (Prix, Hippodrome, R/C, Date, Partants) sur PMU.fr, Paris-Turf.com et Geny.com.`
+       MÉTADONNÉES CIBLES EXTRAITES DU LIEN OFFICIEL :
+       - Nom de la course : ${urlMetadataParsed.prixNom}
+       - Hippodrome : ${urlMetadataParsed.hippodrome}
+       - Réunion / Course : ${urlMeta.reunion || urlMetadataParsed.reunion} ${urlMeta.course || urlMetadataParsed.course}
+       - Discipline : ${urlMetadataParsed.discipline}
+       - Distance : ${urlMetadataParsed.distance}m (Corde à ${urlMetadataParsed.corde})
+       - Date : ${urlMeta.date || urlMetadataParsed.date}
+       CONSIGNE STRICTE : Tu DOIS analyser précisément l'épreuve "${urlMetadataParsed.prixNom}" à ${urlMetadataParsed.hippodrome} (${urlMeta.reunion || urlMetadataParsed.reunion} ${urlMeta.course || urlMetadataParsed.course}). Ne confonds JAMAIS avec une autre épreuve.`
 }
 
 ${promptPartantsCountDirective}
@@ -1591,10 +1644,23 @@ MISSION TURF :
             }
             rawCourse.partants = filledPartants;
             
+            if (!rawCourse.prixNom || rawCourse.prixNom === 'Course Hippique' || !rawCourse.hippodrome || !rawCourse.titre) {
+              rawCourse.prixNom = rawCourse.prixNom || fallbackTemplate.prixNom;
+              rawCourse.hippodrome = rawCourse.hippodrome || fallbackTemplate.hippodrome;
+              rawCourse.titre = fallbackTemplate.titre;
+              rawCourse.discipline = rawCourse.discipline || fallbackTemplate.discipline;
+              rawCourse.distance = rawCourse.distance || fallbackTemplate.distance;
+              rawCourse.corde = rawCourse.corde || fallbackTemplate.corde;
+              rawCourse.reunion = urlMeta.reunion || rawCourse.reunion || fallbackTemplate.reunion;
+              rawCourse.course = urlMeta.course || rawCourse.course || fallbackTemplate.course;
+              rawCourse.courseNumero = urlMeta.course || rawCourse.courseNumero || fallbackTemplate.courseNumero;
+            }
+            
             // Garantir la cohérence de la sélection Quinté 8 chevaux
             if (!rawCourse.synthese?.selection8 || rawCourse.synthese.selection8.length < 8) {
               const activeNums = filledPartants.filter((p: any) => !p.estNonPartant).map((p: any) => p.numero);
               rawCourse.synthese = {
+                ...(fallbackTemplate.synthese || {}),
                 ...(rawCourse.synthese || {}),
                 baseIncontournable: rawCourse.synthese?.baseIncontournable || activeNums[0] || 1,
                 secondeBase: rawCourse.synthese?.secondeBase || activeNums[1] || 2,
@@ -2813,6 +2879,9 @@ function getCertifiedRaceArrival(course: any): { arrival: string; isOfficial: bo
   if (course.id === '1689006' || String(course.titre || course.prixNom || '').toLowerCase().includes('daphn')) {
     return { arrival: '1 - 9 - 4 - 17 - 7', isOfficial: true };
   }
+  if (course.manualArrivalCleared || (course as any).verrouillageNonDisputee) {
+    return null;
+  }
   if (course.arriveeOfficielle && typeof course.arriveeOfficielle === 'string' && /^\d+[-,\s]+\d+/.test(course.arriveeOfficielle.trim())) {
     return {
       arrival: course.arriveeOfficielle.trim().replace(/,/g, ' - '),
@@ -2866,6 +2935,19 @@ app.post('/api/verify-race-facts', async (req, res) => {
     const { course, url } = req.body;
     if (!course) {
       return res.status(400).json({ error: 'Données de course manquantes' });
+    }
+
+    if (course.manualArrivalCleared || course.verrouillageNonDisputee) {
+      return res.json({
+        success: true,
+        arriveeOfficielle: null,
+        statutArrivee: 'en_attente',
+        statutCourse: 'Partants définitifs',
+        isOfficial: false,
+        isProvisional: false,
+        hasEnquete: false,
+        message: 'Course non disputée / arrivée supprimée manuellement',
+      });
     }
 
     let arriveeTrouvee: string | null = null;
@@ -3045,7 +3127,7 @@ Format JSON obligatoire :
 
         const searchResp = await callGeminiWithFallback(ai, {
           contents: searchPrompt,
-          modelsToTry: ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-3.1-flash-lite'],
+          modelsToTry: ['gemini-3.8-flash', 'gemini-flash-latest'],
           config: {
             tools: [{ googleSearch: {} }],
           },
@@ -3365,9 +3447,8 @@ Format JSON attendu :
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
-          responseMimeType: 'application/json',
         },
-        timeoutMs: 16000,
+        timeoutMs: 25000,
       });
 
       // Extraire les sources Grounding réelles
@@ -3628,6 +3709,31 @@ app.post('/api/refresh-cotes', async (req, res) => {
     const { course } = req.body;
     if (!course || !Array.isArray(course.partants)) {
       return res.status(400).json({ error: 'Données de course invalides' });
+    }
+
+    if (course.manualArrivalCleared || course.verrouillageNonDisputee) {
+      return res.json({
+        partants: course.partants,
+        arriveeOfficielle: null,
+        statutCourse: 'Partants définitifs',
+        statutArrivee: 'en_attente',
+        updatedAt: new Date().toISOString(),
+        skipped: true,
+        reason: 'Course non disputée / arrivée supprimée manuellement',
+      });
+    }
+
+    // RÈGLE COMMISSAIRES & RÈGLE UTILISATEUR :
+    // Dès qu'une course est analysée (cotesScellees: true ou course.synthese existante),
+    // ses cotes sont définitivement scellées (aucune modification ni variation des cotes de l'analyse officielle).
+    if (course.cotesScellees || course.synthese) {
+      return res.json({
+        partants: course.partants,
+        arriveeOfficielle: (course.manualArrivalCleared || course.verrouillageNonDisputee) ? null : (course.arriveeOfficielle || null),
+        updatedAt: new Date().toISOString(),
+        source: 'cotes_scellees',
+        message: "🔒 Cotes scellées : les cotes des chevaux restent verrouillées après l'analyse officielle de la course.",
+      });
     }
 
     // RÈGLE COMMISSAIRES STRICTE : Seule une arrivée officielle scellée avec audit terminé arrête la variation des cotes
@@ -3916,7 +4022,7 @@ RÈGLES STRICTES :
       };
     });
 
-    const finalArrival = extractedPmuArrival || course.arriveeOfficielle || null;
+    const finalArrival = (course.manualArrivalCleared || course.verrouillageNonDisputee) ? null : (extractedPmuArrival || course.arriveeOfficielle || null);
     console.log('[PMU-API-REFRESH-COTES] Response arriveeOfficielle mapped:', finalArrival);
 
     return res.json({

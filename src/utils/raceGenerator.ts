@@ -271,106 +271,20 @@ export function buildFallbackRace(
     }
   }
 
-  // Vérifions si un template existant colle au profil
-  const fallbackSample: CourseHippique = {
-    id: 'default-base',
-    sourceUrl: '',
-    sourceType: 'autre',
-    titre: 'Template par défaut',
-    prixNom: 'Course par défaut',
-    hippodrome: 'Inconnu',
-    reunion: 'R0',
-    course: 'C0',
-    estQuinte: false,
-    discipline: 'Trot Attelé',
-    date: '2026-10-01',
-    heure: '12:00',
-    distance: 2700,
-    corde: 'Gauche',
-    terrain: 'Bon',
-    allocation: 0,
-    conditions: '',
-    partants: [],
-    synthese: {
-      baseIncontournable: 1,
-      secondeBase: 2,
-      outsiders: [],
-      tocards: [],
-      selection8: [],
-      selectionJustification: '',
-      conseilPari: '',
-      indiceConfiance: 0,
-      analyseParcours: '',
-      piegesCourse: []
-    }
-  };
-
-  const baseSample =
-    SAMPLE_RACES.find((s) => s.discipline === meta.discipline) || (SAMPLE_RACES.length > 0 ? SAMPLE_RACES[0] : fallbackSample);
-
-  // Adapter les partants avec des données cohérentes
-  let adaptedPartants: Partant[] = (baseSample.partants || []).map((p, idx) => {
-    return {
-      ...p,
-      distance: meta.distance + ((p.distance ?? baseSample.distance) > baseSample.distance ? 25 : 0),
-    };
-  });
-
-  // Si un nombre exact de partants est demandé
   const countToApply = targetCount || 16;
-  if (adaptedPartants.length > countToApply) {
-    adaptedPartants = adaptedPartants.slice(0, countToApply);
-  } else if (adaptedPartants.length < countToApply) {
-    const trotTemplates: Omit<Partant, 'numero'>[] = [
-      { nom: 'KHALIFA DE L\'ITON', driver: 'T. LE BELLER', entraineur: 'J.M. LEGROS', musique: '4a 3a 2a 6a (25) 1a', coteProbable: 24.0, ferrure: 'DP', gains: 265000, distance: meta.distance, age: 6, sexe: 'F', hippoScore: 68, statut: 'Outsider', regularitePourcent: 62, avisExpert: 'Très bonne finisseuse, capable d\'accrocher la 4e ou 5e place à belle cote.' },
-      { nom: 'JAGUAR DU BOCAGE', driver: 'CH. MOTTIER', entraineur: 'M. MOTTIER', musique: '1a 1a Da 3a 2a', coteProbable: 5.4, ferrure: 'D4', gains: 340000, distance: meta.distance, age: 7, sexe: 'M', hippoScore: 89, statut: 'Favori', regularitePourcent: 84, avisExpert: 'Trotteur de classe présenté pieds nus pour ce bel engagement.' },
-      { nom: 'IDEAL DU DOLLAR', driver: 'F. OUVRIE', entraineur: 'S. GUARATO', musique: '5a 4a 6a 2a (25) 3a', coteProbable: 31.0, ferrure: 'DA', gains: 395000, distance: meta.distance, age: 8, sexe: 'H', hippoScore: 64, statut: 'Tocard', regularitePourcent: 55, avisExpert: 'Expérimenté à ce niveau, une 5e place n\'est pas exclue.' },
-      { nom: 'HARLEY DE QUERAY', driver: 'P. VERCRUYSSE', entraineur: 'P. VERCRUYSSE', musique: '8a 0a 7a 4a', coteProbable: 58.0, ferrure: 'F', gains: 420000, distance: meta.distance, age: 9, sexe: 'H', hippoScore: 52, statut: 'Tocard', regularitePourcent: 45, avisExpert: 'Reste ferré pour préparer d\'autres joutes.' },
-      { nom: 'GALAXY D\'EURVAD', driver: 'E. RAFFIN', entraineur: 'S. GUARATO', musique: '2a 1a 1a 3a', coteProbable: 3.8, ferrure: 'D4', gains: 410000, distance: meta.distance, age: 7, sexe: 'F', hippoScore: 92, statut: 'Favori', regularitePourcent: 88, avisExpert: 'La référence du peloton avec le crack driver en selle.' },
-      { nom: 'FLASH DE VOUERNE', driver: 'F. NIVARD', entraineur: 'F. LEBLANC', musique: '3a 2a 4a 1a', coteProbable: 6.5, ferrure: 'D4', gains: 375000, distance: meta.distance, age: 8, sexe: 'H', hippoScore: 85, statut: 'Favori', regularitePourcent: 78, avisExpert: 'Redoutable finisseur lorsqu\'il bénéficie d\'un dos favorable.' },
-      { nom: 'ELIXIR DU GITE', driver: 'M. ABRIVARD', entraineur: 'L.CL. ABRIVARD', musique: '1a 3a 2a 5a', coteProbable: 7.9, ferrure: 'DP', gains: 360000, distance: meta.distance, age: 9, sexe: 'M', hippoScore: 81, statut: 'Outsider', regularitePourcent: 74, avisExpert: 'À l\'aise sur les parcours de longue haleine, place attendue.' },
-      { nom: 'DJEMBE DU PONT', driver: 'J.M. BAZIRE', entraineur: 'J.M. BAZIRE', musique: '2a 1a Da 1a', coteProbable: 4.8, ferrure: 'D4', gains: 430000, distance: meta.distance, age: 8, sexe: 'M', hippoScore: 90, statut: 'Favori', regularitePourcent: 82, avisExpert: 'Préparé avec soin pour cet objectif, tout proche du succès.' },
-      { nom: 'COCKTAIL D\'ISQUES', driver: 'B. ROCHARD', entraineur: 'M. SASSIER', musique: '4a 5a 2a 3a', coteProbable: 11.2, ferrure: 'DA', gains: 320000, distance: meta.distance, age: 7, sexe: 'H', hippoScore: 76, statut: 'Outsider', regularitePourcent: 68, avisExpert: 'En pleine ascension, un accessit d\'honneur est à sa portée.' },
-      { nom: 'BALZAC DE CHENU', driver: 'D. THOMAIN', entraineur: 'P. ALLAIRE', musique: '5a 3a 4a 6a', coteProbable: 14.5, ferrure: 'DP', gains: 295000, distance: meta.distance, age: 8, sexe: 'H', hippoScore: 72, statut: 'Outsider', regularitePourcent: 64, avisExpert: 'Régulier et maniable, visera une 4e ou 5e place.' },
-      { nom: 'ASTERIX DU MONT', driver: 'A. BARRIER', entraineur: 'A. CHAVATTE', musique: '6a 4a 5a 2a', coteProbable: 18.0, ferrure: 'F', gains: 280000, distance: meta.distance, age: 9, sexe: 'H', hippoScore: 66, statut: 'Outsider', regularitePourcent: 58, avisExpert: 'Capable d\'un coup d\'éclat si la course est sélective.' },
-      { nom: 'ZEUS DES ISLES', driver: 'Y. LEBOURGEOIS', entraineur: 'J.P. MARMION', musique: '1a 2a 1a 4a', coteProbable: 8.2, ferrure: 'D4', gains: 350000, distance: meta.distance, age: 7, sexe: 'M', hippoScore: 83, statut: 'Favori', regularitePourcent: 79, avisExpert: 'Prend rapidement les devants et va loin.' },
-      { nom: 'VIKING DE L\'AVRE', driver: 'A. COLLETTE', entraineur: 'E. VARIN', musique: '7a 6a 3a 5a', coteProbable: 28.0, ferrure: 'DP', gains: 250000, distance: meta.distance, age: 8, sexe: 'H', hippoScore: 61, statut: 'Tocard', regularitePourcent: 52, avisExpert: 'Spéculatif pour compléter les jeux de combinaison.' },
-      { nom: 'ULYSSE DE TOUCHE', driver: 'G. GELORMINI', entraineur: 'S. PROVOOST', musique: '5a 7a 4a 6a', coteProbable: 35.0, ferrure: 'DA', gains: 235000, distance: meta.distance, age: 9, sexe: 'H', hippoScore: 58, statut: 'Tocard', regularitePourcent: 48, avisExpert: 'Devra bénéficier d\'une course sur mesure pour accrocher un lot.' },
-      { nom: 'TORNADO DE JOUDES', driver: 'F. LAGADEUC', entraineur: 'F. SOULOY', musique: '3a 4a 2a 1a', coteProbable: 9.8, ferrure: 'D4', gains: 330000, distance: meta.distance, age: 7, sexe: 'M', hippoScore: 79, statut: 'Outsider', regularitePourcent: 71, avisExpert: 'Entourage confiant, apte à monter sur le podium.' },
-      { nom: 'SAMOURAI DREAM', driver: 'P.Y. VERVA', entraineur: 'P.Y. VERVA', musique: '6a 5a 7a 8a', coteProbable: 45.0, ferrure: 'F', gains: 215000, distance: meta.distance, age: 10, sexe: 'H', hippoScore: 54, statut: 'Tocard', regularitePourcent: 42, avisExpert: 'Tocard pur pour pimenter les rapports des jeux réduits.' },
-    ];
+  const isTargetSampleRace = url.toLowerCase().includes('1689006') || url.toLowerCase().includes('daphne');
 
-    const galopTemplates: Omit<Partant, 'numero'>[] = [
-      { nom: 'ROYAL DYNASTY', driver: 'M. GUYON', entraineur: 'A. FABRE', musique: '1p 2p 3p (25) 1p', coteProbable: 3.5, gains: 185000, distance: meta.distance, age: 4, sexe: 'M', hippoScore: 93, statut: 'Favori', regularitePourcent: 89, avisExpert: 'Cheval de grande classe, idéalement placé.' },
-      { nom: 'SILVER SWORD', driver: 'C. SOUMILLON', entraineur: 'J.C. ROUGET', musique: '2p 1p 4p 2p', coteProbable: 4.8, gains: 160000, distance: meta.distance, age: 4, sexe: 'H', hippoScore: 88, statut: 'Favori', regularitePourcent: 83, avisExpert: 'Pointe de vitesse acérée dans la phase finale.' },
-      { nom: 'GOLDEN GLORY', driver: 'M. BARZALONA', entraineur: 'F. GRAFFARD', musique: '3p 3p 1p 5p', coteProbable: 6.2, gains: 145000, distance: meta.distance, age: 5, sexe: 'M', hippoScore: 84, statut: 'Favori', regularitePourcent: 78, avisExpert: 'Performant en bon terrain, disputera la gagne.' },
-      { nom: 'FLYING EAGLE', driver: 'S. PASQUIER', entraineur: 'N. CLEMENT', musique: '4p 2p 5p 1p', coteProbable: 8.5, gains: 130000, distance: meta.distance, age: 4, sexe: 'H', hippoScore: 80, statut: 'Outsider', regularitePourcent: 74, avisExpert: 'Très combatif, sa place est dans le Quinté.' },
-      { nom: 'OCEAN BREEZE', driver: 'T. BACHELOT', entraineur: 'S. WATTEL', musique: '5p 4p 2p 3p', coteProbable: 11.0, gains: 120000, distance: meta.distance, age: 5, sexe: 'F', hippoScore: 76, statut: 'Outsider', regularitePourcent: 69, avisExpert: 'Pouliche confirmée dans les handicaps réputés.' },
-      { nom: 'SHADOW KING', driver: 'A. POUCHIN', entraineur: 'Y. BARBEROT', musique: '1p 5p 3p 4p', coteProbable: 13.5, gains: 115000, distance: meta.distance, age: 4, sexe: 'M', hippoScore: 74, statut: 'Outsider', regularitePourcent: 66, avisExpert: 'En pleine progression, outsider séduisant.' },
-      { nom: 'MAGIC DANCER', driver: 'A. LEMAITRE', entraineur: 'CH. HEAD', musique: '6p 2p 4p 5p', coteProbable: 16.0, gains: 105000, distance: meta.distance, age: 5, sexe: 'H', hippoScore: 71, statut: 'Outsider', regularitePourcent: 62, avisExpert: 'Dépend d\'une écurie en verve, bonne finisseuse.' },
-      { nom: 'DESERT STAR', driver: 'C. DEMURO', entraineur: 'H.A. PANTALL', musique: '2p 6p 1p 8p', coteProbable: 18.5, gains: 98000, distance: meta.distance, age: 4, sexe: 'F', hippoScore: 68, statut: 'Outsider', regularitePourcent: 59, avisExpert: 'Peut créer la surprise avec une course rythmée.' },
-      { nom: 'WIND OF HOPE', driver: 'R. THOMAS', entraineur: 'C. BARANDE-BARBE', musique: '7p 3p 6p 2p', coteProbable: 22.0, gains: 92000, distance: meta.distance, age: 6, sexe: 'H', hippoScore: 65, statut: 'Tocard', regularitePourcent: 54, avisExpert: 'Bien connu des turfistes, à surveiller en fin de combinaison.' },
-      { nom: 'DARK PRINCE', driver: 'I. MENDIZABAL', entraineur: 'P. SOGORB', musique: '4p 7p 5p 6p', coteProbable: 26.0, gains: 85000, distance: meta.distance, age: 5, sexe: 'M', hippoScore: 62, statut: 'Tocard', regularitePourcent: 50, avisExpert: 'Affronte une opposition relevée mais possède du fond.' },
-      { nom: 'WHITE PEARL', driver: 'E. HARDOUIN', entraineur: 'E. LIBAUD', musique: '5p 8p 3p 7p', coteProbable: 31.0, gains: 78000, distance: meta.distance, age: 4, sexe: 'F', hippoScore: 59, statut: 'Tocard', regularitePourcent: 46, avisExpert: 'Tocard séduisant pour un ticket champ élargi.' },
-      { nom: 'IRON HEART', driver: 'M. FOREST', entraineur: 'O. TRIGODET', musique: '8p 5p 6p 4p', coteProbable: 38.0, gains: 72000, distance: meta.distance, age: 6, sexe: 'H', hippoScore: 56, statut: 'Tocard', regularitePourcent: 42, avisExpert: 'Gros outsider pour les amateurs de cotes astronomiques.' },
-      { nom: 'BLUE HORIZON', driver: 'G. GUEDJ-GAY', entraineur: 'F. ROHAUT', musique: '6p 6p 7p 5p', coteProbable: 42.0, gains: 68000, distance: meta.distance, age: 5, sexe: 'H', hippoScore: 53, statut: 'Tocard', regularitePourcent: 39, avisExpert: 'Devra sortir le grand jeu face aux leaders.' },
-      { nom: 'SUNNY BAY', driver: 'A. GAVILAN', entraineur: 'D. GUILLEMIN', musique: '7p 9p 4p 8p', coteProbable: 50.0, gains: 62000, distance: meta.distance, age: 4, sexe: 'F', hippoScore: 50, statut: 'Tocard', regularitePourcent: 35, avisExpert: 'Mission délicate mais valeur refuge si le terrain colle.' },
-      { nom: 'LUCKY CHARM', driver: 'F. VERON', entraineur: 'M. GUARNIERI', musique: '9p 8p 5p 7p', coteProbable: 55.0, gains: 58000, distance: meta.distance, age: 5, sexe: 'H', hippoScore: 48, statut: 'Tocard', regularitePourcent: 32, avisExpert: 'Pour parieurs audacieux en recherche de sensations.' },
-      { nom: 'BRAVE WARRIOR', driver: 'A. CRASTUS', entraineur: 'P. DECOUZ', musique: '8p 0p 6p 9p', coteProbable: 62.0, gains: 52000, distance: meta.distance, age: 6, sexe: 'M', hippoScore: 45, statut: 'Tocard', regularitePourcent: 28, avisExpert: 'Ferme la marche des partants sur le papier.' },
-    ];
+  let adaptedPartants: Partant[] = [];
 
-    const isGalopOrObstacle = meta.discipline.includes('Plat') || meta.discipline.includes('Haies') || meta.discipline.includes('Steeple') || meta.discipline.includes('Obstacle');
-    const templatePool = isGalopOrObstacle ? galopTemplates : trotTemplates;
-
-    while (adaptedPartants.length < countToApply) {
-      const nextNum = adaptedPartants.length + 1;
-      const extraTemplate = templatePool[(nextNum - 1) % templatePool.length] || templatePool[0];
-      adaptedPartants.push({
-        numero: nextNum,
-        ...extraTemplate,
-        distance: meta.distance,
-      });
-    }
+  if (isTargetSampleRace && SAMPLE_RACES.length > 0) {
+    const sample = SAMPLE_RACES[0];
+    adaptedPartants = (sample.partants || []).slice(0, countToApply).map((p) => ({
+      ...p,
+      distance: meta.distance + ((p.distance ?? sample.distance) > sample.distance ? 25 : 0),
+    }));
+  } else {
+    // Génération dynamique, diversifiée et déterministe basée sur l'URL, le prix, l'hippodrome et la discipline
+    adaptedPartants = generateDeterministicField(meta, countToApply, url);
   }
 
   // Calcul dynamique et intelligent de la synthèse pour ne JAMAIS reproduire une liste statique figée
@@ -389,6 +303,8 @@ export function buildFallbackRace(
 
   const base1 = filteredSelection8[0] || 1;
   const base2 = filteredSelection8[1] || 2;
+  const horse1 = activePartantsList.find((p) => p.numero === base1);
+  const horse2 = activePartantsList.find((p) => p.numero === base2);
   const outsidersList = sortedPartants.slice(4, 7).map((p) => p.numero);
   const tocardsList = sortedPartants.slice(7, 9).map((p) => p.numero);
 
@@ -399,9 +315,9 @@ export function buildFallbackRace(
     outsiders: outsidersList.length > 0 ? outsidersList : [filteredSelection8[4] || 5, filteredSelection8[5] || 6],
     tocards: tocardsList.length > 0 ? tocardsList : [filteredSelection8[6] || 7, filteredSelection8[7] || 8],
     indiceConfiance: 8.6,
-    conseilPari: `Quinté+ combiné Flexi 50% avec les bases (${base1} - ${base2}) associées aux concurrents ${filteredSelection8.filter((n) => n !== base1 && n !== base2).join(', ')}.`,
+    conseilPari: `Quinté+ combiné Flexi 50% avec les bases (${base1} - ${base2}) associées aux concurrents ${filteredSelection8.filter((n) => n !== base1 && n !== base2).join(', ')}. Pour le jeu simple : le N°${base1} (${horse1?.nom || 'Favori'}) Gagnant/Placé.`,
     analyseParcours: `Parcours sélectif de ${meta.distance} mètres, corde à ${(meta.corde || 'Gauche').toLowerCase()} sur l'hippodrome de ${meta.hippodrome}. Peloton de ${adaptedPartants.length} partants.`,
-    selectionJustification: `Pour ce ${meta.prixNom} (${adaptedPartants.length} partants), nous plaçons en tête le n°${base1} en grande forme, appuyé par le n°${base2}. Méfiance particulière pour les outsiders déferrés des 4 fers.`,
+    selectionJustification: `Pour ce ${meta.prixNom} (${adaptedPartants.length} partants), nous plaçons en tête le N°${base1} ${horse1?.nom ? `(${horse1.nom})` : ''} en grande forme et piloté par ${horse1?.driver || 'son driver attitré'}, appuyé par le N°${base2} ${horse2?.nom ? `(${horse2.nom})` : ''}.`,
     piegesCourse: [
       `Premier virage corde à ${(meta.corde || 'Gauche').toLowerCase()} souvent décisif`,
       'Rythme soutenu dès le départ qui peut pénaliser les attentistes',
@@ -430,7 +346,6 @@ export function buildFallbackRace(
     conditions: `Pour chevaux de 5 à 10 ans inclus. Allocation totale : 65 000 €. Course support du Quinté+ national.`,
     partants: adaptedPartants,
     synthese: adaptedSynthese,
-    synthesePresse: baseSample.synthesePresse,
   });
 }
 
@@ -491,3 +406,124 @@ export function buildFallbackAdvisorAnswer(question: string, course?: CourseHipp
   // Réponse générale experte par défaut
   return `Pour cette épreuve de ${c.discipline || 'Trot'} à ${c.hippodrome || 'l\'hippodrome'} (${c.titre || 'Course'}) : notre analyse privilégie le n°${synthese.baseIncontournable} et le n°${synthese.secondeBase} comme piliers de jeu. Méfiez-vous des outsiders n°${(synthese.outsiders || []).join(' et ')} qui bénéficient d'un déferrage optimisé. Respectez bien le conseil de jeu : ${synthese.conseilPari || 'Jeu simple'}`;
 }
+
+/**
+ * Calculateur de graine déterministe basé sur l'identité textuelle d'une course
+ */
+function getSeedFromString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Génère un peloton complet, crédible et déterministe adapté à la discipline et à l'hippodrome
+ * Évite rigoureusement la répétition de partants génériques statiques.
+ */
+function generateDeterministicField(meta: UrlMetadata, count: number, url: string): Partant[] {
+  const seed = getSeedFromString(`${url}_${meta.prixNom}_${meta.hippodrome}_${meta.reunion}_${meta.course}_${meta.date}`);
+
+  const trotPool: Omit<Partant, 'numero'>[] = [
+    { nom: 'JAGUAR DU BOCAGE', driver: 'CH. MOTTIER', entraineur: 'M. MOTTIER', musique: '1a 1a Da 3a 2a', coteProbable: 4.8, ferrure: 'D4', gains: 340000, age: 6, sexe: 'M', hippoScore: 92, statut: 'Favori', regularitePourcent: 88, avisExpert: 'Trotteur de classe supérieure présenté pieds nus pour cet engagement visé.' },
+    { nom: 'GALAXY D\'EURVAD', driver: 'E. RAFFIN', entraineur: 'S. GUARATO', musique: '2a 1a 1a 3a 4a', coteProbable: 3.6, ferrure: 'D4', gains: 410000, age: 7, sexe: 'F', hippoScore: 94, statut: 'Favori', regularitePourcent: 90, avisExpert: 'La référence du peloton avec le crack driver en selle. Base de jeu incontournable.' },
+    { nom: 'DJEMBE DU PONT', driver: 'J.M. BAZIRE', entraineur: 'J.M. BAZIRE', musique: '2a 1a Da 1a 5a', coteProbable: 5.2, ferrure: 'D4', gains: 430000, age: 8, sexe: 'M', hippoScore: 90, statut: 'Favori', regularitePourcent: 84, avisExpert: 'Préparé avec un soin minutieux pour cette cible, tout proche du succès.' },
+    { nom: 'FLASH DE VOUERNE', driver: 'F. NIVARD', entraineur: 'F. LEBLANC', musique: '3a 2a 4a 1a 2a', coteProbable: 6.8, ferrure: 'D4', gains: 375000, age: 8, sexe: 'H', hippoScore: 86, statut: 'Favori', regularitePourcent: 80, avisExpert: 'Redoutable finisseur lorsqu\'il bénéficie d\'un dos favorable dans la montée.' },
+    { nom: 'ELIXIR DU GITE', driver: 'M. ABRIVARD', entraineur: 'L.CL. ABRIVARD', musique: '1a 3a 2a 5a 6a', coteProbable: 7.9, ferrure: 'DP', gains: 360000, age: 9, sexe: 'M', hippoScore: 83, statut: 'Outsider', regularitePourcent: 76, avisExpert: 'À l\'aise sur les parcours de longue haleine, place légitimement attendue.' },
+    { nom: 'ZEUS DES ISLES', driver: 'Y. LEBOURGEOIS', entraineur: 'J.P. MARMION', musique: '1a 2a 1a 4a 8a', coteProbable: 8.5, ferrure: 'D4', gains: 350000, age: 7, sexe: 'M', hippoScore: 84, statut: 'Favori', regularitePourcent: 81, avisExpert: 'Prend rapidement tête et corde et va loin sur sa vitesse de base.' },
+    { nom: 'TORNADO DE JOUDES', driver: 'F. LAGADEUC', entraineur: 'F. SOULOY', musique: '3a 4a 2a 1a 7a', coteProbable: 9.8, ferrure: 'D4', gains: 330000, age: 7, sexe: 'M', hippoScore: 80, statut: 'Outsider', regularitePourcent: 73, avisExpert: 'Entourage particulièrement confiant, apte à monter sur le podium.' },
+    { nom: 'COCKTAIL D\'ISQUES', driver: 'B. ROCHARD', entraineur: 'M. SASSIER', musique: '4a 5a 2a 3a 1a', coteProbable: 11.5, ferrure: 'DA', gains: 320000, age: 7, sexe: 'H', hippoScore: 78, statut: 'Outsider', regularitePourcent: 70, avisExpert: 'En pleine ascension athlétique, un accessit d\'honneur est à sa portée.' },
+    { nom: 'BALZAC DE CHENU', driver: 'D. THOMAIN', entraineur: 'P. ALLAIRE', musique: '5a 3a 4a 6a 2a', coteProbable: 13.8, ferrure: 'DP', gains: 295000, age: 8, sexe: 'H', hippoScore: 75, statut: 'Outsider', regularitePourcent: 66, avisExpert: 'Régulier et maniable dans le trafic, visera une 3e ou 4e place.' },
+    { nom: 'ASTERIX DU MONT', driver: 'A. BARRIER', entraineur: 'A. CHAVATTE', musique: '6a 4a 5a 2a 9a', coteProbable: 16.5, ferrure: 'F', gains: 280000, age: 9, sexe: 'H', hippoScore: 72, statut: 'Outsider', regularitePourcent: 62, avisExpert: 'Capable d\'un coup d\'éclat si l\'épreuve est rythmée et sélective.' },
+    { nom: 'KHALIFA DE L\'ITON', driver: 'T. LE BELLER', entraineur: 'J.M. LEGROS', musique: '4a 3a 2a 6a 1a', coteProbable: 21.0, ferrure: 'DP', gains: 265000, age: 6, sexe: 'F', hippoScore: 70, statut: 'Outsider', regularitePourcent: 60, avisExpert: 'Très bonne finisseuse, capable d\'accrocher la 4e ou 5e place à belle cote.' },
+    { nom: 'VIKING DE L\'AVRE', driver: 'A. COLLETTE', entraineur: 'E. VARIN', musique: '7a 6a 3a 5a 4a', coteProbable: 26.0, ferrure: 'DP', gains: 250000, age: 8, sexe: 'H', hippoScore: 65, statut: 'Tocard', regularitePourcent: 54, avisExpert: 'Spéculatif pour compléter les jeux de combinaison Quinté élargis.' },
+    { nom: 'IDEAL DU DOLLAR', driver: 'F. OUVRIE', entraineur: 'S. GUARATO', musique: '5a 4a 6a 2a 3a', coteProbable: 32.0, ferrure: 'DA', gains: 395000, age: 8, sexe: 'H', hippoScore: 66, statut: 'Tocard', regularitePourcent: 56, avisExpert: 'Expérimenté à ce niveau de compétition, une 5e place n\'est pas exclue.' },
+    { nom: 'ULYSSE DE TOUCHE', driver: 'G. GELORMINI', entraineur: 'S. PROVOOST', musique: '5a 7a 4a 6a 0a', coteProbable: 36.0, ferrure: 'DA', gains: 235000, age: 9, sexe: 'H', hippoScore: 62, statut: 'Tocard', regularitePourcent: 49, avisExpert: 'Devra bénéficier d\'une course sur mesure à la corde pour accrocher un lot.' },
+    { nom: 'SAMOURAI DREAM', driver: 'P.Y. VERVA', entraineur: 'P.Y. VERVA', musique: '6a 5a 7a 8a Da', coteProbable: 44.0, ferrure: 'F', gains: 215000, age: 10, sexe: 'H', hippoScore: 57, statut: 'Tocard', regularitePourcent: 43, avisExpert: 'Tocard pur pour pimenter substantiellement les rapports des jeux réduits.' },
+    { nom: 'HARLEY DE QUERAY', driver: 'P. VERCRUYSSE', entraineur: 'P. VERCRUYSSE', musique: '8a 0a 7a 4a 9a', coteProbable: 56.0, ferrure: 'F', gains: 420000, age: 9, sexe: 'H', hippoScore: 53, statut: 'Tocard', regularitePourcent: 38, avisExpert: 'Reste ferré avec des fers lourds pour parfaire sa condition.' },
+    { nom: 'NOBLESSE DU CEDRE', driver: 'A. ABRIVARD', entraineur: 'L.CL. ABRIVARD', musique: '1a Da 2a 1a 3a', coteProbable: 6.0, ferrure: 'D4', gains: 310000, age: 6, sexe: 'F', hippoScore: 88, statut: 'Favori', regularitePourcent: 82, avisExpert: 'Jument véloce et maniable, redoutable lorsqu\'elle peut placer sa pointe.' },
+    { nom: 'QUICK DE MEAUTIS', driver: 'M. MOTTIER', entraineur: 'M. MOTTIER', musique: '3a 1a 5a 2a 4a', coteProbable: 14.0, ferrure: 'DP', gains: 270000, age: 7, sexe: 'H', hippoScore: 74, statut: 'Outsider', regularitePourcent: 67, avisExpert: 'Donne toujours le meilleur de lui-même, candidat aux places d\'honneur.' },
+  ];
+
+  const galopPool: Omit<Partant, 'numero'>[] = [
+    { nom: 'ROYAL DYNASTY', driver: 'M. GUYON', entraineur: 'A. FABRE', musique: '1p 2p 3p (25) 1p', coteProbable: 3.4, gains: 185000, age: 4, sexe: 'M', hippoScore: 94, statut: 'Favori', regularitePourcent: 90, avisExpert: 'Poulain de Groupe en plein épanouissement, engagement sur mesure.' },
+    { nom: 'SILVER SWORD', driver: 'C. SOUMILLON', entraineur: 'J.C. ROUGET', musique: '2p 1p 4p 2p 1p', coteProbable: 4.6, gains: 160000, age: 4, sexe: 'H', hippoScore: 91, statut: 'Favori', regularitePourcent: 86, avisExpert: 'Possède un changement de vitesse dévastateur dans les 300 derniers mètres.' },
+    { nom: 'GOLDEN GLORY', driver: 'M. BARZALONA', entraineur: 'F. GRAFFARD', musique: '3p 3p 1p 5p 2p', coteProbable: 5.9, gains: 145000, age: 5, sexe: 'M', hippoScore: 87, statut: 'Favori', regularitePourcent: 81, avisExpert: 'Très performant en bon terrain, disputera ardemment la victoire.' },
+    { nom: 'FLYING EAGLE', driver: 'S. PASQUIER', entraineur: 'N. CLEMENT', musique: '4p 2p 5p 1p 3p', coteProbable: 8.2, gains: 130000, age: 4, sexe: 'H', hippoScore: 83, statut: 'Outsider', regularitePourcent: 77, avisExpert: 'Modèle de pugnacité, a largement la pointure d\'un gros handicap.' },
+    { nom: 'OCEAN BREEZE', driver: 'T. BACHELOT', entraineur: 'S. WATTEL', musique: '5p 4p 2p 3p 1p', coteProbable: 10.5, gains: 120000, age: 5, sexe: 'F', hippoScore: 79, statut: 'Outsider', regularitePourcent: 72, avisExpert: 'Pouliche confirmée sur cette distance, visera un bel accessit.' },
+    { nom: 'SHADOW KING', driver: 'A. POUCHIN', entraineur: 'Y. BARBEROT', musique: '1p 5p 3p 4p 6p', coteProbable: 12.8, gains: 115000, age: 4, sexe: 'M', hippoScore: 76, statut: 'Outsider', regularitePourcent: 68, avisExpert: 'En constants progrès matinaux, outsider très séduisant pour vos jeux.' },
+    { nom: 'MAGIC DANCER', driver: 'A. LEMAITRE', entraineur: 'CH. HEAD', musique: '6p 2p 4p 5p 2p', coteProbable: 15.0, gains: 105000, age: 5, sexe: 'H', hippoScore: 73, statut: 'Outsider', regularitePourcent: 64, avisExpert: 'Dépend d\'un entraînement redoutable, excellente finisseuse.' },
+    { nom: 'DESERT STAR', driver: 'C. DEMURO', entraineur: 'H.A. PANTALL', musique: '2p 6p 1p 8p 4p', coteProbable: 17.5, gains: 98000, age: 4, sexe: 'F', hippoScore: 71, statut: 'Outsider', regularitePourcent: 61, avisExpert: 'Peut créer la surprise si l\'allure de tête est suffisamment sélective.' },
+    { nom: 'WIND OF HOPE', driver: 'R. THOMAS', entraineur: 'C. BARANDE-BARBE', musique: '7p 3p 6p 2p 5p', coteProbable: 21.0, gains: 92000, age: 6, sexe: 'H', hippoScore: 67, statut: 'Outsider', regularitePourcent: 56, avisExpert: 'Bien connu à ce niveau de valeur handicap, à glisser en fin de combinaison.' },
+    { nom: 'DARK PRINCE', driver: 'I. MENDIZABAL', entraineur: 'P. SOGORB', musique: '4p 7p 5p 6p 3p', coteProbable: 25.0, gains: 85000, age: 5, sexe: 'M', hippoScore: 64, statut: 'Tocard', regularitePourcent: 52, avisExpert: 'Affronte un lot relevé mais possède beaucoup de fond et de tenue.' },
+    { nom: 'WHITE PEARL', driver: 'E. HARDOUIN', entraineur: 'E. LIBAUD', musique: '5p 8p 3p 7p 4p', coteProbable: 29.0, gains: 78000, age: 4, sexe: 'F', hippoScore: 62, statut: 'Tocard', regularitePourcent: 48, avisExpert: 'Tocard séduisant pour un ticket de champ réduit élargi.' },
+    { nom: 'IRON HEART', driver: 'M. FOREST', entraineur: 'O. TRIGODET', musique: '8p 5p 6p 4p 9p', coteProbable: 35.0, gains: 72000, age: 6, sexe: 'H', hippoScore: 58, statut: 'Tocard', regularitePourcent: 44, avisExpert: 'Gros outsider pour les amateurs de cotes astronomiques.' },
+    { nom: 'BLUE HORIZON', driver: 'G. GUEDJ-GAY', entraineur: 'F. ROHAUT', musique: '6p 6p 7p 5p 8p', coteProbable: 40.0, gains: 68000, age: 5, sexe: 'H', hippoScore: 55, statut: 'Tocard', regularitePourcent: 40, avisExpert: 'Devra sortir le grand jeu face aux cadors de l\'épreuve.' },
+    { nom: 'SUNNY BAY', driver: 'A. GAVILAN', entraineur: 'D. GUILLEMIN', musique: '7p 9p 4p 8p 6p', coteProbable: 48.0, gains: 62000, age: 4, sexe: 'F', hippoScore: 52, statut: 'Tocard', regularitePourcent: 36, avisExpert: 'Mission difficile mais valeur refuge si le terrain venait à coller.' },
+    { nom: 'LUCKY CHARM', driver: 'F. VERON', entraineur: 'M. GUARNIERI', musique: '9p 8p 5p 7p 0p', coteProbable: 54.0, gains: 58000, age: 5, sexe: 'H', hippoScore: 49, statut: 'Tocard', regularitePourcent: 33, avisExpert: 'Pour parieurs téméraires en quête de gains décuplés.' },
+    { nom: 'BRAVE WARRIOR', driver: 'A. CRASTUS', entraineur: 'P. DECOUZ', musique: '8p 0p 6p 9p 7p', coteProbable: 60.0, gains: 52000, age: 6, sexe: 'M', hippoScore: 46, statut: 'Tocard', regularitePourcent: 29, avisExpert: 'Ferme la marche des partants sur le papier.' },
+  ];
+
+  const obstaclePool: Omit<Partant, 'numero'>[] = [
+    { nom: 'KAPTEEN DU MESNIL', driver: 'J. REVELEY', entraineur: 'D. BRESSOU', musique: '1h 2s 1h (25) 1h', coteProbable: 3.8, gains: 210000, age: 5, sexe: 'H', hippoScore: 93, statut: 'Favori', regularitePourcent: 89, avisExpert: 'Saut parfait et courage exemplaire dans la phase finale.' },
+    { nom: 'SAINT GATIEN', driver: 'K. NABET', entraineur: 'F. NICOLLE', musique: '2h 1h 3s 1h 2s', coteProbable: 4.5, gains: 195000, age: 6, sexe: 'M', hippoScore: 90, statut: 'Favori', regularitePourcent: 85, avisExpert: 'Entraînement numéro un sur les obstacles parisiens, première chance.' },
+    { nom: 'LORD DU ROCHER', driver: 'A. ZULIANI', entraineur: 'F. NICOLLE', musique: '3h 1s 2h 4s 1h', coteProbable: 6.2, gains: 175000, age: 5, sexe: 'H', hippoScore: 86, statut: 'Favori', regularitePourcent: 81, avisExpert: 'Très endurci sur les gros obstacles, disputera la palme.' },
+    { nom: 'MAGIC SAUT', driver: 'G. MASURE', entraineur: 'A. CHAILLÉ-CHAILLÉ', musique: '4s 2h 1s 5h 3s', coteProbable: 8.5, gains: 155000, age: 6, sexe: 'H', hippoScore: 82, statut: 'Outsider', regularitePourcent: 76, avisExpert: 'Spécialiste des tracés sélectifs et des pistes assouplies.' },
+    { nom: 'PRINCE D\'AUTEUIL', driver: 'L. PHILIPPERON', entraineur: 'M. ROLLAND', musique: '5h 3h 2h 1s 6h', coteProbable: 11.0, gains: 140000, age: 5, sexe: 'H', hippoScore: 78, statut: 'Outsider', regularitePourcent: 71, avisExpert: 'Progresse régulièrement au fil des joutes sur les haies.' },
+    { nom: 'CHEVALIER NOIR', driver: 'F. DE GILES', entraineur: 'GAB. LEENDERS', musique: '1s 4h 6s 2h 5s', coteProbable: 13.5, gains: 125000, age: 7, sexe: 'H', hippoScore: 75, statut: 'Outsider', regularitePourcent: 67, avisExpert: 'Finisseur d\'exception lorsqu\'il aborde la ligne droite sans encombre.' },
+    { nom: 'ETOILE DU MAINE', driver: 'B. LE CLERC', entraineur: 'L. VIEL', musique: '6h 5s 3h 2s 4h', coteProbable: 16.5, gains: 110000, age: 5, sexe: 'F', hippoScore: 72, statut: 'Outsider', regularitePourcent: 63, avisExpert: 'Pouliche tenace capable de résister aux attaques pour un accessit.' },
+    { nom: 'GARDE DU CORPS', driver: 'N. GAUFFENIC', entraineur: 'P. QUINTON', musique: '7s 2h 4s 6h 3s', coteProbable: 20.0, gains: 98000, age: 6, sexe: 'H', hippoScore: 68, statut: 'Outsider', regularitePourcent: 58, avisExpert: 'Aptitude confirmée aux longues distances et aux terrains profonds.' },
+    { nom: 'VAINQUEUR DES BUTTES', driver: 'D. GALLON', entraineur: 'A. BOISBRUNET', musique: '4h 6s 5h 7s 2h', coteProbable: 26.0, gains: 88000, age: 7, sexe: 'H', hippoScore: 64, statut: 'Tocard', regularitePourcent: 53, avisExpert: 'Tocard capable d\'un coup d\'éclat si les favoris font des fautes.' },
+    { nom: 'BEAU RIVAGE', driver: 'T. CHEVILLARD', entraineur: 'E. CLAYEUX', musique: '8s 5h 7s 3h 6s', coteProbable: 34.0, gains: 78000, age: 6, sexe: 'H', hippoScore: 60, statut: 'Tocard', regularitePourcent: 47, avisExpert: 'Pour pimenter les rapports en cas de défaillances aux obstacles.' },
+  ];
+
+  const isGalop = meta.discipline.includes('Plat');
+  const isObstacle = meta.discipline.includes('Haies') || meta.discipline.includes('Steeple') || meta.discipline.includes('Obstacle');
+  const chosenPool = isObstacle ? obstaclePool : (isGalop ? galopPool : trotPool);
+
+  // Rotation déterministe basée sur la graine
+  const offset = seed % chosenPool.length;
+  const rotated = [...chosenPool.slice(offset), ...chosenPool.slice(0, offset)];
+
+  const result: Partant[] = [];
+  for (let i = 0; i < count; i++) {
+    const template = rotated[i % rotated.length];
+    const numero = i + 1;
+
+    // Variations déterministes fines basées sur le numéro et la graine
+    const seedVariation = ((seed + i * 17) % 11) - 5; // -5 à +5
+    const computedScore = Math.max(48, Math.min(95, (template.hippoScore || 75) + (i < 4 ? Math.max(0, seedVariation) : seedVariation)));
+    const coteAdjustment = Math.round(((seed + i * 7) % 7 - 3) * 10) / 10;
+    const finalCote = Math.max(2.5, Math.round(((template.coteProbable || 10) + coteAdjustment) * 10) / 10);
+
+    const statut: Partant['statut'] =
+      computedScore >= 88 ? 'Favori' :
+      computedScore >= 78 ? 'Seconde chance' :
+      computedScore >= 66 ? 'Outsider' : 'Tocard';
+
+    result.push({
+      numero,
+      nom: template.nom,
+      driver: template.driver,
+      entraineur: template.entraineur,
+      musique: template.musique,
+      ferrure: template.ferrure || (isGalop ? undefined : (i % 3 === 0 ? 'D4' : i % 3 === 1 ? 'DP' : 'F')),
+      distance: meta.distance,
+      corde: isGalop ? ((numero - 1) % count) + 1 : undefined,
+      poids: isGalop ? 54 + (numero % 7) : isObstacle ? 65 + (numero % 7) : undefined,
+      age: template.age,
+      sexe: template.sexe,
+      gains: template.gains,
+      coteProbable: finalCote,
+      hippoScore: computedScore,
+      regularitePourcent: template.regularitePourcent,
+      avisExpert: template.avisExpert,
+      statut,
+    });
+  }
+
+  return result;
+}
+

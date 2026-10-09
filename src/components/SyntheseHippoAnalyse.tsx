@@ -13,7 +13,7 @@ import { EcartsFormeAnalysisCard } from './EcartsFormeAnalysisCard';
 import { ClassificationPronosticView } from './ClassificationPronosticView';
 import { sendRaceAnalysisEmail } from '../utils/gmailService';
 import { getStoredUserSession } from '../utils/userAuthStorage';
-import { computeV38Hierarchy } from '../utils/v38Helper';
+import { computeV38Hierarchy, computeHorseSuccessProbabilities } from '../utils/v38Helper';
 
 interface SyntheseHippoAnalyseProps {
   course: CourseHippique;
@@ -68,6 +68,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   const [isExportingQuintePdf, setIsExportingQuintePdf] = useState(false);
   const [isSendingEmail, setIsSendingEmail] = useState(false);
   const [emailSuccess, setEmailSuccess] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
   const [pdfSuccess, setPdfSuccess] = useState(false);
   const [excelSuccess, setExcelSuccess] = useState(false);
   const [quintePdfSuccess, setQuintePdfSuccess] = useState(false);
@@ -119,22 +120,20 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   const handleSendEmail = async () => {
     const user = getStoredUserSession();
     if (!user || !user.email) {
-      alert("Vous devez être connecté avec un compte valide pour envoyer l'analyse par e-mail.");
+      setEmailError("Vous devez être connecté avec un compte valide pour envoyer l'analyse par e-mail.");
+      setTimeout(() => setEmailError(null), 5000);
       return;
     }
-
-    const confirmSend = window.confirm(`Voulez-vous envoyer cette analyse complète à l'adresse ${user.email} via Gmail ?`);
-    if (!confirmSend) return;
 
     setIsSendingEmail(true);
     try {
       await sendRaceAnalysisEmail(course, user.email);
       setEmailSuccess(true);
       setTimeout(() => setEmailSuccess(false), 5000);
-      alert(`✅ Analyse envoyée avec succès à ${user.email} !`);
     } catch (err: any) {
       console.error(err);
-      alert(`Erreur lors de l'envoi : ${err.message || 'Problème de connexion'}`);
+      setEmailError(`Erreur lors de l'envoi : ${err.message || 'Problème de connexion'}`);
+      setTimeout(() => setEmailError(null), 5000);
     } finally {
       setIsSendingEmail(false);
     }
@@ -197,6 +196,11 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   const v38Hierarchy = useMemo(() => {
     return computeV38Hierarchy(course, { sortDelaisses: 'desc_number' });
   }, [course]);
+
+  // Probabilité de succès dynamique calculée à partir de l'HippoScore
+  const successProbMap = useMemo(() => {
+    return computeHorseSuccessProbabilities(partants, course);
+  }, [partants, course]);
 
   const favorisNums = useMemo(() => new Set(v38Hierarchy.favoris.map(p => Number(p.numero))), [v38Hierarchy]);
   const outsidersNums = useMemo(() => new Set(v38Hierarchy.outsiders.map(p => Number(p.numero))), [v38Hierarchy]);
@@ -302,8 +306,19 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       !synthese.tocards?.includes(n)
   ) || [];
 
+  const disc = (course.discipline || '').toLowerCase().trim();
+  const isPlat = disc.includes('plat');
+
   return (
     <div className="space-y-10">
+      {/* Bannière de confirmation cotes scellées après analyse */}
+      {course.cotesScellees && (
+        <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-2xl bg-amber-950/40 border border-amber-500/50 text-amber-200 text-xs font-bold shadow-lg">
+          <span className="text-base">🔒</span>
+          <span>Cotes scellées : les cotes des chevaux restent verrouillées après l'analyse officielle de la course.</span>
+        </div>
+      )}
+
       {/* 1. Sub-tabs Navigation */}
       <div ref={containerRef} className="flex items-center gap-2 p-2 bg-slate-900/90 rounded-2xl border border-slate-800 overflow-x-auto shadow-xl backdrop-blur-md scrollbar-none sticky top-16 z-30">
         {[
@@ -533,7 +548,8 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                       <th className="py-5 px-4 min-w-[120px] border-r border-slate-700">Jockey / Driver</th>
                       <th className="py-5 px-4 text-center w-20 border-r border-slate-700">Vict. Q+</th>
                       <th className="py-5 px-4 text-center w-24 border-r border-slate-700">Cote PMU</th>
-                      <th className="py-5 px-4 text-right w-24">Score IA</th>
+                      <th className="py-5 px-4 text-center w-24 border-r border-slate-700">Score IA</th>
+                      <th className="py-5 px-4 text-right w-28 text-amber-400 font-black">Succès %</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
@@ -592,7 +608,14 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                                 <span className={`w-9 h-9 rounded-xl font-black flex items-center justify-center text-sm shadow-xl ${badgeColor}`}>
                                   {p.numero}
                                 </span>
-                                <span className="text-sm sm:text-base whitespace-nowrap tracking-tight font-bold">{p.nom || 'Inconnu'}</span>
+                                <div className="flex flex-col">
+                                  <span className="text-sm sm:text-base whitespace-nowrap tracking-tight font-bold">{p.nom || 'Inconnu'}</span>
+                                  {isPlat && (
+                                    <span className="text-[10px] text-amber-300 font-extrabold">
+                                      Corde {p.corde ?? (v38Hierarchy.assignedCordes?.get(Number(p.numero)) ?? '—')}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </td>
                             <td className="py-4 px-4 font-mono text-xs opacity-90 border-r border-slate-700/60">{p.musique || '—'}</td>
@@ -630,10 +653,24 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                                 </span>
                               </div>
                             </td>
-                            <td className="py-4 px-4 text-right">
+                            <td className="py-4 px-4 text-center border-r border-slate-700/60">
                               <span className="font-mono font-black text-sm sm:text-base text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2.5 py-1 rounded-xl shadow-xs">
                                 {p.hippoScore} pts
                               </span>
+                            </td>
+                            <td className="py-4 px-4 text-right whitespace-nowrap">
+                              {(() => {
+                                const prob = successProbMap.get(Number(p.numero));
+                                if (!prob) return <span className="text-slate-500 font-bold">—</span>;
+                                return (
+                                  <div className="flex flex-col items-end gap-1">
+                                    <span className={`px-2 py-0.5 rounded-lg border font-mono font-black text-xs shadow-xs ${prob.badgeBg}`}>
+                                      {prob.percent}%
+                                    </span>
+                                    <span className="text-[9px] text-slate-400 font-semibold">{prob.label}</span>
+                                  </div>
+                                );
+                              })()}
                             </td>
                           </tr>
                         );
@@ -711,7 +748,14 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                                 <span className={`w-9 h-9 rounded-xl font-black flex items-center justify-center text-sm shadow-xl ${badgeColor}`}>
                                   {p.numero}
                                 </span>
-                                <span className="text-sm sm:text-base whitespace-nowrap tracking-tight font-bold">{p.nom || 'Inconnu'}</span>
+                                <div className="flex flex-col">
+                                  <span className="text-sm sm:text-base whitespace-nowrap tracking-tight font-bold">{p.nom || 'Inconnu'}</span>
+                                  {isPlat && (
+                                    <span className="text-[10px] text-amber-300 font-extrabold">
+                                      Corde {p.corde ?? (v38Hierarchy.assignedCordes?.get(Number(p.numero)) ?? '—')}
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </td>
                             <td className="py-4 px-4 text-center border-r border-slate-700/60">

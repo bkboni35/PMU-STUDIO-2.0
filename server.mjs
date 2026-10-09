@@ -562,11 +562,11 @@ function assignUniqueCordesForPlat(partants) {
   for (const p of partants) {
     const rawC = p.corde;
     let val = null;
-    if (typeof rawC === "number" && !isNaN(rawC) && rawC >= 1 && rawC <= total) {
+    if (typeof rawC === "number" && !isNaN(rawC) && rawC >= 1 && rawC <= 30) {
       val = rawC;
     } else if (typeof rawC === "string") {
       const parsed = parseInt(rawC.replace(/\D/g, ""), 10);
-      if (!isNaN(parsed) && parsed >= 1 && parsed <= total) {
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 30) {
         val = parsed;
       }
     }
@@ -578,7 +578,8 @@ function assignUniqueCordesForPlat(partants) {
     }
   }
   const availableCordes = [];
-  for (let c = 1; c <= total; c++) {
+  const maxNeeded = Math.max(total, 30);
+  for (let c = 1; c <= maxNeeded; c++) {
     if (!usedCordes.has(c)) {
       availableCordes.push(c);
     }
@@ -590,8 +591,9 @@ function assignUniqueCordesForPlat(partants) {
     if (numIdx !== -1) {
       chosenCorde = availableCordes.splice(numIdx, 1)[0];
     } else {
-      chosenCorde = availableCordes.shift() || 1;
+      chosenCorde = availableCordes.shift() || usedCordes.size + 1;
     }
+    usedCordes.add(chosenCorde);
     result.set(num, chosenCorde);
   });
   return result;
@@ -611,12 +613,23 @@ function computeV38Hierarchy(course, options) {
   const enriched = dedupedRawPartants.map((p) => {
     const num = Number(p.numero);
     let group = "G1";
-    if (num >= 1 && num <= 6) {
-      group = "G1";
-    } else if (num >= 7 && num <= 10) {
-      group = "G2";
+    if (isPlat) {
+      const cordeVal = assignedCordes.get(num) || (typeof p.corde === "number" ? p.corde : parseInt(String(p.corde).replace(/\D/g, ""), 10)) || num;
+      if (cordeVal >= 1 && cordeVal <= 5) {
+        group = "G1";
+      } else if (cordeVal >= 6 && cordeVal <= 8) {
+        group = "G2";
+      } else {
+        group = "G3";
+      }
     } else {
-      group = "G3";
+      if (num >= 1 && num <= 6) {
+        group = "G1";
+      } else if (num >= 7 && num <= 10) {
+        group = "G2";
+      } else {
+        group = "G3";
+      }
     }
     const genyOdds = getHorseGenyOdds(p);
     const hippoScore = Number(p.hippoScore || 0);
@@ -707,7 +720,7 @@ function computeV38Hierarchy(course, options) {
   const effectiveDelaissesSort = options?.sortDelaisses || (typeof window !== "undefined" ? localStorage.getItem(V38_DELAISSES_SORT_STORAGE_KEY) : null) || "desc_number";
   if (effectiveSurprisesMode === "custom" && options?.customSurprisesNums && options.customSurprisesNums.length > 0) {
     const customSet = new Set(options.customSurprisesNums.map((n) => Number(n)));
-    surprises = allActiveSorted.filter((p) => customSet.has(Number(p.numero))).sort(sortAscByNumber);
+    surprises = allActiveSorted.filter((p) => customSet.has(Number(p.numero))).sort(sortAscByOdds);
     const assignedNums = /* @__PURE__ */ new Set([
       ...favoris.map((p) => Number(p.numero)),
       ...outsiders.map((p) => Number(p.numero)),
@@ -716,7 +729,7 @@ function computeV38Hierarchy(course, options) {
     ]);
     delaisses = allActiveSorted.filter((p) => !assignedNums.has(Number(p.numero)));
   } else {
-    surprises = [...rawSurprises].sort(sortAscByNumber);
+    surprises = [...rawSurprises].sort(sortAscByOdds);
     delaisses = [...remainingDelaisses];
   }
   let finalDelaisses = [...delaisses];
@@ -731,10 +744,10 @@ function computeV38Hierarchy(course, options) {
   const selection11 = selection12;
   return {
     isPlat,
-    groupType: "NUMERO",
-    labelGroup1: "G1 (N\xB0 1 \xE0 6)",
-    labelGroup2: "G2 (N\xB0 7 \xE0 10)",
-    labelGroup3: "G3 (N\xB0 11 et +)",
+    groupType: isPlat ? "CORDE" : "NUMERO",
+    labelGroup1: isPlat ? "CA (Corde 1 \xE0 5)" : "G1 (N\xB0 1 \xE0 6)",
+    labelGroup2: isPlat ? "CB (Corde 6 \xE0 8)" : "G2 (N\xB0 7 \xE0 10)",
+    labelGroup3: isPlat ? "CC (Corde 9 et +)" : "G3 (N\xB0 11 et +)",
     g1: allG1,
     g2: allG2,
     g3: allG3,
@@ -749,8 +762,8 @@ function computeV38Hierarchy(course, options) {
     basesSolides: [...favoris].sort(sortAscByOdds),
     chancesSerieuses: [...outsiders].sort(sortAscByOdds),
     tocardsSpeculatifs: [...tocardsSpeculatifs].sort(sortAscByOdds),
-    // Les surprises portent désormais à 4 numéros (classés par ordre de numéro croissant)
-    surprises: [...surprises].sort(sortAscByNumber),
+    // Les surprises portent désormais à 4 numéros (classés par cote croissante)
+    surprises: [...surprises].sort(sortAscByOdds),
     delaisses: finalDelaisses,
     selectionV38: selection12,
     remainingV38: finalDelaisses,
@@ -2674,96 +2687,17 @@ function buildFallbackRace(url, source, exactCount, extractedData) {
       if (parsed >= 6 && parsed <= 24) targetCount = parsed;
     }
   }
-  const fallbackSample = {
-    id: "default-base",
-    sourceUrl: "",
-    sourceType: "autre",
-    titre: "Template par d\xE9faut",
-    prixNom: "Course par d\xE9faut",
-    hippodrome: "Inconnu",
-    reunion: "R0",
-    course: "C0",
-    estQuinte: false,
-    discipline: "Trot Attel\xE9",
-    date: "2026-10-01",
-    heure: "12:00",
-    distance: 2700,
-    corde: "Gauche",
-    terrain: "Bon",
-    allocation: 0,
-    conditions: "",
-    partants: [],
-    synthese: {
-      baseIncontournable: 1,
-      secondeBase: 2,
-      outsiders: [],
-      tocards: [],
-      selection8: [],
-      selectionJustification: "",
-      conseilPari: "",
-      indiceConfiance: 0,
-      analyseParcours: "",
-      piegesCourse: []
-    }
-  };
-  const baseSample = SAMPLE_RACES.find((s) => s.discipline === meta.discipline) || (SAMPLE_RACES.length > 0 ? SAMPLE_RACES[0] : fallbackSample);
-  let adaptedPartants = (baseSample.partants || []).map((p, idx) => {
-    return {
-      ...p,
-      distance: meta.distance + ((p.distance ?? baseSample.distance) > baseSample.distance ? 25 : 0)
-    };
-  });
   const countToApply = targetCount || 16;
-  if (adaptedPartants.length > countToApply) {
-    adaptedPartants = adaptedPartants.slice(0, countToApply);
-  } else if (adaptedPartants.length < countToApply) {
-    const trotTemplates = [
-      { nom: "KHALIFA DE L'ITON", driver: "T. LE BELLER", entraineur: "J.M. LEGROS", musique: "4a 3a 2a 6a (25) 1a", coteProbable: 24, ferrure: "DP", gains: 265e3, distance: meta.distance, age: 6, sexe: "F", hippoScore: 68, statut: "Outsider", regularitePourcent: 62, avisExpert: "Tr\xE8s bonne finisseuse, capable d'accrocher la 4e ou 5e place \xE0 belle cote." },
-      { nom: "JAGUAR DU BOCAGE", driver: "CH. MOTTIER", entraineur: "M. MOTTIER", musique: "1a 1a Da 3a 2a", coteProbable: 5.4, ferrure: "D4", gains: 34e4, distance: meta.distance, age: 7, sexe: "M", hippoScore: 89, statut: "Favori", regularitePourcent: 84, avisExpert: "Trotteur de classe pr\xE9sent\xE9 pieds nus pour ce bel engagement." },
-      { nom: "IDEAL DU DOLLAR", driver: "F. OUVRIE", entraineur: "S. GUARATO", musique: "5a 4a 6a 2a (25) 3a", coteProbable: 31, ferrure: "DA", gains: 395e3, distance: meta.distance, age: 8, sexe: "H", hippoScore: 64, statut: "Tocard", regularitePourcent: 55, avisExpert: "Exp\xE9riment\xE9 \xE0 ce niveau, une 5e place n'est pas exclue." },
-      { nom: "HARLEY DE QUERAY", driver: "P. VERCRUYSSE", entraineur: "P. VERCRUYSSE", musique: "8a 0a 7a 4a", coteProbable: 58, ferrure: "F", gains: 42e4, distance: meta.distance, age: 9, sexe: "H", hippoScore: 52, statut: "Tocard", regularitePourcent: 45, avisExpert: "Reste ferr\xE9 pour pr\xE9parer d'autres joutes." },
-      { nom: "GALAXY D'EURVAD", driver: "E. RAFFIN", entraineur: "S. GUARATO", musique: "2a 1a 1a 3a", coteProbable: 3.8, ferrure: "D4", gains: 41e4, distance: meta.distance, age: 7, sexe: "F", hippoScore: 92, statut: "Favori", regularitePourcent: 88, avisExpert: "La r\xE9f\xE9rence du peloton avec le crack driver en selle." },
-      { nom: "FLASH DE VOUERNE", driver: "F. NIVARD", entraineur: "F. LEBLANC", musique: "3a 2a 4a 1a", coteProbable: 6.5, ferrure: "D4", gains: 375e3, distance: meta.distance, age: 8, sexe: "H", hippoScore: 85, statut: "Favori", regularitePourcent: 78, avisExpert: "Redoutable finisseur lorsqu'il b\xE9n\xE9ficie d'un dos favorable." },
-      { nom: "ELIXIR DU GITE", driver: "M. ABRIVARD", entraineur: "L.CL. ABRIVARD", musique: "1a 3a 2a 5a", coteProbable: 7.9, ferrure: "DP", gains: 36e4, distance: meta.distance, age: 9, sexe: "M", hippoScore: 81, statut: "Outsider", regularitePourcent: 74, avisExpert: "\xC0 l'aise sur les parcours de longue haleine, place attendue." },
-      { nom: "DJEMBE DU PONT", driver: "J.M. BAZIRE", entraineur: "J.M. BAZIRE", musique: "2a 1a Da 1a", coteProbable: 4.8, ferrure: "D4", gains: 43e4, distance: meta.distance, age: 8, sexe: "M", hippoScore: 90, statut: "Favori", regularitePourcent: 82, avisExpert: "Pr\xE9par\xE9 avec soin pour cet objectif, tout proche du succ\xE8s." },
-      { nom: "COCKTAIL D'ISQUES", driver: "B. ROCHARD", entraineur: "M. SASSIER", musique: "4a 5a 2a 3a", coteProbable: 11.2, ferrure: "DA", gains: 32e4, distance: meta.distance, age: 7, sexe: "H", hippoScore: 76, statut: "Outsider", regularitePourcent: 68, avisExpert: "En pleine ascension, un accessit d'honneur est \xE0 sa port\xE9e." },
-      { nom: "BALZAC DE CHENU", driver: "D. THOMAIN", entraineur: "P. ALLAIRE", musique: "5a 3a 4a 6a", coteProbable: 14.5, ferrure: "DP", gains: 295e3, distance: meta.distance, age: 8, sexe: "H", hippoScore: 72, statut: "Outsider", regularitePourcent: 64, avisExpert: "R\xE9gulier et maniable, visera une 4e ou 5e place." },
-      { nom: "ASTERIX DU MONT", driver: "A. BARRIER", entraineur: "A. CHAVATTE", musique: "6a 4a 5a 2a", coteProbable: 18, ferrure: "F", gains: 28e4, distance: meta.distance, age: 9, sexe: "H", hippoScore: 66, statut: "Outsider", regularitePourcent: 58, avisExpert: "Capable d'un coup d'\xE9clat si la course est s\xE9lective." },
-      { nom: "ZEUS DES ISLES", driver: "Y. LEBOURGEOIS", entraineur: "J.P. MARMION", musique: "1a 2a 1a 4a", coteProbable: 8.2, ferrure: "D4", gains: 35e4, distance: meta.distance, age: 7, sexe: "M", hippoScore: 83, statut: "Favori", regularitePourcent: 79, avisExpert: "Prend rapidement les devants et va loin." },
-      { nom: "VIKING DE L'AVRE", driver: "A. COLLETTE", entraineur: "E. VARIN", musique: "7a 6a 3a 5a", coteProbable: 28, ferrure: "DP", gains: 25e4, distance: meta.distance, age: 8, sexe: "H", hippoScore: 61, statut: "Tocard", regularitePourcent: 52, avisExpert: "Sp\xE9culatif pour compl\xE9ter les jeux de combinaison." },
-      { nom: "ULYSSE DE TOUCHE", driver: "G. GELORMINI", entraineur: "S. PROVOOST", musique: "5a 7a 4a 6a", coteProbable: 35, ferrure: "DA", gains: 235e3, distance: meta.distance, age: 9, sexe: "H", hippoScore: 58, statut: "Tocard", regularitePourcent: 48, avisExpert: "Devra b\xE9n\xE9ficier d'une course sur mesure pour accrocher un lot." },
-      { nom: "TORNADO DE JOUDES", driver: "F. LAGADEUC", entraineur: "F. SOULOY", musique: "3a 4a 2a 1a", coteProbable: 9.8, ferrure: "D4", gains: 33e4, distance: meta.distance, age: 7, sexe: "M", hippoScore: 79, statut: "Outsider", regularitePourcent: 71, avisExpert: "Entourage confiant, apte \xE0 monter sur le podium." },
-      { nom: "SAMOURAI DREAM", driver: "P.Y. VERVA", entraineur: "P.Y. VERVA", musique: "6a 5a 7a 8a", coteProbable: 45, ferrure: "F", gains: 215e3, distance: meta.distance, age: 10, sexe: "H", hippoScore: 54, statut: "Tocard", regularitePourcent: 42, avisExpert: "Tocard pur pour pimenter les rapports des jeux r\xE9duits." }
-    ];
-    const galopTemplates = [
-      { nom: "ROYAL DYNASTY", driver: "M. GUYON", entraineur: "A. FABRE", musique: "1p 2p 3p (25) 1p", coteProbable: 3.5, gains: 185e3, distance: meta.distance, age: 4, sexe: "M", hippoScore: 93, statut: "Favori", regularitePourcent: 89, avisExpert: "Cheval de grande classe, id\xE9alement plac\xE9." },
-      { nom: "SILVER SWORD", driver: "C. SOUMILLON", entraineur: "J.C. ROUGET", musique: "2p 1p 4p 2p", coteProbable: 4.8, gains: 16e4, distance: meta.distance, age: 4, sexe: "H", hippoScore: 88, statut: "Favori", regularitePourcent: 83, avisExpert: "Pointe de vitesse ac\xE9r\xE9e dans la phase finale." },
-      { nom: "GOLDEN GLORY", driver: "M. BARZALONA", entraineur: "F. GRAFFARD", musique: "3p 3p 1p 5p", coteProbable: 6.2, gains: 145e3, distance: meta.distance, age: 5, sexe: "M", hippoScore: 84, statut: "Favori", regularitePourcent: 78, avisExpert: "Performant en bon terrain, disputera la gagne." },
-      { nom: "FLYING EAGLE", driver: "S. PASQUIER", entraineur: "N. CLEMENT", musique: "4p 2p 5p 1p", coteProbable: 8.5, gains: 13e4, distance: meta.distance, age: 4, sexe: "H", hippoScore: 80, statut: "Outsider", regularitePourcent: 74, avisExpert: "Tr\xE8s combatif, sa place est dans le Quint\xE9." },
-      { nom: "OCEAN BREEZE", driver: "T. BACHELOT", entraineur: "S. WATTEL", musique: "5p 4p 2p 3p", coteProbable: 11, gains: 12e4, distance: meta.distance, age: 5, sexe: "F", hippoScore: 76, statut: "Outsider", regularitePourcent: 69, avisExpert: "Pouliche confirm\xE9e dans les handicaps r\xE9put\xE9s." },
-      { nom: "SHADOW KING", driver: "A. POUCHIN", entraineur: "Y. BARBEROT", musique: "1p 5p 3p 4p", coteProbable: 13.5, gains: 115e3, distance: meta.distance, age: 4, sexe: "M", hippoScore: 74, statut: "Outsider", regularitePourcent: 66, avisExpert: "En pleine progression, outsider s\xE9duisant." },
-      { nom: "MAGIC DANCER", driver: "A. LEMAITRE", entraineur: "CH. HEAD", musique: "6p 2p 4p 5p", coteProbable: 16, gains: 105e3, distance: meta.distance, age: 5, sexe: "H", hippoScore: 71, statut: "Outsider", regularitePourcent: 62, avisExpert: "D\xE9pend d'une \xE9curie en verve, bonne finisseuse." },
-      { nom: "DESERT STAR", driver: "C. DEMURO", entraineur: "H.A. PANTALL", musique: "2p 6p 1p 8p", coteProbable: 18.5, gains: 98e3, distance: meta.distance, age: 4, sexe: "F", hippoScore: 68, statut: "Outsider", regularitePourcent: 59, avisExpert: "Peut cr\xE9er la surprise avec une course rythm\xE9e." },
-      { nom: "WIND OF HOPE", driver: "R. THOMAS", entraineur: "C. BARANDE-BARBE", musique: "7p 3p 6p 2p", coteProbable: 22, gains: 92e3, distance: meta.distance, age: 6, sexe: "H", hippoScore: 65, statut: "Tocard", regularitePourcent: 54, avisExpert: "Bien connu des turfistes, \xE0 surveiller en fin de combinaison." },
-      { nom: "DARK PRINCE", driver: "I. MENDIZABAL", entraineur: "P. SOGORB", musique: "4p 7p 5p 6p", coteProbable: 26, gains: 85e3, distance: meta.distance, age: 5, sexe: "M", hippoScore: 62, statut: "Tocard", regularitePourcent: 50, avisExpert: "Affronte une opposition relev\xE9e mais poss\xE8de du fond." },
-      { nom: "WHITE PEARL", driver: "E. HARDOUIN", entraineur: "E. LIBAUD", musique: "5p 8p 3p 7p", coteProbable: 31, gains: 78e3, distance: meta.distance, age: 4, sexe: "F", hippoScore: 59, statut: "Tocard", regularitePourcent: 46, avisExpert: "Tocard s\xE9duisant pour un ticket champ \xE9largi." },
-      { nom: "IRON HEART", driver: "M. FOREST", entraineur: "O. TRIGODET", musique: "8p 5p 6p 4p", coteProbable: 38, gains: 72e3, distance: meta.distance, age: 6, sexe: "H", hippoScore: 56, statut: "Tocard", regularitePourcent: 42, avisExpert: "Gros outsider pour les amateurs de cotes astronomiques." },
-      { nom: "BLUE HORIZON", driver: "G. GUEDJ-GAY", entraineur: "F. ROHAUT", musique: "6p 6p 7p 5p", coteProbable: 42, gains: 68e3, distance: meta.distance, age: 5, sexe: "H", hippoScore: 53, statut: "Tocard", regularitePourcent: 39, avisExpert: "Devra sortir le grand jeu face aux leaders." },
-      { nom: "SUNNY BAY", driver: "A. GAVILAN", entraineur: "D. GUILLEMIN", musique: "7p 9p 4p 8p", coteProbable: 50, gains: 62e3, distance: meta.distance, age: 4, sexe: "F", hippoScore: 50, statut: "Tocard", regularitePourcent: 35, avisExpert: "Mission d\xE9licate mais valeur refuge si le terrain colle." },
-      { nom: "LUCKY CHARM", driver: "F. VERON", entraineur: "M. GUARNIERI", musique: "9p 8p 5p 7p", coteProbable: 55, gains: 58e3, distance: meta.distance, age: 5, sexe: "H", hippoScore: 48, statut: "Tocard", regularitePourcent: 32, avisExpert: "Pour parieurs audacieux en recherche de sensations." },
-      { nom: "BRAVE WARRIOR", driver: "A. CRASTUS", entraineur: "P. DECOUZ", musique: "8p 0p 6p 9p", coteProbable: 62, gains: 52e3, distance: meta.distance, age: 6, sexe: "M", hippoScore: 45, statut: "Tocard", regularitePourcent: 28, avisExpert: "Ferme la marche des partants sur le papier." }
-    ];
-    const isGalopOrObstacle = meta.discipline.includes("Plat") || meta.discipline.includes("Haies") || meta.discipline.includes("Steeple") || meta.discipline.includes("Obstacle");
-    const templatePool = isGalopOrObstacle ? galopTemplates : trotTemplates;
-    while (adaptedPartants.length < countToApply) {
-      const nextNum = adaptedPartants.length + 1;
-      const extraTemplate = templatePool[(nextNum - 1) % templatePool.length] || templatePool[0];
-      adaptedPartants.push({
-        numero: nextNum,
-        ...extraTemplate,
-        distance: meta.distance
-      });
-    }
+  const isTargetSampleRace = url.toLowerCase().includes("1689006") || url.toLowerCase().includes("daphne");
+  let adaptedPartants = [];
+  if (isTargetSampleRace && SAMPLE_RACES.length > 0) {
+    const sample = SAMPLE_RACES[0];
+    adaptedPartants = (sample.partants || []).slice(0, countToApply).map((p) => ({
+      ...p,
+      distance: meta.distance + ((p.distance ?? sample.distance) > sample.distance ? 25 : 0)
+    }));
+  } else {
+    adaptedPartants = generateDeterministicField(meta, countToApply, url);
   }
   const activePartantsList = adaptedPartants.filter((p) => !p.estNonPartant && p.statut !== "Non-partant");
   const sortedPartants = [...activePartantsList].sort((a, b) => (b.hippoScore || 0) - (a.hippoScore || 0));
@@ -2775,6 +2709,8 @@ function buildFallbackRace(url, source, exactCount, extractedData) {
   }
   const base1 = filteredSelection8[0] || 1;
   const base2 = filteredSelection8[1] || 2;
+  const horse1 = activePartantsList.find((p) => p.numero === base1);
+  const horse2 = activePartantsList.find((p) => p.numero === base2);
   const outsidersList = sortedPartants.slice(4, 7).map((p) => p.numero);
   const tocardsList = sortedPartants.slice(7, 9).map((p) => p.numero);
   const adaptedSynthese = {
@@ -2784,9 +2720,9 @@ function buildFallbackRace(url, source, exactCount, extractedData) {
     outsiders: outsidersList.length > 0 ? outsidersList : [filteredSelection8[4] || 5, filteredSelection8[5] || 6],
     tocards: tocardsList.length > 0 ? tocardsList : [filteredSelection8[6] || 7, filteredSelection8[7] || 8],
     indiceConfiance: 8.6,
-    conseilPari: `Quint\xE9+ combin\xE9 Flexi 50% avec les bases (${base1} - ${base2}) associ\xE9es aux concurrents ${filteredSelection8.filter((n) => n !== base1 && n !== base2).join(", ")}.`,
+    conseilPari: `Quint\xE9+ combin\xE9 Flexi 50% avec les bases (${base1} - ${base2}) associ\xE9es aux concurrents ${filteredSelection8.filter((n) => n !== base1 && n !== base2).join(", ")}. Pour le jeu simple : le N\xB0${base1} (${horse1?.nom || "Favori"}) Gagnant/Plac\xE9.`,
     analyseParcours: `Parcours s\xE9lectif de ${meta.distance} m\xE8tres, corde \xE0 ${(meta.corde || "Gauche").toLowerCase()} sur l'hippodrome de ${meta.hippodrome}. Peloton de ${adaptedPartants.length} partants.`,
-    selectionJustification: `Pour ce ${meta.prixNom} (${adaptedPartants.length} partants), nous pla\xE7ons en t\xEAte le n\xB0${base1} en grande forme, appuy\xE9 par le n\xB0${base2}. M\xE9fiance particuli\xE8re pour les outsiders d\xE9ferr\xE9s des 4 fers.`,
+    selectionJustification: `Pour ce ${meta.prixNom} (${adaptedPartants.length} partants), nous pla\xE7ons en t\xEAte le N\xB0${base1} ${horse1?.nom ? `(${horse1.nom})` : ""} en grande forme et pilot\xE9 par ${horse1?.driver || "son driver attitr\xE9"}, appuy\xE9 par le N\xB0${base2} ${horse2?.nom ? `(${horse2.nom})` : ""}.`,
     piegesCourse: [
       `Premier virage corde \xE0 ${(meta.corde || "Gauche").toLowerCase()} souvent d\xE9cisif`,
       "Rythme soutenu d\xE8s le d\xE9part qui peut p\xE9naliser les attentistes",
@@ -2813,8 +2749,7 @@ function buildFallbackRace(url, source, exactCount, extractedData) {
     allocation: 65e3,
     conditions: `Pour chevaux de 5 \xE0 10 ans inclus. Allocation totale : 65 000 \u20AC. Course support du Quint\xE9+ national.`,
     partants: adaptedPartants,
-    synthese: adaptedSynthese,
-    synthesePresse: baseSample.synthesePresse
+    synthese: adaptedSynthese
   });
 }
 function buildFallbackAdvisorAnswer(question, course) {
@@ -2858,6 +2793,102 @@ function buildFallbackAdvisorAnswer(question, course) {
     }
   }
   return `Pour cette \xE9preuve de ${c.discipline || "Trot"} \xE0 ${c.hippodrome || "l'hippodrome"} (${c.titre || "Course"}) : notre analyse privil\xE9gie le n\xB0${synthese.baseIncontournable} et le n\xB0${synthese.secondeBase} comme piliers de jeu. M\xE9fiez-vous des outsiders n\xB0${(synthese.outsiders || []).join(" et ")} qui b\xE9n\xE9ficient d'un d\xE9ferrage optimis\xE9. Respectez bien le conseil de jeu : ${synthese.conseilPari || "Jeu simple"}`;
+}
+function getSeedFromString(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+function generateDeterministicField(meta, count, url) {
+  const seed = getSeedFromString(`${url}_${meta.prixNom}_${meta.hippodrome}_${meta.reunion}_${meta.course}_${meta.date}`);
+  const trotPool = [
+    { nom: "JAGUAR DU BOCAGE", driver: "CH. MOTTIER", entraineur: "M. MOTTIER", musique: "1a 1a Da 3a 2a", coteProbable: 4.8, ferrure: "D4", gains: 34e4, age: 6, sexe: "M", hippoScore: 92, statut: "Favori", regularitePourcent: 88, avisExpert: "Trotteur de classe sup\xE9rieure pr\xE9sent\xE9 pieds nus pour cet engagement vis\xE9." },
+    { nom: "GALAXY D'EURVAD", driver: "E. RAFFIN", entraineur: "S. GUARATO", musique: "2a 1a 1a 3a 4a", coteProbable: 3.6, ferrure: "D4", gains: 41e4, age: 7, sexe: "F", hippoScore: 94, statut: "Favori", regularitePourcent: 90, avisExpert: "La r\xE9f\xE9rence du peloton avec le crack driver en selle. Base de jeu incontournable." },
+    { nom: "DJEMBE DU PONT", driver: "J.M. BAZIRE", entraineur: "J.M. BAZIRE", musique: "2a 1a Da 1a 5a", coteProbable: 5.2, ferrure: "D4", gains: 43e4, age: 8, sexe: "M", hippoScore: 90, statut: "Favori", regularitePourcent: 84, avisExpert: "Pr\xE9par\xE9 avec un soin minutieux pour cette cible, tout proche du succ\xE8s." },
+    { nom: "FLASH DE VOUERNE", driver: "F. NIVARD", entraineur: "F. LEBLANC", musique: "3a 2a 4a 1a 2a", coteProbable: 6.8, ferrure: "D4", gains: 375e3, age: 8, sexe: "H", hippoScore: 86, statut: "Favori", regularitePourcent: 80, avisExpert: "Redoutable finisseur lorsqu'il b\xE9n\xE9ficie d'un dos favorable dans la mont\xE9e." },
+    { nom: "ELIXIR DU GITE", driver: "M. ABRIVARD", entraineur: "L.CL. ABRIVARD", musique: "1a 3a 2a 5a 6a", coteProbable: 7.9, ferrure: "DP", gains: 36e4, age: 9, sexe: "M", hippoScore: 83, statut: "Outsider", regularitePourcent: 76, avisExpert: "\xC0 l'aise sur les parcours de longue haleine, place l\xE9gitimement attendue." },
+    { nom: "ZEUS DES ISLES", driver: "Y. LEBOURGEOIS", entraineur: "J.P. MARMION", musique: "1a 2a 1a 4a 8a", coteProbable: 8.5, ferrure: "D4", gains: 35e4, age: 7, sexe: "M", hippoScore: 84, statut: "Favori", regularitePourcent: 81, avisExpert: "Prend rapidement t\xEAte et corde et va loin sur sa vitesse de base." },
+    { nom: "TORNADO DE JOUDES", driver: "F. LAGADEUC", entraineur: "F. SOULOY", musique: "3a 4a 2a 1a 7a", coteProbable: 9.8, ferrure: "D4", gains: 33e4, age: 7, sexe: "M", hippoScore: 80, statut: "Outsider", regularitePourcent: 73, avisExpert: "Entourage particuli\xE8rement confiant, apte \xE0 monter sur le podium." },
+    { nom: "COCKTAIL D'ISQUES", driver: "B. ROCHARD", entraineur: "M. SASSIER", musique: "4a 5a 2a 3a 1a", coteProbable: 11.5, ferrure: "DA", gains: 32e4, age: 7, sexe: "H", hippoScore: 78, statut: "Outsider", regularitePourcent: 70, avisExpert: "En pleine ascension athl\xE9tique, un accessit d'honneur est \xE0 sa port\xE9e." },
+    { nom: "BALZAC DE CHENU", driver: "D. THOMAIN", entraineur: "P. ALLAIRE", musique: "5a 3a 4a 6a 2a", coteProbable: 13.8, ferrure: "DP", gains: 295e3, age: 8, sexe: "H", hippoScore: 75, statut: "Outsider", regularitePourcent: 66, avisExpert: "R\xE9gulier et maniable dans le trafic, visera une 3e ou 4e place." },
+    { nom: "ASTERIX DU MONT", driver: "A. BARRIER", entraineur: "A. CHAVATTE", musique: "6a 4a 5a 2a 9a", coteProbable: 16.5, ferrure: "F", gains: 28e4, age: 9, sexe: "H", hippoScore: 72, statut: "Outsider", regularitePourcent: 62, avisExpert: "Capable d'un coup d'\xE9clat si l'\xE9preuve est rythm\xE9e et s\xE9lective." },
+    { nom: "KHALIFA DE L'ITON", driver: "T. LE BELLER", entraineur: "J.M. LEGROS", musique: "4a 3a 2a 6a 1a", coteProbable: 21, ferrure: "DP", gains: 265e3, age: 6, sexe: "F", hippoScore: 70, statut: "Outsider", regularitePourcent: 60, avisExpert: "Tr\xE8s bonne finisseuse, capable d'accrocher la 4e ou 5e place \xE0 belle cote." },
+    { nom: "VIKING DE L'AVRE", driver: "A. COLLETTE", entraineur: "E. VARIN", musique: "7a 6a 3a 5a 4a", coteProbable: 26, ferrure: "DP", gains: 25e4, age: 8, sexe: "H", hippoScore: 65, statut: "Tocard", regularitePourcent: 54, avisExpert: "Sp\xE9culatif pour compl\xE9ter les jeux de combinaison Quint\xE9 \xE9largis." },
+    { nom: "IDEAL DU DOLLAR", driver: "F. OUVRIE", entraineur: "S. GUARATO", musique: "5a 4a 6a 2a 3a", coteProbable: 32, ferrure: "DA", gains: 395e3, age: 8, sexe: "H", hippoScore: 66, statut: "Tocard", regularitePourcent: 56, avisExpert: "Exp\xE9riment\xE9 \xE0 ce niveau de comp\xE9tition, une 5e place n'est pas exclue." },
+    { nom: "ULYSSE DE TOUCHE", driver: "G. GELORMINI", entraineur: "S. PROVOOST", musique: "5a 7a 4a 6a 0a", coteProbable: 36, ferrure: "DA", gains: 235e3, age: 9, sexe: "H", hippoScore: 62, statut: "Tocard", regularitePourcent: 49, avisExpert: "Devra b\xE9n\xE9ficier d'une course sur mesure \xE0 la corde pour accrocher un lot." },
+    { nom: "SAMOURAI DREAM", driver: "P.Y. VERVA", entraineur: "P.Y. VERVA", musique: "6a 5a 7a 8a Da", coteProbable: 44, ferrure: "F", gains: 215e3, age: 10, sexe: "H", hippoScore: 57, statut: "Tocard", regularitePourcent: 43, avisExpert: "Tocard pur pour pimenter substantiellement les rapports des jeux r\xE9duits." },
+    { nom: "HARLEY DE QUERAY", driver: "P. VERCRUYSSE", entraineur: "P. VERCRUYSSE", musique: "8a 0a 7a 4a 9a", coteProbable: 56, ferrure: "F", gains: 42e4, age: 9, sexe: "H", hippoScore: 53, statut: "Tocard", regularitePourcent: 38, avisExpert: "Reste ferr\xE9 avec des fers lourds pour parfaire sa condition." },
+    { nom: "NOBLESSE DU CEDRE", driver: "A. ABRIVARD", entraineur: "L.CL. ABRIVARD", musique: "1a Da 2a 1a 3a", coteProbable: 6, ferrure: "D4", gains: 31e4, age: 6, sexe: "F", hippoScore: 88, statut: "Favori", regularitePourcent: 82, avisExpert: "Jument v\xE9loce et maniable, redoutable lorsqu'elle peut placer sa pointe." },
+    { nom: "QUICK DE MEAUTIS", driver: "M. MOTTIER", entraineur: "M. MOTTIER", musique: "3a 1a 5a 2a 4a", coteProbable: 14, ferrure: "DP", gains: 27e4, age: 7, sexe: "H", hippoScore: 74, statut: "Outsider", regularitePourcent: 67, avisExpert: "Donne toujours le meilleur de lui-m\xEAme, candidat aux places d'honneur." }
+  ];
+  const galopPool = [
+    { nom: "ROYAL DYNASTY", driver: "M. GUYON", entraineur: "A. FABRE", musique: "1p 2p 3p (25) 1p", coteProbable: 3.4, gains: 185e3, age: 4, sexe: "M", hippoScore: 94, statut: "Favori", regularitePourcent: 90, avisExpert: "Poulain de Groupe en plein \xE9panouissement, engagement sur mesure." },
+    { nom: "SILVER SWORD", driver: "C. SOUMILLON", entraineur: "J.C. ROUGET", musique: "2p 1p 4p 2p 1p", coteProbable: 4.6, gains: 16e4, age: 4, sexe: "H", hippoScore: 91, statut: "Favori", regularitePourcent: 86, avisExpert: "Poss\xE8de un changement de vitesse d\xE9vastateur dans les 300 derniers m\xE8tres." },
+    { nom: "GOLDEN GLORY", driver: "M. BARZALONA", entraineur: "F. GRAFFARD", musique: "3p 3p 1p 5p 2p", coteProbable: 5.9, gains: 145e3, age: 5, sexe: "M", hippoScore: 87, statut: "Favori", regularitePourcent: 81, avisExpert: "Tr\xE8s performant en bon terrain, disputera ardemment la victoire." },
+    { nom: "FLYING EAGLE", driver: "S. PASQUIER", entraineur: "N. CLEMENT", musique: "4p 2p 5p 1p 3p", coteProbable: 8.2, gains: 13e4, age: 4, sexe: "H", hippoScore: 83, statut: "Outsider", regularitePourcent: 77, avisExpert: "Mod\xE8le de pugnacit\xE9, a largement la pointure d'un gros handicap." },
+    { nom: "OCEAN BREEZE", driver: "T. BACHELOT", entraineur: "S. WATTEL", musique: "5p 4p 2p 3p 1p", coteProbable: 10.5, gains: 12e4, age: 5, sexe: "F", hippoScore: 79, statut: "Outsider", regularitePourcent: 72, avisExpert: "Pouliche confirm\xE9e sur cette distance, visera un bel accessit." },
+    { nom: "SHADOW KING", driver: "A. POUCHIN", entraineur: "Y. BARBEROT", musique: "1p 5p 3p 4p 6p", coteProbable: 12.8, gains: 115e3, age: 4, sexe: "M", hippoScore: 76, statut: "Outsider", regularitePourcent: 68, avisExpert: "En constants progr\xE8s matinaux, outsider tr\xE8s s\xE9duisant pour vos jeux." },
+    { nom: "MAGIC DANCER", driver: "A. LEMAITRE", entraineur: "CH. HEAD", musique: "6p 2p 4p 5p 2p", coteProbable: 15, gains: 105e3, age: 5, sexe: "H", hippoScore: 73, statut: "Outsider", regularitePourcent: 64, avisExpert: "D\xE9pend d'un entra\xEEnement redoutable, excellente finisseuse." },
+    { nom: "DESERT STAR", driver: "C. DEMURO", entraineur: "H.A. PANTALL", musique: "2p 6p 1p 8p 4p", coteProbable: 17.5, gains: 98e3, age: 4, sexe: "F", hippoScore: 71, statut: "Outsider", regularitePourcent: 61, avisExpert: "Peut cr\xE9er la surprise si l'allure de t\xEAte est suffisamment s\xE9lective." },
+    { nom: "WIND OF HOPE", driver: "R. THOMAS", entraineur: "C. BARANDE-BARBE", musique: "7p 3p 6p 2p 5p", coteProbable: 21, gains: 92e3, age: 6, sexe: "H", hippoScore: 67, statut: "Outsider", regularitePourcent: 56, avisExpert: "Bien connu \xE0 ce niveau de valeur handicap, \xE0 glisser en fin de combinaison." },
+    { nom: "DARK PRINCE", driver: "I. MENDIZABAL", entraineur: "P. SOGORB", musique: "4p 7p 5p 6p 3p", coteProbable: 25, gains: 85e3, age: 5, sexe: "M", hippoScore: 64, statut: "Tocard", regularitePourcent: 52, avisExpert: "Affronte un lot relev\xE9 mais poss\xE8de beaucoup de fond et de tenue." },
+    { nom: "WHITE PEARL", driver: "E. HARDOUIN", entraineur: "E. LIBAUD", musique: "5p 8p 3p 7p 4p", coteProbable: 29, gains: 78e3, age: 4, sexe: "F", hippoScore: 62, statut: "Tocard", regularitePourcent: 48, avisExpert: "Tocard s\xE9duisant pour un ticket de champ r\xE9duit \xE9largi." },
+    { nom: "IRON HEART", driver: "M. FOREST", entraineur: "O. TRIGODET", musique: "8p 5p 6p 4p 9p", coteProbable: 35, gains: 72e3, age: 6, sexe: "H", hippoScore: 58, statut: "Tocard", regularitePourcent: 44, avisExpert: "Gros outsider pour les amateurs de cotes astronomiques." },
+    { nom: "BLUE HORIZON", driver: "G. GUEDJ-GAY", entraineur: "F. ROHAUT", musique: "6p 6p 7p 5p 8p", coteProbable: 40, gains: 68e3, age: 5, sexe: "H", hippoScore: 55, statut: "Tocard", regularitePourcent: 40, avisExpert: "Devra sortir le grand jeu face aux cadors de l'\xE9preuve." },
+    { nom: "SUNNY BAY", driver: "A. GAVILAN", entraineur: "D. GUILLEMIN", musique: "7p 9p 4p 8p 6p", coteProbable: 48, gains: 62e3, age: 4, sexe: "F", hippoScore: 52, statut: "Tocard", regularitePourcent: 36, avisExpert: "Mission difficile mais valeur refuge si le terrain venait \xE0 coller." },
+    { nom: "LUCKY CHARM", driver: "F. VERON", entraineur: "M. GUARNIERI", musique: "9p 8p 5p 7p 0p", coteProbable: 54, gains: 58e3, age: 5, sexe: "H", hippoScore: 49, statut: "Tocard", regularitePourcent: 33, avisExpert: "Pour parieurs t\xE9m\xE9raires en qu\xEAte de gains d\xE9cupl\xE9s." },
+    { nom: "BRAVE WARRIOR", driver: "A. CRASTUS", entraineur: "P. DECOUZ", musique: "8p 0p 6p 9p 7p", coteProbable: 60, gains: 52e3, age: 6, sexe: "M", hippoScore: 46, statut: "Tocard", regularitePourcent: 29, avisExpert: "Ferme la marche des partants sur le papier." }
+  ];
+  const obstaclePool = [
+    { nom: "KAPTEEN DU MESNIL", driver: "J. REVELEY", entraineur: "D. BRESSOU", musique: "1h 2s 1h (25) 1h", coteProbable: 3.8, gains: 21e4, age: 5, sexe: "H", hippoScore: 93, statut: "Favori", regularitePourcent: 89, avisExpert: "Saut parfait et courage exemplaire dans la phase finale." },
+    { nom: "SAINT GATIEN", driver: "K. NABET", entraineur: "F. NICOLLE", musique: "2h 1h 3s 1h 2s", coteProbable: 4.5, gains: 195e3, age: 6, sexe: "M", hippoScore: 90, statut: "Favori", regularitePourcent: 85, avisExpert: "Entra\xEEnement num\xE9ro un sur les obstacles parisiens, premi\xE8re chance." },
+    { nom: "LORD DU ROCHER", driver: "A. ZULIANI", entraineur: "F. NICOLLE", musique: "3h 1s 2h 4s 1h", coteProbable: 6.2, gains: 175e3, age: 5, sexe: "H", hippoScore: 86, statut: "Favori", regularitePourcent: 81, avisExpert: "Tr\xE8s endurci sur les gros obstacles, disputera la palme." },
+    { nom: "MAGIC SAUT", driver: "G. MASURE", entraineur: "A. CHAILL\xC9-CHAILL\xC9", musique: "4s 2h 1s 5h 3s", coteProbable: 8.5, gains: 155e3, age: 6, sexe: "H", hippoScore: 82, statut: "Outsider", regularitePourcent: 76, avisExpert: "Sp\xE9cialiste des trac\xE9s s\xE9lectifs et des pistes assouplies." },
+    { nom: "PRINCE D'AUTEUIL", driver: "L. PHILIPPERON", entraineur: "M. ROLLAND", musique: "5h 3h 2h 1s 6h", coteProbable: 11, gains: 14e4, age: 5, sexe: "H", hippoScore: 78, statut: "Outsider", regularitePourcent: 71, avisExpert: "Progresse r\xE9guli\xE8rement au fil des joutes sur les haies." },
+    { nom: "CHEVALIER NOIR", driver: "F. DE GILES", entraineur: "GAB. LEENDERS", musique: "1s 4h 6s 2h 5s", coteProbable: 13.5, gains: 125e3, age: 7, sexe: "H", hippoScore: 75, statut: "Outsider", regularitePourcent: 67, avisExpert: "Finisseur d'exception lorsqu'il aborde la ligne droite sans encombre." },
+    { nom: "ETOILE DU MAINE", driver: "B. LE CLERC", entraineur: "L. VIEL", musique: "6h 5s 3h 2s 4h", coteProbable: 16.5, gains: 11e4, age: 5, sexe: "F", hippoScore: 72, statut: "Outsider", regularitePourcent: 63, avisExpert: "Pouliche tenace capable de r\xE9sister aux attaques pour un accessit." },
+    { nom: "GARDE DU CORPS", driver: "N. GAUFFENIC", entraineur: "P. QUINTON", musique: "7s 2h 4s 6h 3s", coteProbable: 20, gains: 98e3, age: 6, sexe: "H", hippoScore: 68, statut: "Outsider", regularitePourcent: 58, avisExpert: "Aptitude confirm\xE9e aux longues distances et aux terrains profonds." },
+    { nom: "VAINQUEUR DES BUTTES", driver: "D. GALLON", entraineur: "A. BOISBRUNET", musique: "4h 6s 5h 7s 2h", coteProbable: 26, gains: 88e3, age: 7, sexe: "H", hippoScore: 64, statut: "Tocard", regularitePourcent: 53, avisExpert: "Tocard capable d'un coup d'\xE9clat si les favoris font des fautes." },
+    { nom: "BEAU RIVAGE", driver: "T. CHEVILLARD", entraineur: "E. CLAYEUX", musique: "8s 5h 7s 3h 6s", coteProbable: 34, gains: 78e3, age: 6, sexe: "H", hippoScore: 60, statut: "Tocard", regularitePourcent: 47, avisExpert: "Pour pimenter les rapports en cas de d\xE9faillances aux obstacles." }
+  ];
+  const isGalop = meta.discipline.includes("Plat");
+  const isObstacle = meta.discipline.includes("Haies") || meta.discipline.includes("Steeple") || meta.discipline.includes("Obstacle");
+  const chosenPool = isObstacle ? obstaclePool : isGalop ? galopPool : trotPool;
+  const offset = seed % chosenPool.length;
+  const rotated = [...chosenPool.slice(offset), ...chosenPool.slice(0, offset)];
+  const result = [];
+  for (let i = 0; i < count; i++) {
+    const template = rotated[i % rotated.length];
+    const numero = i + 1;
+    const seedVariation = (seed + i * 17) % 11 - 5;
+    const computedScore = Math.max(48, Math.min(95, (template.hippoScore || 75) + (i < 4 ? Math.max(0, seedVariation) : seedVariation)));
+    const coteAdjustment = Math.round(((seed + i * 7) % 7 - 3) * 10) / 10;
+    const finalCote = Math.max(2.5, Math.round(((template.coteProbable || 10) + coteAdjustment) * 10) / 10);
+    const statut = computedScore >= 88 ? "Favori" : computedScore >= 78 ? "Seconde chance" : computedScore >= 66 ? "Outsider" : "Tocard";
+    result.push({
+      numero,
+      nom: template.nom,
+      driver: template.driver,
+      entraineur: template.entraineur,
+      musique: template.musique,
+      ferrure: template.ferrure || (isGalop ? void 0 : i % 3 === 0 ? "D4" : i % 3 === 1 ? "DP" : "F"),
+      distance: meta.distance,
+      corde: isGalop ? (numero - 1) % count + 1 : void 0,
+      poids: isGalop ? 54 + numero % 7 : isObstacle ? 65 + numero % 7 : void 0,
+      age: template.age,
+      sexe: template.sexe,
+      gains: template.gains,
+      coteProbable: finalCote,
+      hippoScore: computedScore,
+      regularitePourcent: template.regularitePourcent,
+      avisExpert: template.avisExpert,
+      statut
+    });
+  }
+  return result;
 }
 var init_raceGenerator = __esm({
   "src/utils/raceGenerator.ts"() {
@@ -3467,30 +3498,37 @@ function extractGenyRscData(rawHtml, targetUrl) {
       dateCourse = (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR");
     }
   }
-  const hasArrivalKeywords = /arriv[eé]e\s*(?:d[eé]finitive|officielle|provisoire|Arrivee)/i.test(rawHtml) || /"statut"\s*:\s*"(?:ARRIVEE_DEFINITIVE|PROVISOIRE|ARRIVEE|TERMINER)"/i.test(fullPayload) || /rapports\s*&\s*arriv[eé]e/i.test(rawHtml) || /arriveeDefinitive/i.test(fullPayload);
-  const placedParticipants = hasArrivalKeywords ? participantsList.map((p) => {
+  const isPartantsPronosUrl = targetUrl.includes("/partants-pronostics") && !targetUrl.includes("/arrivee-rapports");
+  const rscStatutMatch = rscCourseChunk.match(/"statut":\s*"([^"]+)"/);
+  const raceStatut = rscStatutMatch ? rscStatutMatch[1].toUpperCase() : "";
+  const isExplicitlyFinished = /ARRIVEE|TERMINE|CLOTURE/i.test(raceStatut);
+  const isExplicitlyUpcoming = /A_PARTIR|PARTANTS|A_VENIR|PROGRAMMEE|NON_COMMENCEE/i.test(raceStatut);
+  const placedParticipants = participantsList.map((p) => {
     const rawRank = p.rang ?? p.rangArrivee ?? p.ordreArrivee ?? p.placeArrivee;
     const rank = parseInt(String(rawRank ?? ""), 10);
     const num = parseInt(String(p.numero ?? p.numPartant ?? p.numPari ?? ""), 10);
     return { num, rank };
-  }).filter((p) => !isNaN(p.rank) && p.rank > 0 && !isNaN(p.num) && p.num > 0).sort((a, b) => a.rank - b.rank) : [];
-  if (hasArrivalKeywords && placedParticipants.length >= 3) {
+  }).filter((p) => !isNaN(p.rank) && p.rank > 0 && !isNaN(p.num) && p.num > 0).sort((a, b) => a.rank - b.rank);
+  if (placedParticipants.length >= 3 && !isExplicitlyUpcoming) {
     arriveeOfficielle = placedParticipants.map((p) => p.num).join(" - ");
-  } else if (hasArrivalKeywords) {
-    let arriveeMatch = courseSection.match(/"arrivee"\s*:\s*"([^"]+)"/) || fullPayload.match(/"arriveeDefinitive"\s*:\s*"([^"]+)"/) || fullPayload.match(/"ordreArrivee"\s*:\s*\[([\d,\s]+)\]/);
+  } else if (!isPartantsPronosUrl || isExplicitlyFinished) {
+    let arriveeMatch = rscCourseChunk.match(/"arrivee":\s*"([^"]+)"/) || rscCourseChunk.match(/"arriveeDefinitive":\s*"([^"]+)"/) || rscCourseChunk.match(/"ordreArrivee":\s*\[([\d,\s]+)\]/);
     if (!arriveeMatch && raceId) {
-      const afterIdMatch = fullPayload.match(new RegExp(`"id":\\s*${raceId}[\\s\\S]{0,1500}?"arrivee":\\s*"([^"]+)"`));
+      const afterIdMatch = fullPayload.match(new RegExp(`"id":\\s*${raceId}[\\s\\S]{0,2500}?"arrivee":\\s*"([^"]+)"`));
       if (afterIdMatch && afterIdMatch[1]) {
         arriveeMatch = afterIdMatch;
       }
     }
     if (arriveeMatch && arriveeMatch[1]) {
-      if (arriveeMatch[1].includes(",")) {
-        arriveeOfficielle = arriveeMatch[1].split(",").map((s) => s.trim()).join(" - ");
-      } else {
-        arriveeOfficielle = arriveeMatch[1].trim();
+      const rawMatchVal = arriveeMatch[1].trim();
+      if (rawMatchVal && rawMatchVal !== "null" && rawMatchVal !== "undefined") {
+        if (rawMatchVal.includes(",")) {
+          arriveeOfficielle = rawMatchVal.split(",").map((s) => s.trim()).join(" - ");
+        } else {
+          arriveeOfficielle = rawMatchVal;
+        }
       }
-    } else {
+    } else if (targetUrl.includes("/arrivee-rapports")) {
       const htmlArrMatch = rawHtml.match(/arriv[eé]e\s*(?:d[eé]finitive|officielle|provisoire|chiffr[eé]e)?\s*[:\s]\s*(\d{1,2}(?:\s*[-,\s]\s*\d{1,2}){2,10})/i);
       if (htmlArrMatch && htmlArrMatch[1]) {
         const nums = htmlArrMatch[1].split(/[-,\s]+/).map((n) => n.trim()).filter(Boolean);
@@ -3777,7 +3815,7 @@ try {
   console.warn("Note: tsx loader registration skipped or already active:", err);
 }
 var { SAMPLE_RACES: SAMPLE_RACES2 } = await Promise.resolve().then(() => (init_sampleRaces(), sampleRaces_exports));
-var { buildFallbackRace: buildFallbackRace2, buildFallbackAdvisorAnswer: buildFallbackAdvisorAnswer2 } = await Promise.resolve().then(() => (init_raceGenerator(), raceGenerator_exports));
+var { buildFallbackRace: buildFallbackRace2, buildFallbackAdvisorAnswer: buildFallbackAdvisorAnswer2, extractMetadataFromTurfUrl: extractMetadataFromTurfUrl2 } = await Promise.resolve().then(() => (init_raceGenerator(), raceGenerator_exports));
 var { getCuratedPmuMeetings: getCuratedPmuMeetings2 } = await Promise.resolve().then(() => (init_pmuMeetingsData(), pmuMeetingsData_exports));
 var { getFriday02Meetings: getFriday02Meetings2 } = await Promise.resolve().then(() => (init_plrFriday02Data(), plrFriday02Data_exports));
 var { enrichRaceWithGeminiCollege: enrichRaceWithGeminiCollege2, buildFactCheckingCertificate: buildFactCheckingCertificate2, computePartantHippoScore: computePartantHippoScore2 } = await Promise.resolve().then(() => (init_geminiMultiModelEngine(), geminiMultiModelEngine_exports));
@@ -4107,21 +4145,46 @@ RETOURNE UN OBJET JSON VALIDE STRICTEMENT CONFORME AU SCHEMA :
   }
 });
 async function callGeminiWithFallback(aiClient, options) {
-  const defaultModelList = ["gemini-3.8-flash", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+  const hasTools = Boolean(options.config?.tools && Array.isArray(options.config.tools) && options.config.tools.length > 0);
+  const isWebSearchGrounding = Boolean(hasTools && options.config.tools.some((t) => t.googleSearch));
+  const defaultModelList = isWebSearchGrounding ? ["gemini-3.8-flash", "gemini-flash-latest"] : ["gemini-3.8-flash", "gemini-flash-latest", "gemini-3.1-flash-lite"];
   const rawList = options.modelsToTry && options.modelsToTry.length > 0 ? options.modelsToTry : defaultModelList;
   const sanitizedList = [];
   for (const m of rawList) {
     let cleanModel = m;
     if (m.startsWith("gemini-2.5-flash") || m.startsWith("gemini-2.0") || m.startsWith("gemini-1.5")) cleanModel = "gemini-3.8-flash";
     else if (m.startsWith("gemini-2.5-pro")) cleanModel = "gemini-3.8-flash";
-    else if (m === "gemini-3.5-flash-lite" || m === "gemini-3.5-flash") cleanModel = "gemini-3.1-flash-lite";
+    else if (m === "gemini-3.5-flash-lite" || m === "gemini-3.5-flash") cleanModel = "gemini-3.8-flash";
+    if (isWebSearchGrounding && cleanModel === "gemini-3.1-flash-lite") {
+      continue;
+    }
     if (!sanitizedList.includes(cleanModel)) {
       sanitizedList.push(cleanModel);
     }
   }
-  if (!sanitizedList.includes("gemini-3.8-flash")) sanitizedList.unshift("gemini-3.8-flash");
-  if (!sanitizedList.includes("gemini-3.1-flash-lite")) sanitizedList.push("gemini-3.1-flash-lite");
-  const timeoutMs = options.timeoutMs || 3e4;
+  if (!sanitizedList.includes("gemini-3.8-flash")) {
+    sanitizedList.unshift("gemini-3.8-flash");
+  }
+  if (!sanitizedList.includes("gemini-flash-latest")) {
+    sanitizedList.push("gemini-flash-latest");
+  }
+  if (!isWebSearchGrounding && !sanitizedList.includes("gemini-3.1-flash-lite")) {
+    sanitizedList.push("gemini-3.1-flash-lite");
+  }
+  const timeoutMs = options.timeoutMs || 25e3;
+  const runWithTimeout = async (promise, ms, label) => {
+    let timerId = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise((_, reject) => {
+          timerId = setTimeout(() => reject(new Error(`Timeout (${ms}ms) sur ${label}`)), ms);
+        })
+      ]);
+    } finally {
+      if (timerId) clearTimeout(timerId);
+    }
+  };
   for (const model of sanitizedList) {
     try {
       const callPromise = aiClient.models.generateContent({
@@ -4129,34 +4192,40 @@ async function callGeminiWithFallback(aiClient, options) {
         contents: options.contents,
         config: options.config
       });
-      const timeoutPromise = new Promise(
-        (_, reject) => setTimeout(() => reject(new Error(`Timeout (${timeoutMs}ms) sur ${model}`)), timeoutMs)
-      );
-      const response = await Promise.race([callPromise, timeoutPromise]);
+      const response = await runWithTimeout(callPromise, timeoutMs, model);
       if (response && (response.text || response.candidates)) {
         return response;
       }
     } catch (err) {
       const errMsg = err?.message || String(err);
+      const isTimeout = errMsg.toLowerCase().includes("timeout");
+      if (hasTools && !isWebSearchGrounding && !isTimeout && options.allowFallbackWithoutTools !== false && model !== "gemini-3.1-flash-lite") {
+        try {
+          const configNoTools = { ...options.config };
+          delete configNoTools.tools;
+          const retryPromise = aiClient.models.generateContent({
+            model,
+            contents: options.contents,
+            config: configNoTools
+          });
+          const retryResponse = await runWithTimeout(retryPromise, 6e3, `${model} sans tools`);
+          if (retryResponse && (retryResponse.text || retryResponse.candidates)) {
+            return retryResponse;
+          }
+        } catch {
+        }
+      }
       const isQuotaError = errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED");
       if (isQuotaError) {
         console.warn(`[Quota limit on ${model}] : basculement vers mod\xE8le alternatif / moteur autonome.`);
       } else {
-        console.warn(`[Gemini notice on ${model}]:`, errMsg.slice(0, 150));
+        console.info(`[Gemini notice on ${model}]:`, errMsg.slice(0, 150));
       }
     }
   }
   console.warn("\u26A0\uFE0F Basculement transparent sur le moteur algorithmique et statistique HippoAnalyse.");
   return {
-    text: JSON.stringify({
-      synthese: "Analyse experte calcul\xE9e par le moteur algorithmique et stochastique HippoAnalyse V38.",
-      selection8: [1, 2, 3, 4, 5, 6, 7, 8],
-      baseQuinte: [2, 7],
-      outsidersSeduisants: [1, 6],
-      tocardPiste: [9],
-      conseilJeu: "Jeu simple gagnant/plac\xE9 et Quint\xE9+ \xE9tendu bas\xE9 sur les indices de forme et cotes en direct.",
-      confianceIndex: 92
-    })
+    text: void 0
   };
 }
 async function runStrictDataValidation(extractedCourse, aiClient) {
@@ -4339,7 +4408,7 @@ app.post("/api/analyze-race", async (req, res) => {
         const rUrl = (r.sourceUrl || "").toLowerCase();
         const cleanSampleUrl = rUrl.replace("/arrivee-rapports", "/partants-pronostics");
         const rSlug = (r.prixNom || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "-");
-        return cleanSampleUrl === cleanReqUrl || cleanReqUrl.includes(rId) || rId.length >= 4 && cleanReqUrl.includes(rId) || rSlug.length >= 4 && cleanReqUrl.includes(rSlug);
+        return rUrl && cleanSampleUrl === cleanReqUrl || rId && rId.length >= 6 && cleanReqUrl.includes(rId) || rSlug && rSlug.length >= 8 && cleanReqUrl.includes(rSlug);
       });
       if (existingSample) {
         const courseToReturn = { ...existingSample };
@@ -4662,6 +4731,7 @@ Voici le texte ou le tableau exact copi\xE9 depuis Geny ou Paris-Turf :
 ${rawPartantsText.trim().slice(0, 2e4)}
 """
 Extrais avec une fid\xE9lit\xE9 de 100% l'ensemble des partants figurant dans ce texte (leurs num\xE9ros r\xE9els, noms, drivers, cotes, ferrures, etc.).` : "";
+      const urlMetadataParsed = extractMetadataFromTurfUrl2(trimmedUrl, validation.source || "autre");
       const prompt = `
 Tu es le moteur expert d'HippoAnalyse, sp\xE9cialiste fran\xE7ais de l'analyse des courses hippiques PMU, Quint\xE9+, et des pronostics de Geny Courses (geny.com) et Paris-Turf (paristurf.com / paris-turf.com).
 
@@ -4684,7 +4754,14 @@ ${fetchedHtml ? `Voici le contenu extrait de la page officielle :
 """
 ${fetchedHtml.slice(0, 25e3)}
 """` : `La page n'a pas pu \xEAtre aspir\xE9e directement (protection anti-bot Cloudflare ou format non support\xE9). 
-       RECHERCHE OBLIGATOIRE ET APPROFONDIE SUR LE WEB via Google Search Grounding pour trouver les partants r\xE9els et les informations officielles (Prix, Hippodrome, R/C, Date, Partants) sur PMU.fr, Paris-Turf.com et Geny.com.`}
+       M\xC9TADONN\xC9ES CIBLES EXTRAITES DU LIEN OFFICIEL :
+       - Nom de la course : ${urlMetadataParsed.prixNom}
+       - Hippodrome : ${urlMetadataParsed.hippodrome}
+       - R\xE9union / Course : ${urlMeta.reunion || urlMetadataParsed.reunion} ${urlMeta.course || urlMetadataParsed.course}
+       - Discipline : ${urlMetadataParsed.discipline}
+       - Distance : ${urlMetadataParsed.distance}m (Corde \xE0 ${urlMetadataParsed.corde})
+       - Date : ${urlMeta.date || urlMetadataParsed.date}
+       CONSIGNE STRICTE : Tu DOIS analyser pr\xE9cis\xE9ment l'\xE9preuve "${urlMetadataParsed.prixNom}" \xE0 ${urlMetadataParsed.hippodrome} (${urlMeta.reunion || urlMetadataParsed.reunion} ${urlMeta.course || urlMetadataParsed.course}). Ne confonds JAMAIS avec une autre \xE9preuve.`}
 
 ${promptPartantsCountDirective}
 
@@ -5047,9 +5124,21 @@ MISSION TURF :
               }
             }
             rawCourse.partants = filledPartants;
+            if (!rawCourse.prixNom || rawCourse.prixNom === "Course Hippique" || !rawCourse.hippodrome || !rawCourse.titre) {
+              rawCourse.prixNom = rawCourse.prixNom || fallbackTemplate.prixNom;
+              rawCourse.hippodrome = rawCourse.hippodrome || fallbackTemplate.hippodrome;
+              rawCourse.titre = fallbackTemplate.titre;
+              rawCourse.discipline = rawCourse.discipline || fallbackTemplate.discipline;
+              rawCourse.distance = rawCourse.distance || fallbackTemplate.distance;
+              rawCourse.corde = rawCourse.corde || fallbackTemplate.corde;
+              rawCourse.reunion = urlMeta.reunion || rawCourse.reunion || fallbackTemplate.reunion;
+              rawCourse.course = urlMeta.course || rawCourse.course || fallbackTemplate.course;
+              rawCourse.courseNumero = urlMeta.course || rawCourse.courseNumero || fallbackTemplate.courseNumero;
+            }
             if (!rawCourse.synthese?.selection8 || rawCourse.synthese.selection8.length < 8) {
               const activeNums = filledPartants.filter((p) => !p.estNonPartant).map((p) => p.numero);
               rawCourse.synthese = {
+                ...fallbackTemplate.synthese || {},
                 ...rawCourse.synthese || {},
                 baseIncontournable: rawCourse.synthese?.baseIncontournable || activeNums[0] || 1,
                 secondeBase: rawCourse.synthese?.secondeBase || activeNums[1] || 2,
@@ -6090,6 +6179,9 @@ function getCertifiedRaceArrival(course) {
   if (course.id === "1689006" || String(course.titre || course.prixNom || "").toLowerCase().includes("daphn")) {
     return { arrival: "1 - 9 - 4 - 17 - 7", isOfficial: true };
   }
+  if (course.manualArrivalCleared || course.verrouillageNonDisputee) {
+    return null;
+  }
   if (course.arriveeOfficielle && typeof course.arriveeOfficielle === "string" && /^\d+[-,\s]+\d+/.test(course.arriveeOfficielle.trim())) {
     return {
       arrival: course.arriveeOfficielle.trim().replace(/,/g, " - "),
@@ -6132,6 +6224,18 @@ app.post("/api/verify-race-facts", async (req, res) => {
     const { course, url } = req.body;
     if (!course) {
       return res.status(400).json({ error: "Donn\xE9es de course manquantes" });
+    }
+    if (course.manualArrivalCleared || course.verrouillageNonDisputee) {
+      return res.json({
+        success: true,
+        arriveeOfficielle: null,
+        statutArrivee: "en_attente",
+        statutCourse: "Partants d\xE9finitifs",
+        isOfficial: false,
+        isProvisional: false,
+        hasEnquete: false,
+        message: "Course non disput\xE9e / arriv\xE9e supprim\xE9e manuellement"
+      });
     }
     let arriveeTrouvee = null;
     let statutArrivee = "en_attente";
@@ -6286,7 +6390,7 @@ Format JSON obligatoire :
 }`;
         const searchResp = await callGeminiWithFallback(ai, {
           contents: searchPrompt,
-          modelsToTry: ["gemini-flash-latest", "gemini-3.8-flash", "gemini-3.1-flash-lite"],
+          modelsToTry: ["gemini-3.8-flash", "gemini-flash-latest"],
           config: {
             tools: [{ googleSearch: {} }]
           },
@@ -6514,10 +6618,9 @@ Format JSON attendu :
       const searchResp = await callGeminiWithFallback(ai, {
         contents: prompt,
         config: {
-          tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json"
+          tools: [{ googleSearch: {} }]
         },
-        timeoutMs: 16e3
+        timeoutMs: 25e3
       });
       const gMetadata = searchResp?.candidates?.[0]?.groundingMetadata;
       if (gMetadata && Array.isArray(gMetadata.groundingChunks)) {
@@ -6740,6 +6843,26 @@ app.post("/api/refresh-cotes", async (req, res) => {
     const { course } = req.body;
     if (!course || !Array.isArray(course.partants)) {
       return res.status(400).json({ error: "Donn\xE9es de course invalides" });
+    }
+    if (course.manualArrivalCleared || course.verrouillageNonDisputee) {
+      return res.json({
+        partants: course.partants,
+        arriveeOfficielle: null,
+        statutCourse: "Partants d\xE9finitifs",
+        statutArrivee: "en_attente",
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        skipped: true,
+        reason: "Course non disput\xE9e / arriv\xE9e supprim\xE9e manuellement"
+      });
+    }
+    if (course.cotesScellees || course.synthese) {
+      return res.json({
+        partants: course.partants,
+        arriveeOfficielle: course.manualArrivalCleared || course.verrouillageNonDisputee ? null : course.arriveeOfficielle || null,
+        updatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+        source: "cotes_scellees",
+        message: "\u{1F512} Cotes scell\xE9es : les cotes des chevaux restent verrouill\xE9es apr\xE8s l'analyse officielle de la course."
+      });
     }
     let isAfterRace = (course.statutCourse === "Arriv\xE9e officielle" || course.statutArrivee === "officielle") && Boolean(course.arrivalAuditCompleted);
     if (!isAfterRace && course.date) {
@@ -6989,7 +7112,7 @@ R\xC8GLES STRICTES :
         indexValeur: Math.round((newScore - currentCote) * 10) / 10
       };
     });
-    const finalArrival = extractedPmuArrival || course.arriveeOfficielle || null;
+    const finalArrival = course.manualArrivalCleared || course.verrouillageNonDisputee ? null : extractedPmuArrival || course.arriveeOfficielle || null;
     console.log("[PMU-API-REFRESH-COTES] Response arriveeOfficielle mapped:", finalArrival);
     return res.json({
       partants: finalPartants,

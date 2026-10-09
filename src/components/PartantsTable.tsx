@@ -6,7 +6,7 @@ import { isCourseFinished } from '../utils/raceCountdown';
 import { exportCourseToExcel } from '../utils/excelExport';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
-import { assignUniqueCordesForPlat, getHorseGenyOdds, computeV38Hierarchy } from '../utils/v38Helper';
+import { assignUniqueCordesForPlat, getHorseGenyOdds, computeV38Hierarchy, computeHorseSuccessProbabilities, HorseSuccessProbability } from '../utils/v38Helper';
 
 interface PartantsTableProps {
   partants: Partant[];
@@ -23,7 +23,7 @@ interface PartantsTableProps {
   isExpertMode?: boolean;
 }
 
-type SortField = 'numero' | 'hippoScore' | 'coteProbable' | 'gains' | 'regularitePourcent' | 'regularite' | 'driverSuccess' | 'groupeCote' | 'ecart';
+type SortField = 'numero' | 'hippoScore' | 'coteProbable' | 'gains' | 'regularitePourcent' | 'regularite' | 'driverSuccess' | 'groupeCote' | 'ecart' | 'probabiliteSucces';
 
 export interface HorseEcartData {
   ecartSansPlace: number;       // Nombre de courses consécutives récentes sans être placé sur le podium (1er, 2e, 3e)
@@ -594,10 +594,23 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
     return Math.max(10, Math.min(100, Math.round(100 - (avg - 1) * 10)));
   };
 
+  // Calcul dynamique de la probabilité de succès à partir du score HippoScore pour aide à la mise
+  const successProbMap = useMemo(() => {
+    return computeHorseSuccessProbabilities(partants, course);
+  }, [partants, course]);
+
   const sortedPartants = [...filteredPartants].map((p) => ({
     ...p,
     hippoScore: computePartantHippoScore(p, course),
   })).sort((a, b) => {
+    if (sortField === 'probabiliteSucces') {
+      const probA = successProbMap.get(Number(a.numero))?.percent ?? 0;
+      const probB = successProbMap.get(Number(b.numero))?.percent ?? 0;
+      if (probA !== probB) {
+        return sortAsc ? probA - probB : probB - probA;
+      }
+      return a.numero - b.numero;
+    }
     if (sortField === 'coteProbable') {
       const cA = a.coteProbable && a.coteProbable > 0 ? Number(a.coteProbable) : (sortAsc ? 9999 : -1);
       const cB = b.coteProbable && b.coteProbable > 0 ? Number(b.coteProbable) : (sortAsc ? 9999 : -1);
@@ -770,6 +783,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
               >
                 <option value="numero-true" className="bg-slate-900 text-white font-bold">N° Chiffre (Croissant)</option>
                 <option value="numero-false" className="bg-slate-900 text-white font-bold">N° Chiffre (Décroissant)</option>
+                <option value="probabiliteSucces-false" className="bg-slate-900 text-amber-300 font-bold">🎯 Probabilité de Succès (Plus fortes chances d'abord ↘)</option>
                 <option value="coteProbable-true" className="bg-slate-900 text-amber-400 font-bold">Cote Probable (Croissante)</option>
                 <option value="coteProbable-false" className="bg-slate-900 text-rose-400 font-bold">Cote Probable (Décroissante)</option>
                 <option value="hippoScore-false" className="bg-slate-900 text-emerald-400 font-bold">⭐ Rang Analyse IA (Meilleurs en premier)</option>
@@ -1709,6 +1723,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
             title="Sélectionner l'ordre de tri des partants"
           >
             <option value="numero-true">🔢 N° Dossard (Ordre officiel 1 ➔ N)</option>
+            <option value="probabiliteSucces-false">🎯 Probabilité de Succès (Plus fortes chances d'abord ↘)</option>
             <option value="coteProbable-true">📈 Cote Probable CROISSANTE (Plus petite à plus grande ↗ · Favoris)</option>
             <option value="coteProbable-false">📉 Cote Probable DÉCROISSANTE (Plus grande à plus petite ↘ · Tocards)</option>
             <option value="hippoScore-false">🏆 Score IA HippoScore (Meilleurs d'abord ↘)</option>
@@ -2312,6 +2327,39 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                   {sortField === 'hippoScore' && (sortAsc ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
                 </div>
               </th>
+
+              {/* Colonne Probabilité de succès (calculée dynamiquement à partir de l'HippoScore) */}
+              <th
+                onClick={() => handleSort('probabiliteSucces')}
+                className="py-3 px-3 cursor-pointer hover:text-white text-center select-none whitespace-nowrap"
+                title="Probabilité de succès calculée dynamiquement à partir de l'HippoScore pour optimiser les mises"
+              >
+                <div className="flex items-center justify-center gap-1.5">
+                  <span className="font-black text-amber-400 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Probabilité de succès</span>
+                    {sortField === 'probabiliteSucces' && (
+                      sortAsc ? <ChevronUp className="w-3 h-3 text-amber-400" /> : <ChevronDown className="w-3 h-3 text-amber-400" />
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSortField('probabiliteSucces');
+                      setSortAsc(false);
+                    }}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-black transition-all ${
+                      sortField === 'probabiliteSucces' && !sortAsc
+                        ? 'bg-amber-500 text-slate-950 shadow-xs'
+                        : 'bg-slate-900 text-slate-400 hover:text-white border border-slate-800'
+                    }`}
+                    title="Trier par probabilité décroissante (meilleures chances en tête)"
+                  >
+                    Top %
+                  </button>
+                </div>
+              </th>
               <th className="py-3 px-3 text-center">Détails Pro</th>
               <th className="py-3 px-4 text-left text-amber-400 font-black flex-1 min-w-[400px]">Avis HippoAnalyse</th>
             </tr>
@@ -2725,6 +2773,35 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                           {partant.hippoScore || 0}/100
                         </span>
                       </div>
+                    </td>
+
+                    {/* Probabilité de succès (calculée dynamiquement à partir de l'HippoScore) */}
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      {isNP ? (
+                        <span className="text-slate-600 font-bold">—</span>
+                      ) : (
+                        (() => {
+                          const prob = successProbMap.get(Number(partant.numero));
+                          if (!prob) return <span className="text-slate-500 font-bold">—</span>;
+                          return (
+                            <div className="flex flex-col items-center justify-center gap-1 min-w-[105px]">
+                              <div className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg border font-mono font-black text-xs shadow-xs ${prob.badgeBg}`}>
+                                <span>{prob.percent}%</span>
+                              </div>
+                              {/* Jauge visuelle */}
+                              <div className="w-16 h-1.5 rounded-full bg-slate-950 overflow-hidden border border-slate-800">
+                                <div
+                                  className={`h-full rounded-full transition-all duration-500 ${prob.barColor}`}
+                                  style={{ width: `${Math.min(100, Math.max(8, prob.percent * 3))}%` }}
+                                />
+                              </div>
+                              <span className="text-[9px] font-bold text-slate-400 hover:text-slate-200 transition-colors" title={prob.advice}>
+                                {prob.label}
+                              </span>
+                            </div>
+                          );
+                        })()
+                      )}
                     </td>
 
                     {/* Détails Pro : Réussite Driver/Jockey */}

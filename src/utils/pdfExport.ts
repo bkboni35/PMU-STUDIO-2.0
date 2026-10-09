@@ -3,7 +3,7 @@ import autoTable from 'jspdf-autotable';
 import { CourseHippique } from '../types/turf';
 import { convertToUTC } from './timeConversion';
 import { computePartantHippoScore, computeQuinteOrdres } from './geminiMultiModelEngine';
-import { computeV38Hierarchy, computeDisciplineGrid } from './v38Helper';
+import { computeV38Hierarchy, computeDisciplineGrid, computeHorseSuccessProbabilities } from './v38Helper';
 import { downloadPdfDocument } from './exportUtils';
 
 /**
@@ -343,8 +343,9 @@ export function exportCourseToPdf(course: CourseHippique): void {
     doc.setFontSize(7);
     doc.text(`${course.reunion || 'R1'} ${course.course || 'C1'} - ${course.titre || course.prixNom || 'PRIX'} | ${course.hippodrome || ''} | ${partantsCount} partants | Distance : ${course.distance || ''}m`, margin + 4, page2Y + 11);
 
+    const isPlat = (course.discipline || '').toLowerCase().includes('plat');
     const tableHeaders = [
-      'Rang', 'N°', 'Cheval', 'Driver / Jockey', 'Entraîneur', 'Ferr.', 'Musique', 'Cote', 'Score', 'Catégorie V38', 'Avis Synthèse'
+      'Rang', 'N°', isPlat ? 'Cheval (Corde)' : 'Cheval', 'Driver / Jockey', 'Entraîneur', isPlat ? 'Corde' : 'Ferr.', 'Musique', 'Cote', 'Score', 'Catégorie V38', 'Avis Synthèse'
     ];
 
     const allOrderedPage2 = [...selection11, ...delaisses];
@@ -368,10 +369,10 @@ export function exportCourseToPdf(course: CourseHippique): void {
       return [
         `${position}`,
         p.numero.toString(),
-        p.nom || '',
+        isPlat && p.corde ? `${p.nom || ''} (C.${p.corde})` : (p.nom || ''),
         p.driver || '—',
         p.entraineur || '—',
-        p.ferrure || '—',
+        isPlat ? (p.corde ? `Corde ${p.corde}` : '—') : (p.ferrure || '—'),
         displayMusique,
         coteStr,
         p.hippoScore ? `${p.hippoScore} pts` : '—',
@@ -447,6 +448,64 @@ export function exportCourseToPdf(course: CourseHippique): void {
       },
     });
 
+    // Grille V38 Discipline avec colonnes 2 cm (20 mm)
+    const gridStartY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 8 : 155;
+    if (gridStartY < 235) {
+      const disciplineGrid = computeDisciplineGrid(course);
+      
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.setTextColor(15, 23, 42);
+      doc.text(`GRILLE V38 DISCIPLINE (${disciplineGrid.title}) - COLONNES 2 CM`, margin, gridStartY);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(7);
+      doc.setTextColor(100, 116, 139);
+      const ruleText = `${disciplineGrid.rows[0]?.label || 'A'}: ${disciplineGrid.rows[0]?.description} | ${disciplineGrid.rows[1]?.label || 'B'}: ${disciplineGrid.rows[1]?.description} | ${disciplineGrid.rows[2]?.label || 'C'}: ${disciplineGrid.rows[2]?.description}`;
+      doc.text(ruleText, margin, gridStartY + 4);
+
+      const gridHeaders = [['CATEGORIE', 'FAVORIS', 'OUTSIDERS', 'TOCARDS', 'SURPRISES']];
+      const gridRows = disciplineGrid.rows.map(r => [
+        r.label || r.key,
+        r.bases.length > 0 ? r.bases.join(' - ') : '—',
+        r.chances.length > 0 ? r.chances.join(' - ') : '—',
+        r.tocards.length > 0 ? r.tocards.join(' - ') : '—',
+        r.surprises.length > 0 ? r.surprises.join(' - ') : '—',
+      ]);
+
+      autoTable(doc, {
+        startY: gridStartY + 6,
+        margin: { left: margin },
+        head: gridHeaders,
+        body: gridRows,
+        theme: 'grid',
+        styles: {
+          fontSize: 7.5,
+          cellPadding: 2,
+          halign: 'center',
+          valign: 'middle',
+          lineColor: [203, 213, 225],
+          lineWidth: 0.25,
+          textColor: [0, 0, 0],
+          fontStyle: 'bold',
+        },
+        headStyles: {
+          fillColor: [56, 189, 248],
+          textColor: [15, 23, 42],
+          fontStyle: 'bold',
+          lineColor: [56, 189, 248],
+          lineWidth: 0.3,
+        },
+        columnStyles: {
+          0: { cellWidth: 20, halign: 'center', fontStyle: 'bold', fillColor: [241, 245, 249] },
+          1: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
+          2: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
+          3: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
+          4: { cellWidth: 40, halign: 'center', fontStyle: 'bold', fillColor: [248, 250, 252] },
+        },
+      });
+    }
+
     // --- PIED DE PAGE ET NUMÉROTATION ---
     const totalPages = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= totalPages; i++) {
@@ -483,327 +542,478 @@ export function exportCourseToPdf(course: CourseHippique): void {
 }
 
 /**
- * Exporte UNIQUEMENT les pronostics du Quinté+ et la sélection de valeur (9 meilleurs chevaux)
- * vers un PDF optimisé pour l'impression A4 Portrait (Fiche de Jeu d'un seul coup d'oeil).
+ * Construit le document jsPDF officiel « PRONOS - PMU - STUDIO 2.0 » (Hiérarchie V38 A4 Portrait).
+ * Ce modèle unique est la référence absolue pour le téléchargement et l'impression.
  */
-export function exportQuinteOnlyToPdf(course: CourseHippique): void {
-  try {
-    const doc = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4',
-      compress: true,
-      putOnlyUsedFonts: true,
-      precision: 2,
-    });
+export function buildQuinteOnlyPdfDoc(course: CourseHippique): jsPDF {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+    compress: true,
+    putOnlyUsedFonts: true,
+    precision: 2,
+  });
 
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 12;
-    let yPos = 12;
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 12;
+  let yPos = 12;
 
-    // --- EN-TÊTE / HEADER (Format Portrait) ---
-    doc.setFillColor(11, 19, 41); // #0b1329
-    doc.roundedRect(margin, yPos, pageWidth - margin * 2, 22, 3, 3, 'F');
+  // --- EN-TÊTE / HEADER (Format Portrait) ---
+  doc.setFillColor(11, 19, 41); // #0b1329
+  doc.roundedRect(margin, yPos, pageWidth - margin * 2, 22, 3, 3, 'F');
 
-    // Logo Écusson vectoriel
-    const logoX = margin + 5;
-    const logoY = yPos + 3;
-    doc.setDrawColor(245, 158, 11); // amber-500
-    doc.setLineWidth(0.6);
-    doc.setFillColor(30, 41, 59);
-    doc.roundedRect(logoX, logoY, 16, 16, 3, 3, 'FD');
-    doc.setTextColor(245, 158, 11);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('P', logoX + 8, logoY + 11.5, { align: 'center' });
+  // Logo Écusson vectoriel
+  const logoX = margin + 5;
+  const logoY = yPos + 3;
+  doc.setDrawColor(245, 158, 11); // amber-500
+  doc.setLineWidth(0.6);
+  doc.setFillColor(30, 41, 59);
+  doc.roundedRect(logoX, logoY, 16, 16, 3, 3, 'FD');
+  doc.setTextColor(245, 158, 11);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.text('P', logoX + 8, logoY + 11.5, { align: 'center' });
 
-    // Titre principal du modèle
-    doc.setTextColor(245, 158, 11); // amber-500
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(15);
-    doc.text('PRONOS - PMU - STUDIO 2.0', margin + 25, yPos + 9);
+  // Titre principal du modèle
+  doc.setTextColor(245, 158, 11); // amber-500
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(15);
+  doc.text('PRONOS - PMU - STUDIO 2.0', margin + 25, yPos + 9);
 
-    // Sous-titre officiel mis à jour
-    doc.setTextColor(226, 232, 240); // slate-200
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.text(
-      'Concepteur : Ghislain BONI • Extraction certifiée Geny.com',
-      margin + 25,
-      yPos + 15
-    );
+  // Sous-titre officiel mis à jour
+  doc.setTextColor(226, 232, 240); // slate-200
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.text(
+    'Concepteur : Ghislain BONI • Extraction certifiée Geny.com',
+    margin + 25,
+    yPos + 15
+  );
 
-    // Metadata & Badge à droite
-    const dateCourseAffichee = course.date || 'Mercredi 30 Septembre 2026';
-    doc.setFillColor(245, 158, 11); // amber-500 badge
-    doc.roundedRect(pageWidth - margin - 48, yPos + 3, 44, 5, 1, 1, 'F');
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(7);
-    doc.text('Fiche Officielle PMU-STUDIO 2.0', pageWidth - margin - 26, yPos + 6.5, { align: 'center' });
+  // Metadata & Badge à droite
+  const dateCourseAffichee = course.date || 'Mercredi 30 Septembre 2026';
+  doc.setFillColor(245, 158, 11); // amber-500 badge
+  doc.roundedRect(pageWidth - margin - 48, yPos + 3, 44, 5, 1, 1, 'F');
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.text('Fiche Officielle PMU-STUDIO 2.0', pageWidth - margin - 26, yPos + 6.5, { align: 'center' });
 
-    doc.setFontSize(7.5);
-    doc.setTextColor(203, 213, 225);
-    doc.text(`Date officielle : ${dateCourseAffichee}`, pageWidth - margin - 4, yPos + 12, { align: 'right' });
+  doc.setFontSize(7.5);
+  doc.setTextColor(203, 213, 225);
+  doc.text(`Date officielle : ${dateCourseAffichee}`, pageWidth - margin - 4, yPos + 12, { align: 'right' });
 
-    yPos += 25;
+  yPos += 25;
 
-    // --- CARTOUCHE DE LA COURSE ---
-    doc.setFillColor(11, 19, 41); // #0b1329 Dark Navy
-    doc.setDrawColor(30, 41, 59); // slate-800
-    doc.roundedRect(margin, yPos, pageWidth - margin * 2, 11, 2, 2, 'FD');
+  // --- CARTOUCHE DE LA COURSE ---
+  doc.setFillColor(11, 19, 41); // #0b1329 Dark Navy
+  doc.setDrawColor(30, 41, 59); // slate-800
+  doc.roundedRect(margin, yPos, pageWidth - margin * 2, 11, 2, 2, 'FD');
 
-    doc.setTextColor(252, 211, 77); // Luminous Amber #fcd34d
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    const rawTitle = course.prixNom || course.titre || 'Grand Prix Anjou-Maine';
-    const cleanTitle = rawTitle.replace(/\s*\(Quinté\+\)/gi, '').trim();
-    const typeStr = course.estQuinte ? 'Quinté+' : 'V38';
-    const lineCourseDetails = `RÉUNION ${course.reunion || 'R1'} - COURSE ${course.course || 'C1'} | ${cleanTitle} (${typeStr}) | Hippodrome : ${course.hippodrome || 'Laval'} | Corde : ${course.corde || 'Gauche'} | Distance : ${course.distance || 2850}m`;
-    doc.text(lineCourseDetails, margin + 4, yPos + 7.5);
+  doc.setTextColor(252, 211, 77); // Luminous Amber #fcd34d
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  const rawTitle = course.prixNom || course.titre || 'Grand Prix Anjou-Maine';
+  const cleanTitle = rawTitle.replace(/\s*\(Quinté\+\)/gi, '').trim();
+  const typeStr = course.estQuinte ? 'Quinté+' : 'V38';
+  const lineCourseDetails = `RÉUNION ${course.reunion || 'R1'} - COURSE ${course.course || 'C1'} | ${cleanTitle} (${typeStr}) | Hippodrome : ${course.hippodrome || 'Laval'} | Corde : ${course.corde || 'Gauche'} | Distance : ${course.distance || 2850}m`;
+  doc.text(lineCourseDetails, margin + 4, yPos + 7.5);
 
-    yPos += 14;
+  yPos += 14;
 
-    // --- PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE) ---
-    const { selection11, basesSolides, chancesSerieuses, favoris = basesSolides, outsiders = chancesSerieuses, tocardsSpeculatifs, surprises, delaisses } = computeV38Hierarchy(course);
+  // --- PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE) ---
+  const v38Data = computeV38Hierarchy(course);
+  const { selection11, basesSolides, chancesSerieuses, favoris = basesSolides, outsiders = chancesSerieuses, tocardsSpeculatifs, surprises, delaisses, isPlat } = v38Data;
 
-    // Box Header Bar (Navy #0b1329)
-    doc.setFillColor(11, 19, 41);
-    doc.roundedRect(margin, yPos, pageWidth - margin * 2, 7, 1.5, 1.5, 'F');
+  // Box Header Bar (Navy #0b1329)
+  doc.setFillColor(11, 19, 41);
+  doc.roundedRect(margin, yPos, pageWidth - margin * 2, 7, 1.5, 1.5, 'F');
 
-    doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8.5);
-    doc.text('PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE)', margin + 4, yPos + 4.8);
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.5);
+  doc.text('PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE)', margin + 4, yPos + 4.8);
 
-    // Right Badge: 🔒 COTES SCELLÉES SANS VARIATION
-    doc.setFillColor(6, 78, 59); // emerald-950
-    doc.setDrawColor(16, 185, 129);
-    doc.roundedRect(pageWidth - margin - 58, yPos + 1, 54, 5, 1, 1, 'FD');
-    doc.setTextColor(52, 211, 153); // emerald-400
-    doc.setFontSize(6.5);
-    doc.text('🔒 COTES SCELLÉES SANS VARIATION', pageWidth - margin - 31, yPos + 4.2, { align: 'center' });
+  // Right Badge: 🔒 COTES SCELLÉES SANS VARIATION
+  doc.setFillColor(6, 78, 59); // emerald-950
+  doc.setDrawColor(16, 185, 129);
+  doc.roundedRect(pageWidth - margin - 58, yPos + 1, 54, 5, 1, 1, 'FD');
+  doc.setTextColor(52, 211, 153); // emerald-400
+  doc.setFontSize(6.5);
+  doc.text('🔒 COTES SCELLÉES SANS VARIATION', pageWidth - margin - 31, yPos + 4.2, { align: 'center' });
 
-    yPos += 9;
+  yPos += 9;
 
-    // Container box for categories (Dark Navy #0b1329 for premium look)
-    const boxWidth = pageWidth - margin * 2;
-    const boxHeight = 28;
-    doc.setFillColor(11, 19, 41); // #0b1329
-    doc.setDrawColor(30, 41, 59); // slate-800
-    doc.setLineWidth(0.4);
-    doc.roundedRect(margin, yPos, boxWidth, boxHeight, 2, 2, 'FD');
+  // Container box for categories (Dark Navy #0b1329 for premium look)
+  const boxWidth = pageWidth - margin * 2;
+  const boxHeight = 28;
+  doc.setFillColor(11, 19, 41); // #0b1329
+  doc.setDrawColor(30, 41, 59); // slate-800
+  doc.setLineWidth(0.4);
+  doc.roundedRect(margin, yPos, boxWidth, boxHeight, 2, 2, 'FD');
 
-    // Row 1: FAVORIS, OUTSIDERS, TOCARDS
-    const colW3 = (boxWidth - 8) / 3;
+  // Row 1: FAVORIS, OUTSIDERS, TOCARDS
+  const colW3 = (boxWidth - 8) / 3;
 
-    const formatCategoryText = (list: typeof basesSolides) =>
-      list.length > 0
-        ? list.map(p => `N°${p.numero} (${p.coteProbable || p.genyOdds || '—'}/1)`).join('   ')
-        : '—';
+  const formatCategoryText = (list: typeof basesSolides) =>
+    list.length > 0
+      ? list.map(p => `N°${p.numero} (${p.coteProbable || p.genyOdds || '—'}/1)`).join('   ')
+      : '—';
 
-    // 1. FAVORIS
-    const xCol1 = margin + 4;
-    doc.setTextColor(52, 211, 153); // emerald-400
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('FAVORIS (3 N°) :', xCol1, yPos + 5);
-    doc.setTextColor(236, 253, 245); // emerald-50
-    doc.setFontSize(8);
-    doc.text(formatCategoryText(favoris), xCol1, yPos + 10);
+  // 1. FAVORIS
+  const xCol1 = margin + 4;
+  doc.setTextColor(52, 211, 153); // emerald-400
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('FAVORIS (3 N°) :', xCol1, yPos + 5);
+  doc.setTextColor(236, 253, 245); // emerald-50
+  doc.setFontSize(8);
+  doc.text(formatCategoryText(favoris), xCol1, yPos + 10);
 
-    // 2. OUTSIDERS
-    const xCol2 = margin + 4 + colW3 + 2;
-    doc.setTextColor(245, 158, 11); // amber-400
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('OUTSIDERS (3 N°) :', xCol2, yPos + 5);
-    doc.setTextColor(254, 243, 199); // amber-50
-    doc.setFontSize(8);
-    doc.text(formatCategoryText(outsiders), xCol2, yPos + 10);
+  // 2. OUTSIDERS
+  const xCol2 = margin + 4 + colW3 + 2;
+  doc.setTextColor(245, 158, 11); // amber-400
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('OUTSIDERS (3 N°) :', xCol2, yPos + 5);
+  doc.setTextColor(254, 243, 199); // amber-50
+  doc.setFontSize(8);
+  doc.text(formatCategoryText(outsiders), xCol2, yPos + 10);
 
-    // 3. TOCARDS
-    const xCol3 = margin + 4 + (colW3 * 2) + 4;
-    doc.setTextColor(251, 113, 133); // rose-400
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('TOCARDS (3 N°) :', xCol3, yPos + 5);
-    doc.setTextColor(255, 241, 242); // rose-50
-    doc.setFontSize(8);
-    doc.text(formatCategoryText(tocardsSpeculatifs), xCol3, yPos + 10);
+  // 3. TOCARDS
+  const xCol3 = margin + 4 + (colW3 * 2) + 4;
+  doc.setTextColor(251, 113, 133); // rose-400
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('TOCARDS (3 N°) :', xCol3, yPos + 5);
+  doc.setTextColor(255, 241, 242); // rose-50
+  doc.setFontSize(8);
+  doc.text(formatCategoryText(tocardsSpeculatifs), xCol3, yPos + 10);
 
-    // Separator line
-    doc.setDrawColor(30, 41, 59); // slate-800
-    doc.setLineWidth(0.2);
-    doc.line(margin + 4, yPos + 14, margin + boxWidth - 4, yPos + 14);
+  // Separator line
+  doc.setDrawColor(30, 41, 59); // slate-800
+  doc.setLineWidth(0.2);
+  doc.line(margin + 4, yPos + 14, margin + boxWidth - 4, yPos + 14);
 
-    // Row 2: SURPRISES & DÉLAISSÉS
-    const colW2 = (boxWidth - 8) / 2;
+  // Row 2: SURPRISES & DÉLAISSÉS
+  const colW2 = (boxWidth - 8) / 2;
 
-    // 4. SURPRISES
-    const xRow2Col1 = margin + 4;
-    doc.setTextColor(192, 132, 252); // purple-400
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text(`SURPRISES (${surprises.length} N°) :`, xRow2Col1, yPos + 19);
-    doc.setTextColor(250, 245, 255); // purple-50
-    doc.setFontSize(8);
-    doc.text(formatCategoryText(surprises), xRow2Col1, yPos + 24);
+  // 4. SURPRISES
+  const xRow2Col1 = margin + 4;
+  doc.setTextColor(192, 132, 252); // purple-400
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text(`SURPRISES (${surprises.length} N°) :`, xRow2Col1, yPos + 19);
+  doc.setTextColor(250, 245, 255); // purple-50
+  doc.setFontSize(8);
+  doc.text(formatCategoryText(surprises), xRow2Col1, yPos + 24);
 
-    // 5. DÉLAISSÉS
-    const xRow2Col2 = margin + 4 + colW2 + 2;
-    doc.setTextColor(148, 163, 184); // slate-400
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.text('DÉLAISSÉS (↓ N°) :', xRow2Col2, yPos + 19);
-    doc.setTextColor(241, 245, 249); // slate-100
-    doc.setFontSize(8);
-    doc.text(formatCategoryText(delaisses), xRow2Col2, yPos + 24);
+  // 5. DÉLAISSÉS
+  const xRow2Col2 = margin + 4 + colW2 + 2;
+  doc.setTextColor(148, 163, 184); // slate-400
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.text('DÉLAISSÉS (↓ N°) :', xRow2Col2, yPos + 19);
+  doc.setTextColor(241, 245, 249); // slate-100
+  doc.setFontSize(8);
+  doc.text(formatCategoryText(delaisses), xRow2Col2, yPos + 24);
 
-    yPos += boxHeight + 6;
+  yPos += boxHeight + 6;
 
-    // --- TABLEAU DÉTAILLÉ DES 11 CHEVAUX & DÉLAISSÉS ---
-    doc.setTextColor(15, 23, 42);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(9.5);
-    doc.text('CLASSEMENT OFFICIEL DES 11 CHEVAUX EN 3 GROUPES & PAR COTE DU SITE GENY', margin, yPos);
+  // --- TABLEAU DÉTAILLÉ DES CHEVAUX & DÉLAISSÉS (AVEC PROBABILITÉ DE SUCCÈS) ---
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text('CLASSEMENT OFFICIEL DES 11 CHEVAUX EN 3 GROUPES & PAR COTE DU SITE GENY', margin, yPos);
 
-    yPos += 3;
+  yPos += 3;
 
-    const tableHeaders = [
-      ['N°', 'Cheval', 'Driver / Jockey', 'MUSIQUE', 'Cote', 'Score IA', 'Rôle V38']
+  const tableHeaders = [
+    ['N°', isPlat ? 'Cheval (Corde)' : 'Cheval', 'Driver / Jockey', 'MUSIQUE', 'Cote', 'Score IA', 'Prob. Succès', 'Rôle V38']
+  ];
+
+  const allOrderedTable = [...selection11, ...delaisses];
+  const successProbMap = computeHorseSuccessProbabilities(course.partants, course);
+
+  const tableRows = allOrderedTable.map((p, idx) => {
+    const position = idx + 1;
+    let roleText = 'Délaissé';
+    if (position === 1) roleText = 'Base';
+    else if (position === 2) roleText = '2nd Base';
+    else if (position <= 5) roleText = 'Chance';
+    else if (position === 6) roleText = 'Tocards';
+    else if (position <= 9) roleText = 'Tocard';
+    else if (position <= 12) roleText = 'Faible chance';
+
+    const rawMusique = p.musique || '';
+    const musiqueMatches = rawMusique.match(/\d+[apmshd]|D[apmshd]/gi);
+    const displayMusique = musiqueMatches && musiqueMatches.length > 0
+      ? musiqueMatches.slice(0, 3).join(' ') 
+      : rawMusique.trim().split(/\s+/).filter(x => x.trim()).slice(0, 3).join(' ') || '—';
+
+    const coteStr = p.coteProbable ? `${p.coteProbable}/1` : (p.genyOdds ? `${p.genyOdds}/1` : '—');
+    const scoreStr = p.hippoScore ? `${p.hippoScore}/100` : '—';
+    const probInfo = successProbMap.get(Number(p.numero));
+    const probStr = probInfo ? `${probInfo.percent}%` : '—';
+    const horseName = isPlat && p.corde ? `${p.nom || ''} (C.${p.corde})` : (p.nom || '');
+
+    return [
+      `${p.numero}`,
+      horseName,
+      p.driver || '—',
+      displayMusique,
+      coteStr,
+      scoreStr,
+      probStr,
+      roleText
     ];
+  });
 
-    const allOrderedTable = [...selection11, ...delaisses];
+  autoTable(doc, {
+    startY: yPos,
+    margin: { left: margin, right: margin },
+    head: tableHeaders,
+    body: tableRows,
+    theme: 'grid',
+    styles: {
+      fontSize: 7.5,
+      cellPadding: 1.5,
+      valign: 'middle',
+      lineColor: [203, 213, 225],
+      lineWidth: 0.25,
+      textColor: [0, 0, 0], // Texte en noir
+    },
+    headStyles: {
+      fillColor: [11, 19, 41], // #0b1329
+      textColor: [255, 255, 255],
+      fontStyle: 'bold',
+      lineColor: [11, 19, 41],
+      lineWidth: 0.3,
+    },
+    tableLineColor: [203, 213, 225],
+    tableLineWidth: 0.4,
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 12, fontStyle: 'bold', fontSize: 15, textColor: [0, 0, 0] },
+      1: { halign: 'left', fontStyle: 'bold', cellWidth: 38, textColor: [0, 0, 0] },
+      2: { halign: 'left', cellWidth: 30, fontStyle: 'bold', textColor: [0, 0, 0] },
+      3: { halign: 'left', cellWidth: 20, fontStyle: 'bold', textColor: [0, 0, 0] },
+      4: { halign: 'left', cellWidth: 18, fontStyle: 'bold', textColor: [0, 0, 0] },
+      5: { halign: 'left', cellWidth: 18, fontStyle: 'bold', textColor: [0, 0, 0] },
+      6: { halign: 'center', cellWidth: 22, fontStyle: 'bold', textColor: [0, 0, 0] },
+      7: { halign: 'left', cellWidth: 28, fontStyle: 'bold', textColor: [0, 0, 0] },
+    },
+    didParseCell: (data: any) => {
+      if (data.section === 'body') {
+        const rank = data.row.index + 1;
 
-    const tableRows = allOrderedTable.map((p, idx) => {
-      const position = idx + 1;
-      let roleText = 'Délaissé';
-      if (position === 1) roleText = 'Base';
-      else if (position === 2) roleText = '2nd Base';
-      else if (position <= 5) roleText = 'Chance';
-      else if (position === 6) roleText = 'Tocards';
-      else if (position <= 9) roleText = 'Tocard';
-      else if (position <= 12) roleText = 'Faible chance';
+        if (rank <= 2) {
+          data.cell.styles.fillColor = [236, 253, 245]; // #ecfdf5
+        } else if (rank <= 5) {
+          data.cell.styles.fillColor = [240, 249, 255]; // #f0f9ff
+        } else if (rank <= 9) {
+          data.cell.styles.fillColor = [255, 247, 237]; // #fff7ed
+        } else if (rank <= 11) {
+          data.cell.styles.fillColor = [250, 245, 255]; // #faf5ff
+        } else {
+          data.cell.styles.fillColor = [248, 250, 252]; // #f8fafc
+        }
 
-      const rawMusique = p.musique || '';
-      const musiqueMatches = rawMusique.match(/\d+[apmshd]|D[apmshd]/gi);
-      const displayMusique = musiqueMatches && musiqueMatches.length > 0
-        ? musiqueMatches.slice(0, 3).join(' ') 
-        : rawMusique.trim().split(/\s+/).filter(x => x.trim()).slice(0, 3).join(' ') || '—';
+        // Écriture strictly en noir pour tous les textes
+        data.cell.styles.textColor = [0, 0, 0];
+        data.cell.styles.fontStyle = 'bold';
 
-      const coteStr = p.coteProbable ? `${p.coteProbable}/1` : (p.genyOdds ? `${p.genyOdds}/1` : '—');
-      const scoreStr = p.hippoScore ? `${p.hippoScore}/100` : '—';
+        if (data.column.index === 0) {
+          // Colonne des N° (#v38-table-container) : Identité visuelle Web/PDF (Police 15px, centrée, texte noir sur fond blanc)
+          data.cell.styles.fontSize = 15;
+          data.cell.styles.halign = 'center';
+          data.cell.styles.fontStyle = 'bold';
+          data.cell.styles.textColor = [0, 0, 0];
+          data.cell.styles.fillColor = [255, 255, 255]; // Fond blanc contrasté
+        } else if (data.column.index === 6) {
+          data.cell.styles.halign = 'center';
+          data.cell.styles.textColor = [0, 0, 0];
+        } else {
+          // Reste des colonnes : Texte aligné à gauche et en noir
+          data.cell.styles.halign = 'left';
+          data.cell.styles.textColor = [0, 0, 0];
+        }
+      }
+    },
+  });
 
-      return [
-        `${p.numero}`,
-        p.nom || '',
-        p.driver || '—',
-        displayMusique,
-        coteStr,
-        scoreStr,
-        roleText
-      ];
-    });
+  // Grille V38 Discipline (colonnes FAVORIS, OUTSIDERS, TOCARDS, SURPRISES à 4 cm = 40 mm)
+  const gridY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 5 : 180;
+  if (gridY < 235) {
+    const disciplineGrid = computeDisciplineGrid(course);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(11, 19, 41);
+    doc.text(`GRILLE V38 DISCIPLINE (${disciplineGrid.title}) - COLONNES 4 CM`, margin, gridY);
+
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(100, 116, 139);
+    const ruleText = `${disciplineGrid.rows[0]?.label || 'A'}: ${disciplineGrid.rows[0]?.description} | ${disciplineGrid.rows[1]?.label || 'B'}: ${disciplineGrid.rows[1]?.description} | ${disciplineGrid.rows[2]?.label || 'C'}: ${disciplineGrid.rows[2]?.description}`;
+    doc.text(ruleText, margin, gridY + 3.8);
+
+    const gridHeaders = [['CATEGORIE', 'FAVORIS', 'OUTSIDERS', 'TOCARDS', 'SURPRISES']];
+    const gridRows = disciplineGrid.rows.map(r => [
+      r.label || r.key,
+      r.bases.length > 0 ? r.bases.join(' - ') : '—',
+      r.chances.length > 0 ? r.chances.join(' - ') : '—',
+      r.tocards.length > 0 ? r.tocards.join(' - ') : '—',
+      r.surprises.length > 0 ? r.surprises.join(' - ') : '—',
+    ]);
 
     autoTable(doc, {
-      startY: yPos,
-      margin: { left: margin, right: margin },
-      head: tableHeaders,
-      body: tableRows,
+      startY: gridY + 5.5,
+      margin: { left: margin },
+      head: gridHeaders,
+      body: gridRows,
       theme: 'grid',
       styles: {
         fontSize: 7.5,
         cellPadding: 1.5,
+        halign: 'center',
         valign: 'middle',
         lineColor: [203, 213, 225],
         lineWidth: 0.25,
-        textColor: [0, 0, 0], // Texte en noir
+        textColor: [0, 0, 0],
+        fontStyle: 'bold',
       },
       headStyles: {
-        fillColor: [11, 19, 41], // #0b1329
-        textColor: [255, 255, 255],
+        fillColor: [56, 189, 248],
+        textColor: [15, 23, 42],
         fontStyle: 'bold',
-        lineColor: [11, 19, 41],
+        lineColor: [56, 189, 248],
         lineWidth: 0.3,
       },
-      tableLineColor: [203, 213, 225],
-      tableLineWidth: 0.4,
       columnStyles: {
-        0: { halign: 'center', cellWidth: 14, fontStyle: 'bold', fontSize: 16, textColor: [0, 0, 0] },
-        1: { halign: 'left', fontStyle: 'bold', cellWidth: 42, textColor: [0, 0, 0] },
-        2: { halign: 'left', cellWidth: 34, fontStyle: 'bold', textColor: [0, 0, 0] },
-        3: { halign: 'left', cellWidth: 22, fontStyle: 'bold', textColor: [0, 0, 0] },
-        4: { halign: 'left', cellWidth: 20, fontStyle: 'bold', textColor: [0, 0, 0] },
-        5: { halign: 'left', cellWidth: 20, fontStyle: 'bold', textColor: [0, 0, 0] },
-        6: { halign: 'left', cellWidth: 32, fontStyle: 'bold', textColor: [0, 0, 0] },
-      },
-      didParseCell: (data: any) => {
-        if (data.section === 'body') {
-          const rank = data.row.index + 1;
-
-          if (rank <= 2) {
-            data.cell.styles.fillColor = [236, 253, 245]; // #ecfdf5
-          } else if (rank <= 5) {
-            data.cell.styles.fillColor = [240, 249, 255]; // #f0f9ff
-          } else if (rank <= 9) {
-            data.cell.styles.fillColor = [255, 247, 237]; // #fff7ed
-          } else if (rank <= 11) {
-            data.cell.styles.fillColor = [250, 245, 255]; // #faf5ff
-          } else {
-            data.cell.styles.fillColor = [248, 250, 252]; // #f8fafc
-          }
-
-          // Écriture strictly en noir pour tous les textes
-          data.cell.styles.textColor = [0, 0, 0];
-          data.cell.styles.fontStyle = 'bold';
-
-          if (data.column.index === 0) {
-            // Colonne des N° (#v38-table-container) : Identité visuelle Web/PDF (Police 16px, centrée, texte noir sur fond blanc)
-            data.cell.styles.fontSize = 16;
-            data.cell.styles.halign = 'center';
-            data.cell.styles.fontStyle = 'bold';
-            data.cell.styles.textColor = [0, 0, 0];
-            data.cell.styles.fillColor = [255, 255, 255]; // Fond blanc contrasté
-          } else {
-            // Reste des colonnes : Texte aligné à gauche et en noir
-            data.cell.styles.halign = 'left';
-            data.cell.styles.textColor = [0, 0, 0];
-          }
-        }
+        0: { cellWidth: 20, halign: 'center', fontStyle: 'bold', fillColor: [241, 245, 249] },
+        1: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
+        2: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
+        3: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
+        4: { cellWidth: 40, halign: 'center', fontStyle: 'bold', fillColor: [248, 250, 252] },
       },
     });
+  }
 
-    // --- PIED DE PAGE ---
-    const totalPages = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= totalPages; i++) {
-      doc.setPage(i);
-      doc.setDrawColor(226, 232, 240);
-      doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
+  // --- PIED DE PAGE ---
+  const totalPages = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setDrawColor(226, 232, 240);
+    doc.line(margin, pageHeight - 10, pageWidth - margin, pageHeight - 10);
 
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(7);
-      doc.setTextColor(100, 116, 139);
-      doc.text(
-        "PRONOS - PMU - STUDIO 2.0 • Concepteur : Ghislain BONI",
-        margin,
-        pageHeight - 5
-      );
-      doc.text(`Page ${i} / ${totalPages}`, pageWidth - margin, pageHeight - 5, {
-        align: 'right',
-      });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text(
+      "PRONOS - PMU - STUDIO 2.0 • Concepteur : Ghislain BONI",
+      margin,
+      pageHeight - 5
+    );
+    doc.text(`Page ${i} / ${totalPages}`, pageWidth - margin, pageHeight - 5, {
+      align: 'right',
+    });
+  }
+
+  return doc;
+}
+
+/**
+ * Exporte UNIQUEMENT les pronostics du Quinté+ et la sélection de valeur (modèle officiel V38)
+ * vers un fichier PDF téléchargé directement.
+ */
+export function exportQuinteOnlyToPdf(course: CourseHippique): void {
+  try {
+    if (typeof document !== 'undefined' && document.getElementById('fiche-v38-page-1')) {
+      import('./ficheV38PdfGenerator').then(({ generateFicheV38PdfFromDom }) => {
+        generateFicheV38PdfFromDom(course, 'download').catch(() => {
+          fallbackExport();
+        });
+      }).catch(() => fallbackExport());
+      return;
     }
+  } catch {}
 
-    const cleanHippodrome = (course.hippodrome || 'Course')
-      .replace(/[^a-zA-Z0-9]/g, '_')
-      .toLowerCase();
-    const cleanDate = (course.date || 'date').replace(/[^a-zA-Z0-9]/g, '-');
-    const filename = `PRONOS_PMU_STUDIO_2_0_HIERARCHIE_V38_${course.reunion || 'R1'}${course.course || 'C1'}_${cleanHippodrome}_${cleanDate}.pdf`;
+  fallbackExport();
 
-    downloadPdfDocument(doc, filename);
-  } catch (err) {
-    console.error('Erreur génération PDF Quinté V38:', err);
+  function fallbackExport() {
+    try {
+      const doc = buildQuinteOnlyPdfDoc(course);
+      const cleanHippodrome = (course.hippodrome || 'Course')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .toLowerCase();
+      const cleanDate = (course.date || 'date').replace(/[^a-zA-Z0-9]/g, '-');
+      const filename = `PRONOS_PMU_STUDIO_2_0_HIERARCHIE_V38_${course.reunion || 'R1'}${course.course || 'C1'}_${cleanHippodrome}_${cleanDate}.pdf`;
+
+      downloadPdfDocument(doc, filename);
+    } catch (err) {
+      console.error('Erreur génération PDF Quinté V38:', err);
+    }
+  }
+}
+
+/**
+ * Lance l'impression directe du modèle de fichier PDF officiel « PRONOS - PMU - STUDIO 2.0 ».
+ * Imprime ce modèle de fichier PDF uniquement, sans les barres ni les éléments d'interface.
+ */
+export function printQuinteOnlyPdf(course: CourseHippique): void {
+  try {
+    if (typeof document !== 'undefined' && document.getElementById('fiche-v38-page-1')) {
+      import('./ficheV38PdfGenerator').then(({ generateFicheV38PdfFromDom }) => {
+        generateFicheV38PdfFromDom(course, 'print').catch(() => {
+          fallbackPrint();
+        });
+      }).catch(() => fallbackPrint());
+      return;
+    }
+  } catch {}
+
+  fallbackPrint();
+
+  function fallbackPrint() {
+    try {
+      const doc = buildQuinteOnlyPdfDoc(course);
+      doc.autoPrint();
+      const blob = doc.output('blob');
+      const blobUrl = URL.createObjectURL(blob);
+
+      const iframe = document.createElement('iframe');
+      iframe.style.position = 'fixed';
+      iframe.style.right = '0';
+      iframe.style.bottom = '0';
+      iframe.style.width = '0';
+      iframe.style.height = '0';
+      iframe.style.border = '0';
+      iframe.src = blobUrl;
+      document.body.appendChild(iframe);
+
+      iframe.onload = () => {
+        setTimeout(() => {
+          try {
+            iframe.contentWindow?.focus();
+            iframe.contentWindow?.print();
+          } catch {
+            window.open(blobUrl, '_blank');
+          }
+          setTimeout(() => {
+            try {
+              document.body.removeChild(iframe);
+              URL.revokeObjectURL(blobUrl);
+            } catch {}
+          }, 60000);
+        }, 300);
+      };
+    } catch (err) {
+      console.error('Erreur impression PDF Quinté V38:', err);
+      // En cas d'erreur bloquante navigateur, déclenche le téléchargement du fichier PDF
+      exportQuinteOnlyToPdf(course);
+    }
   }
 }
 

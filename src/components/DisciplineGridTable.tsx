@@ -33,119 +33,171 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
         </span>
       </div>
 
-      {/* 2. Tableau de Répartition */}
-      <div className="rounded-xl border border-slate-800 overflow-hidden shadow-lg">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+      {/* Règles d'attribution */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80">
+        <div className="text-slate-300 font-semibold">
+          <strong className="text-amber-400">{grid.rows[0]?.label || 'A'} :</strong> {grid.rows[0]?.description}
+        </div>
+        <div className="text-slate-300 font-semibold">
+          <strong className="text-amber-400">{grid.rows[1]?.label || 'B'} :</strong> {grid.rows[1]?.description}
+        </div>
+        <div className="text-slate-300 font-semibold">
+          <strong className="text-amber-400">{grid.rows[2]?.label || 'C'} :</strong> {grid.rows[2]?.description}
+        </div>
+      </div>
+
+      {/* 2. Tableau de Répartition avec largeur des colonnes FAVORIS, OUTSIDERS, TOCARDS, SURPRISES à 4 cm */}
+      <div className="rounded-xl border border-slate-800 overflow-hidden shadow-lg flex justify-center">
+        <div className="overflow-x-auto w-full flex justify-center py-1">
+          <table
+            className="table-fixed border-collapse mx-auto"
+            style={{ width: 'auto' }}
+          >
+            <colgroup>
+              <col style={{ width: '2.5cm', minWidth: '2.5cm' }} />
+              <col style={{ width: '4cm', minWidth: '4cm' }} />
+              <col style={{ width: '4cm', minWidth: '4cm' }} />
+              <col style={{ width: '4cm', minWidth: '4cm' }} />
+              <col style={{ width: '4cm', minWidth: '4cm' }} />
+            </colgroup>
             <thead>
               <tr className="text-xs sm:text-sm font-black uppercase tracking-wider">
                 {/* Catégorie Header */}
-                <th className="py-3 px-4 bg-[#38bdf8] text-slate-950 font-black w-1/5 border-r border-slate-700/50">
-                  Catégorie
+                <th
+                  style={{ width: '2.5cm', minWidth: '2.5cm' }}
+                  className="py-2.5 px-2 bg-[#38bdf8] text-slate-950 font-black text-center border-r border-slate-700/50 text-[11px] sm:text-xs tracking-tight"
+                >
+                  CATEGORIE
                 </th>
-                {/* Bases Solides Header */}
-                <th className="py-3 px-4 bg-[#38bdf8] text-slate-950 font-black text-center w-1/5 border-r border-slate-700/50">
-                  Bases Solides
+                {/* Favoris Header (4 cm) */}
+                <th
+                  style={{ width: '4cm', minWidth: '4cm' }}
+                  className="py-2.5 px-2 bg-[#38bdf8] text-slate-950 font-black text-center border-r border-slate-700/50 text-[11px] sm:text-xs tracking-tight"
+                >
+                  FAVORIS
                 </th>
-                {/* Chances Sérieuses Header */}
-                <th className="py-3 px-4 bg-[#38bdf8] text-slate-950 font-black text-center w-1/5 border-r border-slate-700/50">
-                  Chances Sérieuses
+                {/* Outsiders Header (4 cm) */}
+                <th
+                  style={{ width: '4cm', minWidth: '4cm' }}
+                  className="py-2.5 px-2 bg-[#38bdf8] text-slate-950 font-black text-center border-r border-slate-700/50 text-[11px] sm:text-xs tracking-tight"
+                >
+                  OUTSIDERS
                 </th>
-                {/* Tocards Spéculatifs Header - ALIGNÉ À GAUCHE */}
-                <th className="py-3 px-4 bg-[#38bdf8] text-slate-950 font-black text-left w-1/5 border-r border-slate-700/50">
-                  Tocards Spéculatifs
+                {/* Tocards Header (4 cm) */}
+                <th
+                  style={{ width: '4cm', minWidth: '4cm' }}
+                  className="py-2.5 px-2 bg-[#38bdf8] text-slate-950 font-black text-center border-r border-slate-700/50 text-[11px] sm:text-xs tracking-tight"
+                >
+                  TOCARDS
                 </th>
-                {/* Délaissés Header - ALIGNÉ À GAUCHE */}
-                <th className="py-3 px-4 bg-[#1e293b] text-white font-black text-left w-1/5">
-                  Délaissés
+                {/* Surprises Header (4 cm) */}
+                <th
+                  style={{ width: '4cm', minWidth: '4cm' }}
+                  className="py-2.5 px-2 bg-[#1e293b] text-white font-black text-center text-[11px] sm:text-xs tracking-tight border-l border-slate-700/50"
+                >
+                  SURPRISES
                 </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800/80 bg-[#0f172a] text-slate-200">
               {grid.rows.map((row) => (
                 <tr key={row.key} className="hover:bg-slate-900/60 transition-colors">
-                  {/* Colonne 1 : Catégorie (Affichage simple A, B et C) */}
-                  <td className="py-3 px-4 border-r border-slate-800 text-center">
-                    <div className="flex items-center justify-center">
-                      <div className="w-10 h-10 rounded-xl bg-slate-800/90 border border-slate-700/80 font-black text-amber-400 text-base sm:text-lg flex items-center justify-center shadow-md">
-                        {row.key}
+                  {/* Colonne 1 : Catégorie (Affichage dynamique : CA, CB, CC en plat ou A, B, C) */}
+                  <td
+                    style={{ width: '2.5cm', minWidth: '2.5cm' }}
+                    className="py-3 px-2 border-r border-slate-800 text-center"
+                  >
+                    <div className="flex flex-col items-center justify-center gap-1">
+                      <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-slate-800/90 border border-slate-700/80 font-black text-amber-400 text-sm sm:text-base flex items-center justify-center shadow-md">
+                        {row.label || row.key}
                       </div>
+                      <span className="text-[10px] text-slate-400 font-semibold tracking-tighter">
+                        {row.description}
+                      </span>
                     </div>
                   </td>
 
-                  {/* Colonne 2 : Bases Solides */}
-                  <td className="py-3 px-4 border-r border-slate-800 text-center">
+                  {/* Colonne 2 : Favoris (4 cm) */}
+                  <td
+                    style={{ width: '4cm', minWidth: '4cm' }}
+                    className="py-3 px-2 border-r border-slate-800 text-center"
+                  >
                     {row.bases.length > 0 ? (
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
                         {row.bases.map((num, bIdx) => (
                           <div
                             key={`base-${row.key}-${num}-${bIdx}`}
-                            className="w-10 h-10 rounded-full sm:rounded-xl bg-[#059669] text-white font-black flex items-center justify-center text-center shadow-md border border-emerald-400/40 shrink-0"
-                            style={{ fontSize: '16px', lineHeight: '1' }}
+                            className="w-8 h-8 rounded-lg bg-[#059669] text-white font-black flex items-center justify-center text-center shadow-md border border-emerald-400/40 shrink-0 text-xs sm:text-sm"
                           >
                             {num}
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-slate-500 font-bold text-base">—</span>
+                      <span className="text-slate-500 font-bold text-sm">—</span>
                     )}
                   </td>
 
-                  {/* Colonne 3 : Chances Sérieuses */}
-                  <td className="py-3 px-4 border-r border-slate-800 text-center">
+                  {/* Colonne 3 : Outsiders (4 cm) */}
+                  <td
+                    style={{ width: '4cm', minWidth: '4cm' }}
+                    className="py-3 px-2 border-r border-slate-800 text-center"
+                  >
                     {row.chances.length > 0 ? (
-                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
                         {row.chances.map((num, cIdx) => (
                           <div
                             key={`chance-${row.key}-${num}-${cIdx}`}
-                            className="w-10 h-10 rounded-full sm:rounded-xl bg-[#f59e0b] text-slate-950 font-black flex items-center justify-center text-center shadow-md border border-amber-300/60 shrink-0"
-                            style={{ fontSize: '16px', lineHeight: '1' }}
+                            className="w-8 h-8 rounded-lg bg-[#f59e0b] text-slate-950 font-black flex items-center justify-center text-center shadow-md border border-amber-300/60 shrink-0 text-xs sm:text-sm"
                           >
                             {num}
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-slate-500 font-bold text-base">—</span>
+                      <span className="text-slate-500 font-bold text-sm">—</span>
                     )}
                   </td>
 
-                  {/* Colonne 4 : Tocards Spéculatifs - ALIGNÉ STRICTEMENT À GAUCHE */}
-                  <td className="py-3 px-4 border-r border-slate-800 text-left">
+                  {/* Colonne 4 : Tocards (4 cm) */}
+                  <td
+                    style={{ width: '4cm', minWidth: '4cm' }}
+                    className="py-3 px-2 border-r border-slate-800 text-center"
+                  >
                     {row.tocards.length > 0 ? (
-                      <div className="flex items-center justify-start gap-2 flex-wrap w-full">
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
                         {row.tocards.map((num, tIdx) => (
                           <div
                             key={`tocard-${row.key}-${num}-${tIdx}`}
-                            className="w-10 h-10 rounded-full sm:rounded-xl bg-[#f97316] text-white font-black flex items-center justify-center text-center shadow-md border border-orange-400/50 shrink-0"
-                            style={{ fontSize: '16px', lineHeight: '1' }}
+                            className="w-8 h-8 rounded-lg bg-[#f97316] text-white font-black flex items-center justify-center text-center shadow-md border border-orange-400/50 shrink-0 text-xs sm:text-sm"
                           >
                             {num}
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-slate-500 font-bold text-base">—</span>
+                      <span className="text-slate-500 font-bold text-sm">—</span>
                     )}
                   </td>
 
-                  {/* Colonne 5 : Délaissés - ALIGNÉ STRICTEMENT À GAUCHE */}
-                  <td className="py-3 px-4 text-left">
-                    {row.delaisses.length > 0 ? (
-                      <div className="flex items-center justify-start gap-2 flex-wrap w-full">
-                        {row.delaisses.map((num, dIdx) => (
+                  {/* Colonne 5 : Surprises (4 cm) - Uniquement les 4 numéros de surprises triés par cote croissante */}
+                  <td
+                    style={{ width: '4cm', minWidth: '4cm' }}
+                    className="py-3 px-2 text-center"
+                  >
+                    {(row.surprises && row.surprises.length > 0) ? (
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                        {row.surprises.map((num, sIdx) => (
                           <div
-                            key={`delaisse-${row.key}-${num}-${dIdx}`}
-                            className="w-10 h-10 rounded-full sm:rounded-xl bg-[#1e293b] text-slate-200 border border-slate-700 font-black flex items-center justify-center text-center shadow-sm shrink-0"
-                            style={{ fontSize: '16px', lineHeight: '1' }}
+                            key={`surprise-${row.key}-${num}-${sIdx}`}
+                            className="w-8 h-8 rounded-lg bg-[#9333ea] text-white border border-purple-400/60 font-black flex items-center justify-center text-center shadow-md shrink-0 text-xs sm:text-sm"
                           >
                             {num}
                           </div>
                         ))}
                       </div>
                     ) : (
-                      <span className="text-slate-500 font-bold text-base">—</span>
+                      <span className="text-slate-500 font-bold text-sm">—</span>
                     )}
                   </td>
                 </tr>

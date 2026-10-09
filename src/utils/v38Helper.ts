@@ -70,15 +70,15 @@ export function assignUniqueCordesForPlat(partants: Partant[]): Map<number, numb
   const usedCordes = new Set<number>();
   const unassigned: Partant[] = [];
 
-  // 1. Première passe : conserver les cordes existantes valides et uniques
+  // 1. Première passe : conserver les cordes existantes valides (1 à 30) et uniques
   for (const p of partants) {
     const rawC: any = p.corde;
     let val: number | null = null;
-    if (typeof rawC === 'number' && !isNaN(rawC) && rawC >= 1 && rawC <= total) {
+    if (typeof rawC === 'number' && !isNaN(rawC) && rawC >= 1 && rawC <= 30) {
       val = rawC;
     } else if (typeof rawC === 'string') {
       const parsed = parseInt(rawC.replace(/\D/g, ''), 10);
-      if (!isNaN(parsed) && parsed >= 1 && parsed <= total) {
+      if (!isNaN(parsed) && parsed >= 1 && parsed <= 30) {
         val = parsed;
       }
     }
@@ -91,9 +91,10 @@ export function assignUniqueCordesForPlat(partants: Partant[]): Map<number, numb
     }
   }
 
-  // 2. Deuxième passe : attribuer les cordes libres de 1 à total
+  // 2. Deuxième passe : attribuer les cordes libres
   const availableCordes: number[] = [];
-  for (let c = 1; c <= total; c++) {
+  const maxNeeded = Math.max(total, 30);
+  for (let c = 1; c <= maxNeeded; c++) {
     if (!usedCordes.has(c)) {
       availableCordes.push(c);
     }
@@ -106,8 +107,9 @@ export function assignUniqueCordesForPlat(partants: Partant[]): Map<number, numb
     if (numIdx !== -1) {
       chosenCorde = availableCordes.splice(numIdx, 1)[0];
     } else {
-      chosenCorde = availableCordes.shift() || 1;
+      chosenCorde = availableCordes.shift() || (usedCordes.size + 1);
     }
+    usedCordes.add(chosenCorde);
     result.set(num, chosenCorde);
   });
 
@@ -229,13 +231,25 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     const num = Number(p.numero);
     let group: 'G1' | 'G2' | 'G3' = 'G1';
 
-    // Regroupement universel par Numéro de dossard pour TOUTES les disciplines (Plat, Trot, Obstacles)
-    if (num >= 1 && num <= 6) {
-      group = 'G1';
-    } else if (num >= 7 && num <= 10) {
-      group = 'G2';
+    // En plat, le regroupement et le positionnement sont faits en fonction du numéro de corde du cheval (CA, CB, CC)
+    if (isPlat) {
+      const cordeVal = assignedCordes.get(num) || (typeof p.corde === 'number' ? p.corde : parseInt(String(p.corde).replace(/\D/g, ''), 10)) || num;
+      if (cordeVal >= 1 && cordeVal <= 5) {
+        group = 'G1'; // Correspond à CA (Corde 1 à 5)
+      } else if (cordeVal >= 6 && cordeVal <= 8) {
+        group = 'G2'; // Correspond à CB (Corde 6 à 8)
+      } else {
+        group = 'G3'; // Correspond à CC (Corde 9+)
+      }
     } else {
-      group = 'G3';
+      // Regroupement universel par Numéro de dossard pour TOUTES les autres disciplines (Trot, Obstacles)
+      if (num >= 1 && num <= 6) {
+        group = 'G1';
+      } else if (num >= 7 && num <= 10) {
+        group = 'G2';
+      } else {
+        group = 'G3';
+      }
     }
 
     const genyOdds = getHorseGenyOdds(p);
@@ -376,7 +390,7 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
   // Application de la sélection des SUR (SURPRISES) :
   if (effectiveSurprisesMode === 'custom' && options?.customSurprisesNums && options.customSurprisesNums.length > 0) {
     const customSet = new Set(options.customSurprisesNums.map(n => Number(n)));
-    surprises = allActiveSorted.filter(p => customSet.has(Number(p.numero))).sort(sortAscByNumber);
+    surprises = allActiveSorted.filter(p => customSet.has(Number(p.numero))).sort(sortAscByOdds);
     const assignedNums = new Set([
       ...favoris.map(p => Number(p.numero)),
       ...outsiders.map(p => Number(p.numero)),
@@ -385,8 +399,8 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     ]);
     delaisses = allActiveSorted.filter(p => !assignedNums.has(Number(p.numero)));
   } else {
-    // Mode standard conforme à la demande : 4 numéros SURPRISES
-    surprises = [...rawSurprises].sort(sortAscByNumber);
+    // Mode standard conforme à la demande : 4 numéros SURPRISES classés par cote croissante
+    surprises = [...rawSurprises].sort(sortAscByOdds);
     delaisses = [...remainingDelaisses];
   }
 
@@ -408,10 +422,10 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
 
   return {
     isPlat,
-    groupType: 'NUMERO',
-    labelGroup1: 'G1 (N° 1 à 6)',
-    labelGroup2: 'G2 (N° 7 à 10)',
-    labelGroup3: 'G3 (N° 11 et +)',
+    groupType: isPlat ? 'CORDE' : 'NUMERO',
+    labelGroup1: isPlat ? 'CA (Corde 1 à 5)' : 'G1 (N° 1 à 6)',
+    labelGroup2: isPlat ? 'CB (Corde 6 à 8)' : 'G2 (N° 7 à 10)',
+    labelGroup3: isPlat ? 'CC (Corde 9 et +)' : 'G3 (N° 11 et +)',
     g1: allG1,
     g2: allG2,
     g3: allG3,
@@ -426,8 +440,8 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     basesSolides: [...favoris].sort(sortAscByOdds),
     chancesSerieuses: [...outsiders].sort(sortAscByOdds),
     tocardsSpeculatifs: [...tocardsSpeculatifs].sort(sortAscByOdds),
-    // Les surprises portent désormais à 4 numéros (classés par ordre de numéro croissant)
-    surprises: [...surprises].sort(sortAscByNumber),
+    // Les surprises portent désormais à 4 numéros (classés par cote croissante)
+    surprises: [...surprises].sort(sortAscByOdds),
     delaisses: finalDelaisses,
     selectionV38: selection12,
     remainingV38: finalDelaisses,
@@ -446,6 +460,7 @@ export interface DisciplineGridRow {
   bases: number[];
   chances: number[];
   tocards: number[];
+  surprises: number[];
   delaisses: number[];
 }
 
@@ -462,8 +477,8 @@ export interface DisciplineGridResult {
 /**
  * Calcule le tableau de répartition officiel selon la discipline de la course (Page 2 PDF) :
  * - Trot (Attelé / Monté) : Déferrage (A: D4, B: DP/DA, C: Ferrés/Plaqués)
- * - Plat : Numéro de corde (A: 1-5, B: 6-8, C: 9+)
- * - Obstacles (Haies / Steeple) : Numéro de casaque (A: 1-6, B: 7-10, C: 11+)
+ * - Plat : Numéro de corde (CA: 1-5, CB: 6-8, CC: 9+)
+ * - Obstacles (Haies / Steeple) : Numéro de dossard (A: 1-6, B: 7-10, C: 11+)
  */
 export function computeDisciplineGrid(course: CourseHippique): DisciplineGridResult {
   const disc = (course.discipline || '').toLowerCase().trim();
@@ -480,10 +495,13 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     disciplineType = 'OBSTACLES';
   }
 
-  const { basesSolides, chancesSerieuses, tocardsSpeculatifs } = computeV38Hierarchy(course);
-  const baseNums = new Set(basesSolides.map(p => p.numero));
-  const chanceNums = new Set(chancesSerieuses.map(p => p.numero));
-  const tocardNums = new Set(tocardsSpeculatifs.map(p => p.numero));
+  const v38 = computeV38Hierarchy(course);
+  const { favoris, outsiders, tocardsSpeculatifs, surprises, assignedCordes } = v38;
+
+  const favorisNums = new Set(favoris.map(p => Number(p.numero)));
+  const outsiderNums = new Set(outsiders.map(p => Number(p.numero)));
+  const tocardNums = new Set(tocardsSpeculatifs.map(p => Number(p.numero)));
+  const surpriseNums = new Set(surprises.map(p => Number(p.numero)));
 
   const allPartants = (course.partants || []).filter(p => !p.estNonPartant && p.statut !== 'Non-partant');
 
@@ -532,20 +550,19 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     };
   } else if (disciplineType === 'PLAT') {
     title = 'PLAT';
-    ruleA = 'A : Les chevaux ayant pour corde : 1-2-3-4-5';
-    ruleB = 'B : Les chevaux ayant pour corde : 6-7-8';
-    ruleC = 'C : Les chevaux ayant pour corde : 9 et plus';
-    labelA = 'A';
-    labelB = 'B';
-    labelC = 'C';
+    ruleA = 'CA : Les chevaux ayant pour corde : 1-2-3-4-5';
+    ruleB = 'CB : Les chevaux ayant pour corde : 6-7-8';
+    ruleC = 'CC : Les chevaux ayant pour corde : 9 et plus';
+    labelA = 'CA';
+    labelB = 'CB';
+    labelC = 'CC';
     descA = 'Corde 1 à 5';
     descB = 'Corde 6 à 8';
     descC = 'Corde 9 et plus';
 
-    const assignedCordes = assignUniqueCordesForPlat(allPartants);
-
     getRowKey = (p) => {
-      const c = assignedCordes.get(Number(p.numero)) || (typeof p.corde === 'number' ? p.corde : Number(p.numero));
+      const num = Number(p.numero);
+      const c = assignedCordes?.get(num) ?? (typeof p.corde === 'number' ? p.corde : parseInt(String(p.corde).replace(/\D/g, ''), 10)) ?? num;
       if (c >= 1 && c <= 5) return 'A';
       if (c >= 6 && c <= 8) return 'B';
       return 'C'; // Corde 9 et plus
@@ -571,9 +588,9 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
   }
 
   const rows: DisciplineGridRow[] = [
-    { key: 'A', label: labelA, description: descA, bases: [], chances: [], tocards: [], delaisses: [] },
-    { key: 'B', label: labelB, description: descB, bases: [], chances: [], tocards: [], delaisses: [] },
-    { key: 'C', label: labelC, description: descC, bases: [], chances: [], tocards: [], delaisses: [] },
+    { key: 'A', label: labelA, description: descA, bases: [], chances: [], tocards: [], surprises: [], delaisses: [] },
+    { key: 'B', label: labelB, description: descB, bases: [], chances: [], tocards: [], surprises: [], delaisses: [] },
+    { key: 'C', label: labelC, description: descC, bases: [], chances: [], tocards: [], surprises: [], delaisses: [] },
   ];
 
   const rowMap = {
@@ -582,29 +599,45 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     C: rows[2],
   };
 
-  // Dispatcher chaque partant actif
+  // Cote map pour tri strict par cote croissante
+  const horseOddsMap = new Map<number, number>();
+  for (const p of allPartants) {
+    horseOddsMap.set(Number(p.numero), getHorseGenyOdds(p));
+  }
+  const sortByOddsAsc = (a: number, b: number) => {
+    const oA = horseOddsMap.get(a) ?? 99;
+    const oB = horseOddsMap.get(b) ?? 99;
+    if (oA !== oB) return oA - oB;
+    return a - b;
+  };
+
+  // Dispatcher chaque partant actif :
+  // FAVORIS (3), OUTSIDERS (3), TOCARDS (3) et strictement les 4 numéros de SURPRISES
   for (const p of allPartants) {
     const rKey = getRowKey(p);
     const targetRow = rowMap[rKey];
     const n = Number(p.numero);
 
-    if (baseNums.has(n)) {
+    if (favorisNums.has(n)) {
       targetRow.bases.push(n);
-    } else if (chanceNums.has(n)) {
+    } else if (outsiderNums.has(n)) {
       targetRow.chances.push(n);
     } else if (tocardNums.has(n)) {
       targetRow.tocards.push(n);
-    } else {
-      targetRow.delaisses.push(n);
+    } else if (surpriseNums.has(n)) {
+      // Uniquement les 4 numéros de surprises dans la colonne SURPRISES
+      targetRow.surprises.push(n);
+      targetRow.delaisses.push(n); // Rétrocompatibilité
     }
   }
 
-  // Trier les numéros par ordre croissant dans chaque case
+  // Trier les numéros par cote croissante dans chaque case
   for (const r of rows) {
-    r.bases.sort((a, b) => a - b);
-    r.chances.sort((a, b) => a - b);
-    r.tocards.sort((a, b) => a - b);
-    r.delaisses.sort((a, b) => a - b);
+    r.bases.sort(sortByOddsAsc);
+    r.chances.sort(sortByOddsAsc);
+    r.tocards.sort(sortByOddsAsc);
+    r.surprises.sort(sortByOddsAsc);
+    r.delaisses.sort(sortByOddsAsc);
   }
 
   return {
@@ -616,4 +649,87 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     instruction,
     rows,
   };
+}
+
+export interface HorseSuccessProbability {
+  percent: number;
+  label: 'Très Forte' | 'Forte' | 'Moyenne' | 'Modérée' | 'Spéculatif';
+  color: string;
+  badgeBg: string;
+  barColor: string;
+  advice: string;
+}
+
+/**
+ * Calcule dynamiquement la probabilité de succès (%) de chaque partant à partir de son score HippoScore
+ * Permet d'aider à la prise de décision sur les mises et l'allocation du capital.
+ * La somme des probabilités des partants actifs de la course est normalisée à 100%.
+ */
+export function computeHorseSuccessProbabilities(
+  partants: Partant[],
+  course?: CourseHippique
+): Map<number, HorseSuccessProbability> {
+  const result = new Map<number, HorseSuccessProbability>();
+  if (!partants || partants.length === 0) return result;
+
+  const activePartants = partants.filter((p) => !p.estNonPartant && p.statut !== 'Non-partant');
+  if (activePartants.length === 0) return result;
+
+  // Calcul du score de base pour chaque cheval
+  const horseScores = activePartants.map((p) => {
+    let rawScore = typeof p.hippoScore === 'number' && p.hippoScore > 0 ? p.hippoScore : 50;
+    return {
+      numero: Number(p.numero),
+      score: Math.max(10, Math.min(100, rawScore)),
+    };
+  });
+
+  // Modèle puissance 2.2 pour refléter la distribution réelle de succès turf
+  const weights = horseScores.map((h) => ({
+    numero: h.numero,
+    weight: Math.pow(h.score / 10, 2.2),
+  }));
+
+  const totalWeight = weights.reduce((acc, w) => acc + w.weight, 0);
+
+  weights.forEach((w) => {
+    const rawPercent = totalWeight > 0 ? (w.weight / totalWeight) * 100 : 100 / activePartants.length;
+    const percent = Math.round(rawPercent * 10) / 10;
+
+    let label: HorseSuccessProbability['label'] = 'Spéculatif';
+    let color = 'text-slate-300';
+    let badgeBg = 'bg-slate-900 border-slate-700 text-slate-300';
+    let barColor = 'bg-slate-500';
+    let advice = 'Mise modérée / couverture';
+
+    if (percent >= 20) {
+      label = 'Très Forte';
+      color = 'text-emerald-300';
+      badgeBg = 'bg-emerald-950/80 border-emerald-500/50 text-emerald-300';
+      barColor = 'bg-emerald-400';
+      advice = 'Base solide recommandée (jeu simple / couplé)';
+    } else if (percent >= 12) {
+      label = 'Forte';
+      color = 'text-amber-300';
+      badgeBg = 'bg-amber-950/80 border-amber-500/50 text-amber-300';
+      barColor = 'bg-amber-400';
+      advice = 'Appui incontournable pour les combinaisons';
+    } else if (percent >= 7) {
+      label = 'Moyenne';
+      color = 'text-sky-300';
+      badgeBg = 'bg-sky-950/80 border-sky-500/40 text-sky-300';
+      barColor = 'bg-sky-400';
+      advice = 'Associé régulier (champ réduit)';
+    } else if (percent >= 4) {
+      label = 'Modérée';
+      color = 'text-purple-300';
+      badgeBg = 'bg-purple-950/80 border-purple-500/40 text-purple-300';
+      barColor = 'bg-purple-400';
+      advice = 'Tocard spéculatif à glisser en fin de combinaison';
+    }
+
+    result.set(w.numero, { percent, label, color, badgeBg, barColor, advice });
+  });
+
+  return result;
 }

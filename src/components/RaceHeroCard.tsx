@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Trophy, Calendar, Clock, MapPin, Gauge, ShieldAlert, Award, ExternalLink, Zap, Star, ShieldCheck, CheckCircle2, CloudSun, FileText, AlertTriangle, RefreshCw, AlertCircle, Sparkles, Users, BookmarkCheck, Heart, RotateCcw, Share2, Check, SlidersHorizontal, ArrowDownUp, Settings2, X } from 'lucide-react';
+import { Trophy, Calendar, Clock, MapPin, Gauge, ShieldAlert, Award, ExternalLink, Zap, Star, ShieldCheck, CheckCircle2, CloudSun, FileText, AlertTriangle, RefreshCw, AlertCircle, Sparkles, Users, BookmarkCheck, Heart, RotateCcw, Share2, Check, SlidersHorizontal, ArrowDownUp, Settings2, X, Lock } from 'lucide-react';
 import { isCourseFinished, shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus } from '../utils/raceCountdown';
 import { CourseHippique, Partant } from '../types/turf';
 import { CountdownTimer } from './CountdownTimer';
@@ -49,6 +49,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
   selectedHorsesCount = 0,
   onResetSelection,
 }) => {
+  const [confirmClearArrival, setConfirmClearArrival] = useState(false);
   const [isGenyModalOpen, setIsGenyModalOpen] = useState(false);
   const [isExpertModalOpen, setIsExpertModalOpen] = useState(false);
   const [isSurprisesModalOpen, setIsSurprisesModalOpen] = useState(false);
@@ -212,6 +213,24 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
               <span className="font-bold text-[11px] text-slate-400">
                 🏁 Cotes définitives de départ
               </span>
+            </div>
+          ) : course.cotesScellees ? (
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-950/80 border border-amber-500/40 text-xs shadow-inner">
+              <span className="text-amber-400 font-bold">🔒</span>
+              <span className="font-extrabold text-[11px] text-amber-300">
+                Cotes scellées (analyse officielle)
+              </span>
+              {onRefreshOdds && (
+                <button
+                  type="button"
+                  onClick={onRefreshOdds}
+                  className="ml-1 px-2 py-0.5 rounded bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-black transition-all flex items-center gap-1 cursor-pointer"
+                  title="Cotes scellées : les cotes des chevaux restent verrouillées après l'analyse officielle de la course."
+                >
+                  <Lock className="w-2.5 h-2.5" />
+                  <span>Scellées</span>
+                </button>
+              )}
             </div>
           ) : (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-950/80 border border-emerald-500/40 text-xs shadow-inner">
@@ -496,19 +515,47 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
               </div>
               <div className="flex items-center gap-2 flex-wrap">
                 {onClearArrival && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (window.confirm("Voulez-vous vraiment effacer l'arrivée de cette course ? (Utile si la course n'a pas été disputée ou reportée)")) {
-                        onClearArrival();
-                      }
-                    }}
-                    className="text-xs font-bold text-rose-300 hover:text-white bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 px-3 py-1 rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1"
-                    title="Supprimer définitivement l'arrivée de la course car elle n'a pas été disputée ou a été extraite par erreur"
-                  >
-                    <span>❌ Supprimer l'arrivée (Non disputée / Erreur)</span>
-                  </button>
+                  !confirmClearArrival ? (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setConfirmClearArrival(true);
+                      }}
+                      className="text-xs font-bold text-rose-300 hover:text-white bg-rose-950/80 hover:bg-rose-900 border border-rose-500/50 px-3 py-1 rounded-xl transition-all shadow-md cursor-pointer flex items-center gap-1 active:scale-95"
+                      title="Supprimer définitivement l'arrivée de la course car elle n'a pas été disputée ou a été extraite par erreur"
+                    >
+                      <span>❌ Supprimer l'arrivée (Non disputée / Erreur)</span>
+                    </button>
+                  ) : (
+                    <div 
+                      className="flex items-center gap-1.5 bg-rose-950/95 border border-rose-500/80 px-2.5 py-1 rounded-xl shadow-xl animate-in fade-in"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <span className="text-xs font-bold text-rose-200">Course non disputée ?</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmClearArrival(false);
+                          onClearArrival();
+                        }}
+                        className="text-xs font-black text-white bg-rose-600 hover:bg-rose-500 px-2.5 py-0.5 rounded-lg transition-all shadow cursor-pointer active:scale-95"
+                      >
+                        ✓ Oui, effacer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setConfirmClearArrival(false);
+                        }}
+                        className="text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded-lg transition-all cursor-pointer"
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  )
                 )}
                 {!isProvisional && (
                   <ArrivalAuditProgressRingBadge

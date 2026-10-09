@@ -4,7 +4,9 @@ import { DashboardVueGlobale } from './components/DashboardVueGlobale';
 import { exportToCSV } from './utils/exportUtils';
 import { exportCourseToPdf, exportQuinteOnlyToPdf, exportV38PortraitPdf } from './utils/pdfExport';
 import { exportUserManualToPDF } from './utils/manualExport';
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { HeaderDatePicker } from './components/HeaderDatePicker';
+import { getIvoryCoastDate } from './utils/timeConversion';
 import { UrlInputHeader } from './components/UrlInputHeader';
 import { RaceHeroCard } from './components/RaceHeroCard';
 import { DerniersResultatsQuinte } from './components/DerniersResultatsQuinte';
@@ -125,7 +127,7 @@ function DebugRaceGate({
     if (!jsonFilter.trim()) return rawJsonString;
     const q = jsonFilter.trim().toLowerCase();
     const lines = rawJsonString.split('\n');
-    const matched = lines.filter((l) => l.toLowerCase().includes(q));
+    const matched = lines.filter((l: string) => l.toLowerCase().includes(q));
     if (matched.length === 0) return `// Aucun résultat correspondant au filtre : "${jsonFilter}"`;
     return matched.join('\n');
   }, [rawJsonString, jsonFilter]);
@@ -610,6 +612,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoNotice, setInfoNotice] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'synthese' | 'classification-prono' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs'>('synthese');
+  const [isD3CompactMode, setIsD3CompactMode] = useState<boolean>(false);
   const prevTabRef = useRef<string>(activeTab);
   useEffect(() => {
     prevTabRef.current = activeTab;
@@ -618,6 +621,13 @@ export default function App() {
   const [isPartantsModalOpen, setIsPartantsModalOpen] = useState(false);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
   const [calendarPredefinedUrl, setCalendarPredefinedUrl] = useState<string | null>(null);
+  const [calendarModalDate, setCalendarModalDate] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('hippo_selected_date');
+      if (saved) return saved;
+    } catch {}
+    return getIvoryCoastDate(0);
+  });
   const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isQuinteHierarchyModalOpen, setIsQuinteHierarchyModalOpen] = useState(false);
@@ -794,11 +804,17 @@ export default function App() {
       let freshHasEnquete = Boolean((activeCourse as any).hasEnquete);
       let freshProvisionalArrivalAt = (activeCourse as any).provisionalArrivalAt;
 
+      const isArrivalManuallyCleared = Boolean((activeCourse as any)?.manualArrivalCleared || (activeCourse as any)?.verrouillageNonDisputee);
+
       const isCurrentlyProvisional = 
         activeCourse.statutCourse?.toLowerCase()?.includes('provisoire') || 
         freshStatusArrivee === 'provisoire';
 
-      const needsVerify = isManual || !activeCourse.arriveeOfficielle || isCurrentlyProvisional;
+      const needsVerify = !isArrivalManuallyCleared && (isManual || !activeCourse.arriveeOfficielle || isCurrentlyProvisional);
+
+      // RÈGLE UTILISATEUR : "Après l'analyse de la course plus d'actualisation et de variations des cotes des chevaux"
+      // Dès qu'une course est analysée, les cotes sont scellées et verrouillées (aucune actualisation ni variation).
+      const isCourseAnalyzed = Boolean((activeCourse as any).cotesScellees || activeCourse.synthese);
 
       // Exécution en parallèle sans aucun délai d'attente séquentiel
       const verifyPromise = needsVerify
@@ -812,11 +828,14 @@ export default function App() {
           }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
         : Promise.resolve(null);
 
-      const cotesPromise = fetch('/api/refresh-cotes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ course: activeCourse }),
-      }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      // Si la course est déjà analysée, les cotes sont scellées : on n'appelle pas /api/refresh-cotes
+      const cotesPromise = (isCourseAnalyzed || isArrivalManuallyCleared)
+        ? Promise.resolve(null)
+        : fetch('/api/refresh-cotes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ course: activeCourse }),
+          }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
 
       const [vData, data] = await Promise.all([verifyPromise, cotesPromise]);
 
@@ -827,7 +846,7 @@ export default function App() {
       console.log('[REFRESH-ODDS] arriveeOfficielle in data :', data?.arriveeOfficielle);
       console.log('==============================================================');
 
-      if (vData) {
+      if (vData && !isArrivalManuallyCleared) {
         if (vData.arriveeOfficielle && typeof vData.arriveeOfficielle === 'string' && /^\d+[-,\s]+\d+/.test(vData.arriveeOfficielle.trim())) {
           freshArrival = vData.arriveeOfficielle.trim();
           freshStatusArrivee = vData.statutArrivee || (vData.isOfficial ? 'officielle' : 'provisoire');
@@ -842,15 +861,19 @@ export default function App() {
       }
 
       let mergedPartants = activeCourse.partants;
-      if (data) {
+      if (isCourseAnalyzed) {
+        setInfoNotice("🔒 Cotes scellées : les cotes des chevaux restent verrouillées après l'analyse officielle de la course.");
+        setTimeout(() => setInfoNotice(null), 4500);
+      }
+      if (data && !isCourseAnalyzed) {
         if (data.sourceUsed === 'pmu_direct_api') {
           setInfoNotice(`✅ Cotes & Indispensables actualisés en direct via PMU.FR (${new Date().toLocaleTimeString('fr-FR')})`);
           setTimeout(() => setInfoNotice(null), 4000);
         }
 
-        if (data.arriveeOfficielle && !freshArrival) {
+        if (data.arriveeOfficielle && !freshArrival && !isArrivalManuallyCleared) {
           freshArrival = data.arriveeOfficielle;
-        } else if (data.arriveeOfficielle === null && !freshArrival && vData?.arriveeOfficielle === null) {
+        } else if ((data.arriveeOfficielle === null && !freshArrival && vData?.arriveeOfficielle === null) || isArrivalManuallyCleared) {
           freshArrival = undefined;
         }
 
@@ -883,7 +906,9 @@ export default function App() {
         }
       }
 
-      const arrivalToKeep = freshArrival !== undefined ? freshArrival : (freshStatusArrivee === 'en_attente' ? undefined : activeCourse.arriveeOfficielle);
+      const arrivalToKeep = isArrivalManuallyCleared
+        ? undefined
+        : (freshArrival !== undefined ? freshArrival : (freshStatusArrivee === 'en_attente' ? undefined : activeCourse.arriveeOfficielle));
       if (arrivalToKeep && !freshProvisionalArrivalAt) {
         freshProvisionalArrivalAt = new Date().toISOString();
       }
@@ -897,13 +922,15 @@ export default function App() {
         freshHasEnquete
       );
 
-      const isOfficialConfirmed = freshStatusArrivee === 'officielle' || (Boolean(arrivalToKeep) && promotionCheck.shouldPromote);
-      const isProvisionalArrival = Boolean(arrivalToKeep) && !isOfficialConfirmed;
-      const statusToKeep = isOfficialConfirmed
-        ? 'Arrivée officielle'
-        : (isProvisionalArrival
-          ? 'Arrivée provisoire'
-          : (activeCourse.statutCourse === 'Arrivée officielle' ? 'Partants définitifs' : (activeCourse.statutCourse || 'Partants définitifs')));
+      const isOfficialConfirmed = !isArrivalManuallyCleared && (freshStatusArrivee === 'officielle' || (Boolean(arrivalToKeep) && promotionCheck.shouldPromote));
+      const isProvisionalArrival = !isArrivalManuallyCleared && Boolean(arrivalToKeep) && !isOfficialConfirmed;
+      const statusToKeep = isArrivalManuallyCleared
+        ? 'Partants définitifs'
+        : (isOfficialConfirmed
+          ? 'Arrivée officielle'
+          : (isProvisionalArrival
+            ? 'Arrivée provisoire'
+            : (activeCourse.statutCourse === 'Arrivée officielle' ? 'Partants définitifs' : (activeCourse.statutCourse || 'Partants définitifs'))));
 
       // Si l'arrivée devient officielle pour la première fois, on enregistre officialArrivalAt
       let freshOfficialArrivalAt = (activeCourse as any).officialArrivalAt;
@@ -917,18 +944,24 @@ export default function App() {
         statutCourse: statusToKeep,
         partants: mergedPartants,
         derniereMiseAJour: new Date().toISOString(),
-        provisionalArrivalAt: freshProvisionalArrivalAt,
-        hasEnquete: freshHasEnquete,
-        officialArrivalAt: freshOfficialArrivalAt,
-        arrivalAuditCompleted: (activeCourse as any).arrivalAuditCompleted || false,
-        arrivalAuditTimestamp: (activeCourse as any).arrivalAuditTimestamp,
-        arrivalAuditModificationDetected: (activeCourse as any).arrivalAuditModificationDetected,
-        arrivalAuditPreviousArrival: (activeCourse as any).arrivalAuditPreviousArrival,
+        provisionalArrivalAt: isArrivalManuallyCleared ? undefined : freshProvisionalArrivalAt,
+        hasEnquete: isArrivalManuallyCleared ? false : freshHasEnquete,
+        officialArrivalAt: isArrivalManuallyCleared ? undefined : freshOfficialArrivalAt,
+        arrivalAuditCompleted: isArrivalManuallyCleared ? false : ((activeCourse as any).arrivalAuditCompleted || false),
+        arrivalAuditTimestamp: isArrivalManuallyCleared ? undefined : (activeCourse as any).arrivalAuditTimestamp,
+        arrivalAuditModificationDetected: isArrivalManuallyCleared ? false : (activeCourse as any).arrivalAuditModificationDetected,
+        arrivalAuditPreviousArrival: isArrivalManuallyCleared ? undefined : (activeCourse as any).arrivalAuditPreviousArrival,
       };
-      (updatedCourse as any).statutArrivee = isOfficialConfirmed ? 'officielle' : (isProvisionalArrival ? 'provisoire' : freshStatusArrivee);
+      (updatedCourse as any).statutArrivee = isArrivalManuallyCleared ? 'en_attente' : (isOfficialConfirmed ? 'officielle' : (isProvisionalArrival ? 'provisoire' : freshStatusArrivee));
+      (updatedCourse as any).manualArrivalCleared = isArrivalManuallyCleared;
+      (updatedCourse as any).verrouillageNonDisputee = isArrivalManuallyCleared;
 
-      // Recalculer l'ensemble de la course et sa hiérarchie avec les nouvelles cotes et l'arrivée
-      const enriched = enrichRaceWithGeminiCollege(updatedCourse);
+      if (isCourseAnalyzed) {
+        updatedCourse.cotesScellees = true;
+      }
+
+      // Si la course est déjà analysée, préserver intacte toute la synthèse et hiérarchie (cotes scellées)
+      const enriched = isCourseAnalyzed ? updatedCourse : enrichRaceWithGeminiCollege(updatedCourse);
       setCourse(enriched);
 
       // Synchroniser automatiquement avec l'historique local
@@ -937,6 +970,7 @@ export default function App() {
           arriveeOfficielle: arrivalToKeep,
           statutCourse: statusToKeep,
           partants: mergedPartants,
+          cotesScellees: isCourseAnalyzed ? true : enriched.cotesScellees,
           provisionalArrivalAt: freshProvisionalArrivalAt,
           hasEnquete: freshHasEnquete,
           officialArrivalAt: freshOfficialArrivalAt,
@@ -1081,7 +1115,7 @@ export default function App() {
   // (disqualification après enquête tardive, rétrogradation pour gêne, etc.).
   const executePostOfficialArrivalAudit = async (targetCourse?: CourseHippique, isManualTrigger = false) => {
     const activeCourse = targetCourse || courseRef.current || course;
-    if (!activeCourse || !activeCourse.arriveeOfficielle) return;
+    if (!activeCourse || !activeCourse.arriveeOfficielle || (activeCourse as any)?.manualArrivalCleared) return;
 
     setIsAuditingArrival(true);
     const rName = activeCourse.reunion || 'R1';
@@ -1111,20 +1145,26 @@ export default function App() {
         }
       } catch (_e) {}
 
-      // 2. Interroger également les cotes et rapports officiels
-      try {
-        const cotesResp = await fetch('/api/refresh-cotes', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ course: activeCourse }),
-        });
-        if (cotesResp.ok) {
-          const cData = await cotesResp.json();
-          if (cData.arriveeOfficielle && typeof cData.arriveeOfficielle === 'string' && /^\d+[-,\s]+\d+/.test(cData.arriveeOfficielle.trim())) {
-            freshArrival = cData.arriveeOfficielle.trim();
+      // Règle d'or : Si la course est déjà analysée, les cotes sont scellées et verrouillées.
+      // On ne modifie pas les cotes ni les partants, on vérifie uniquement l'arrivée officielle / enquêtes.
+      const isCourseAnalyzed = Boolean((activeCourse as any).cotesScellees || activeCourse.synthese);
+
+      if (!isCourseAnalyzed) {
+        // 2. Interroger également les cotes et rapports officiels UNIQUEMENT si la course n'est pas scellée
+        try {
+          const cotesResp = await fetch('/api/refresh-cotes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ course: activeCourse }),
+          });
+          if (cotesResp.ok) {
+            const cData = await cotesResp.json();
+            if (cData.arriveeOfficielle && typeof cData.arriveeOfficielle === 'string' && /^\d+[-,\s]+\d+/.test(cData.arriveeOfficielle.trim())) {
+              freshArrival = cData.arriveeOfficielle.trim();
+            }
           }
-        }
-      } catch (_e) {}
+        } catch (_e) {}
+      }
 
       // Normalisation des numéros pour comparaison stricte
       const normOld = initialArrival.replace(/\s+/g, '-').replace(/,+/g, '-');
@@ -1135,6 +1175,7 @@ export default function App() {
 
       const updatedCourse: CourseHippique = {
         ...activeCourse,
+        partants: activeCourse.partants, // Intégrité absolue des partants scellés
         arriveeOfficielle: freshArrival,
         arrivalAuditCompleted: true,
         arrivalAuditTimestamp: auditTimestamp,
@@ -1142,9 +1183,10 @@ export default function App() {
         arrivalAuditPreviousArrival: isModified ? initialArrival : (activeCourse.arrivalAuditPreviousArrival || undefined),
         hasEnquete: freshHasEnquete,
         derniereMiseAJour: auditTimestamp,
+        cotesScellees: isCourseAnalyzed ? true : (activeCourse as any).cotesScellees,
       };
 
-      const enriched = enrichRaceWithGeminiCollege(updatedCourse);
+      const enriched = isCourseAnalyzed ? updatedCourse : enrichRaceWithGeminiCollege(updatedCourse);
       setCourse(enriched);
 
       // Mettre à jour l'historique local
@@ -1363,9 +1405,14 @@ export default function App() {
     }
 
     const isOfficiallyConfirmed = isCourseArrivalOfficiallyConfirmed(course);
+    const isCourseAnalyzed = Boolean((course as any)?.cotesScellees || course?.synthese);
 
-    // L'intervalle se désactive (clears) SEULEMENT quand l'arrivée est officiellement confirmée ('officielle')
-    if (isOfficiallyConfirmed) {
+    // RÈGLE UTILISATEUR :
+    // Le timer d'actualisation automatique des cotes est suspendu pour la course analysée.
+    // L'intervalle se désactive (clears) :
+    // 1) Si la course est analysée (cotesScellees: true ou synthese) -> Suspension définitive du timer de cotes
+    // 2) Quand l'arrivée est officiellement confirmée ('officielle')
+    if (isCourseAnalyzed || isOfficiallyConfirmed) {
       pendingToOfficialRef.current = false;
       setPollingDelay(null);
       return;
@@ -1378,6 +1425,8 @@ export default function App() {
     course?.id,
     course?.statutCourse,
     (course as any)?.statutArrivee,
+    (course as any)?.cotesScellees,
+    course?.synthese,
     course?.arriveeOfficielle,
     course?.arrivalAuditCompleted,
   ]);
@@ -1386,10 +1435,19 @@ export default function App() {
     const currentC = courseRef.current;
     if (!currentC) return;
 
+    // Règle : Gel absolu des cotes après analyse
+    const currentAnalyzed = Boolean((currentC as any)?.cotesScellees || currentC?.synthese);
+    if (currentAnalyzed) {
+      pendingToOfficialRef.current = false;
+      setPollingDelay(null);
+      return;
+    }
+
     const currentConfirmed = isCourseArrivalOfficiallyConfirmed(currentC);
+    const isManualCleared = Boolean((currentC as any)?.manualArrivalCleared || (currentC as any)?.verrouillageNonDisputee);
 
     // Déclencher refreshOddsNow de manière continue tant que le statut 'officielle' n'est pas définitivement atteint
-    if ((!currentConfirmed || pendingToOfficialRef.current) && !isRefreshingInProgressRef.current) {
+    if (!isManualCleared && (!currentConfirmed || pendingToOfficialRef.current) && !isRefreshingInProgressRef.current) {
       refreshOddsNow(currentC, false);
     }
 
@@ -1400,6 +1458,7 @@ export default function App() {
     // Surveillance supplémentaire du déclenchement de l'audit 5 min des commissaires post-arrivée
     const currentHasArr = Boolean(currentC.arriveeOfficielle && currentC.arriveeOfficielle.trim());
     const currentOfficial =
+      !isManualCleared &&
       currentHasArr &&
       (currentC.statutCourse?.toLowerCase()?.includes('officiel') ||
       (currentC as any).statutArrivee === 'officielle');
@@ -1420,12 +1479,13 @@ export default function App() {
     }
   }, pollingDelay);
 
-  // Timer 30 secondes pour l'actualisation automatique des cotes et arrivées (DÉSACTIVÉ SEULEMENT SI ARRIVÉE DÉFINITIVE VALIDÉE)
+  // Timer 30 secondes pour l'actualisation automatique des cotes et arrivées (DÉSACTIVÉ SI ANALYSÉE OU ARRIVÉE DÉFINITIVE VALIDÉE)
   useEffect(() => {
     const interval = setInterval(() => {
       const currentC = courseRef.current;
-      // Ne couper le timer que si l'arrivée officielle est définitivement confirmée
-      if (isCourseArrivalOfficiallyConfirmed(currentC)) {
+      // "Après l'analyse de la course plus d'actualisation et de variations des cotes des chevaux"
+      // Ne pas actualiser les cotes si la course est déjà analysée ou si l'arrivée officielle est définitivement confirmée
+      if (isCourseArrivalOfficiallyConfirmed(currentC) || Boolean((currentC as any)?.cotesScellees || currentC?.synthese) || Boolean((currentC as any)?.manualArrivalCleared)) {
         return;
       }
       setNextOddsSec((prev) => {
@@ -1614,11 +1674,14 @@ export default function App() {
   };
 
   const setCourseWithTime = (c: CourseHippique) => {
-    const enriched = enrichRaceWithGeminiCollege(c);
-    setCourse({
+    const isAnalyzed = Boolean((c as any)?.cotesScellees || c?.synthese);
+    const enriched = isAnalyzed ? c : enrichRaceWithGeminiCollege(c);
+    const finalCourse: CourseHippique = {
       ...enriched,
+      cotesScellees: isAnalyzed ? true : enriched.cotesScellees,
       derniereMiseAJour: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-    });
+    };
+    setCourse(finalCourse);
   };
 
   const handleSelectHistoryCourse = (selectedCourse: CourseHippique) => {
@@ -1653,10 +1716,14 @@ export default function App() {
     setInfoNotice(`🚀 Lancement automatique de l'analyse : ${selectedCourse.prixNom || selectedCourse.titre}...`);
 
     setTimeout(() => {
-      setCourseWithTime(selectedCourse);
+      const analyzedCourse: CourseHippique = {
+        ...selectedCourse,
+        cotesScellees: true,
+      };
+      setCourseWithTime(analyzedCourse);
       setCurrentUrl(selectedCourse.sourceUrl);
       setSelectedHorses(selectedCourse.synthese?.selection8 || []);
-      const updatedHist = saveRaceToHistory(selectedCourse);
+      const updatedHist = saveRaceToHistory(analyzedCourse);
       setHistory(updatedHist);
 
       if (currentUser) {
@@ -1670,7 +1737,7 @@ export default function App() {
       setIsLoading(false);
       setActiveTab('synthese');
       setIsCalendarModalOpen(false);
-      setInfoNotice(`✅ Analyse officielle de la course "${selectedCourse.prixNom || selectedCourse.titre}" terminée avec succès !`);
+      setInfoNotice("🔒 Cotes scellées : les cotes des chevaux restent verrouillées après l'analyse officielle de la course.");
     }, 600);
   };
 
@@ -1689,9 +1756,19 @@ export default function App() {
       arrivalAuditPreviousArrival: undefined,
     };
     (updated as any).statutArrivee = 'en_attente';
+    (updated as any).manualArrivalCleared = true;
+    (updated as any).verrouillageNonDisputee = true;
     
     // Save to state
     const enriched = enrichRaceWithGeminiCollege(updated);
+    (enriched as any).manualArrivalCleared = true;
+    (enriched as any).verrouillageNonDisputee = true;
+    (enriched as any).statutArrivee = 'en_attente';
+    enriched.arriveeOfficielle = undefined;
+    enriched.statutCourse = 'Partants définitifs';
+    enriched.officialArrivalAt = undefined;
+    enriched.provisionalArrivalAt = undefined;
+
     courseRef.current = enriched;
     setCourse(enriched);
 
@@ -1708,10 +1785,13 @@ export default function App() {
         arrivalAuditTimestamp: undefined,
         arrivalAuditModificationDetected: false,
         arrivalAuditPreviousArrival: undefined,
-      });
+        manualArrivalCleared: true,
+        verrouillageNonDisputee: true,
+      } as any);
     }
     
-    setInfoNotice(`❌ L'arrivée officielle de la course "${course.prixNom || course.titre}" a été supprimée (course non disputée ou reportée).`);
+    setInfoNotice(`❌ L'arrivée de la course "${course.prixNom || course.titre}" a été supprimée avec succès (course non disputée ou erreur).`);
+    setTimeout(() => setInfoNotice(null), 5000);
   };
 
   const handleRemoveHistoryItem = (id: string) => {
@@ -2348,12 +2428,18 @@ export default function App() {
           fromAi: data.fromAi,
         });
 
-        setCourseWithTime(data.course);
-        const updatedHist = saveRaceToHistory(data.course);
-        setHistory(updatedHist);
+        const courseWithLockedOdds: CourseHippique = {
+          ...data.course,
+          cotesScellees: true,
+        };
 
-        // Déclencher immédiatement la vérification en direct de l'arrivée et des cotes actualisées
-        refreshOddsNow(data.course, true);
+        setCourseWithTime(courseWithLockedOdds);
+        const updatedHist = saveRaceToHistory(courseWithLockedOdds);
+        setHistory(updatedHist);
+        setInfoNotice("🔒 Cotes scellées : les cotes des chevaux restent verrouillées après l'analyse officielle de la course.");
+
+        // "Après l'analyse de la course plus d'actualisation et de variations des cotes des chevaux"
+        // Les cotes sont définitivement scellées suite à l'analyse (aucune variation ultérieure)
         
         // Mettre à jour le compteur d'analyses de l'utilisateur
         if (activeUser) {
@@ -2470,6 +2556,7 @@ export default function App() {
 
         const refinedCourse = {
           ...data.course,
+          cotesScellees: true,
           reunion: meeting.reunion,
           course: meeting.courseNumero || 'C1',
           courseNumero: meeting.courseNumero || 'C1',
@@ -2487,6 +2574,7 @@ export default function App() {
         setCourseWithTime(refinedCourse);
         const updatedHist = saveRaceToHistory(refinedCourse);
         setHistory(updatedHist);
+        setInfoNotice("🔒 Cotes scellées : les cotes des chevaux restent verrouillées après l'analyse officielle de la course.");
 
         if (currentUser) {
           incrementUserAnalysesCount(currentUser.id);
@@ -2505,7 +2593,7 @@ export default function App() {
 
         setActiveTab('synthese');
         setIsCalendarModalOpen(false);
-        setInfoNotice(`✅ Analyse officielle de "${meeting.nomCoursePhare}" (${finalPartants.length} partants) validée avec succès !`);
+        setInfoNotice("🔒 Cotes scellées : les cotes des chevaux restent verrouillées après l'analyse officielle de la course.");
       }
     } catch (err: any) {
       console.warn("Bascule vers le constructeur direct de course:", err);
@@ -3274,11 +3362,9 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (window.confirm("Voulez-vous vraiment réinitialiser les chevaux sélectionnés pour le ticket de cette course ?")) {
-                        setSelectedHorses([]);
-                        setInfoNotice("✨ Le ticket sélectionné de la course en cours a été réinitialisé !");
-                        setTimeout(() => setInfoNotice(null), 4000);
-                      }
+                      setSelectedHorses([]);
+                      setInfoNotice("✨ Le ticket sélectionné de la course en cours a été réinitialisé !");
+                      setTimeout(() => setInfoNotice(null), 4000);
                     }}
                     className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-rose-950/70 border border-slate-800 hover:border-rose-500/50 text-slate-300 hover:text-rose-200 text-xs font-black flex items-center gap-1.5 transition-all shadow-md active:scale-95 shrink-0 cursor-pointer"
                     title="Réinitialiser instantanément les chevaux sélectionnés pour le ticket de cette course"
@@ -3560,10 +3646,42 @@ export default function App() {
                     <div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <h2 className="text-lg sm:text-xl font-black text-white">Statistiques & Visualisation D3.js V38</h2>
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase tracking-wider">Format Paysage Étendu</span>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border transition-all ${
+                          isD3CompactMode
+                            ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                            : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        }`}>
+                          {isD3CompactMode ? '📱 Format Compact Mobile (Largeur Réduite)' : 'Format Paysage Étendu'}
+                        </span>
                       </div>
                       <p className="text-xs text-slate-400">Analyse de la réussite des chevaux (%) en fonction de leur indice de valeur V38 et régularité passée</p>
                     </div>
+                  </div>
+
+                  {/* Bouton pour basculer vers le mode compact (largeur réduite) */}
+                  <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setIsD3CompactMode((prev) => !prev)}
+                      className={`px-3.5 py-2 rounded-xl border text-xs font-black flex items-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
+                        isD3CompactMode
+                          ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400 shadow-indigo-600/30 ring-2 ring-indigo-400/30'
+                          : 'bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700 hover:border-slate-600'
+                      }`}
+                      title={isD3CompactMode ? "Rétablir l'affichage étendu plein format" : "Basculer l'histogramme D3V38 vers le mode compact (largeur réduite) pour mobile"}
+                    >
+                      {isD3CompactMode ? (
+                        <>
+                          <Maximize2 className="w-4 h-4 text-indigo-200" />
+                          <span>Mode Étendu</span>
+                        </>
+                      ) : (
+                        <>
+                          <Smartphone className="w-4 h-4 text-indigo-400" />
+                          <span>Mode Compact Mobile</span>
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
 
@@ -3572,6 +3690,8 @@ export default function App() {
                   course={course}
                   selectedHorseNumbers={selectedHorses}
                   onSelectHorseForTicket={handleToggleHorse}
+                  isCompactMode={isD3CompactMode}
+                  onToggleCompactMode={() => setIsD3CompactMode((prev) => !prev)}
                 />
 
                 {/* Graphique de comparaison Recharts */}
@@ -3745,27 +3865,41 @@ export default function App() {
       {isCalendarModalOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-0 sm:pt-1 sm:px-2 sm:pb-1 bg-slate-950/95 backdrop-blur-xl animate-fadeIn">
           <div className="bg-slate-900 border-2 border-amber-500/50 rounded-none sm:rounded-2xl p-3 sm:p-5 w-full max-w-[1850px] h-screen sm:h-[calc(100vh-8px)] flex flex-col shadow-2xl relative overflow-hidden mt-0">
-            <div className="flex justify-between items-center pb-3 mb-3 border-b border-slate-800 shrink-0">
+            <div className="flex flex-col md:flex-row justify-between md:items-center gap-3 pb-3 mb-3 border-b border-slate-800 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 sm:p-3 rounded-2xl bg-amber-500/20 text-amber-400 font-black shadow-inner">
                   <Calendar className="w-5 h-5 sm:w-6 sm:h-6" />
                 </div>
                 <div>
                   <h2 className="text-base sm:text-xl font-black text-white">Programme PMU / Calendrier des Courses</h2>
-                  <p className="text-xs text-slate-400">Consultez et synchronisez les réunions et courses officielles en temps réel</p>
+                  <p className="text-xs text-slate-400">Consultez et synchronisez les réunions et courses officielles par date spécifique</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setIsCalendarModalOpen(false);
-                  setCalendarPredefinedUrl(null);
-                }}
-                className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-xl shadow-rose-900/40 border border-rose-400/30 transition-all hover:scale-105 active:scale-95 shrink-0"
-              >
-                <span>Fermer</span>
-                <X className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
+
+              {/* Sélecteur de date dans l'en-tête du modal */}
+              <div className="flex items-center gap-3 flex-wrap">
+                <HeaderDatePicker
+                  selectedDate={calendarModalDate}
+                  onDateChange={(newDate) => {
+                    setCalendarModalDate(newDate);
+                    try {
+                      localStorage.setItem('hippo_selected_date', newDate);
+                    } catch {}
+                    window.dispatchEvent(new CustomEvent('hippoanalyse-date-filter-changed', { detail: { date: newDate } }));
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCalendarModalOpen(false);
+                    setCalendarPredefinedUrl(null);
+                  }}
+                  className="px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black text-xs sm:text-sm flex items-center gap-2 shadow-xl shadow-rose-900/40 border border-rose-400/30 transition-all hover:scale-105 active:scale-95 shrink-0"
+                >
+                  <span>Fermer</span>
+                  <X className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              </div>
             </div>
             <div className="flex-grow overflow-y-auto">
               <PmuCalendar 
@@ -4020,11 +4154,9 @@ export default function App() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (window.confirm("Voulez-vous vraiment réinitialiser les chevaux sélectionnés pour le ticket de cette course ?")) {
-                        setSelectedHorses([]);
-                        setInfoNotice("✨ Le ticket sélectionné de la course en cours a été réinitialisé !");
-                        setTimeout(() => setInfoNotice(null), 4000);
-                      }
+                      setSelectedHorses([]);
+                      setInfoNotice("✨ Le ticket sélectionné de la course en cours a été réinitialisé !");
+                      setTimeout(() => setInfoNotice(null), 4000);
                     }}
                     className="px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-rose-950/70 border border-slate-800 hover:border-rose-500/50 text-slate-300 hover:text-rose-200 text-xs font-black flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer shrink-0"
                     title="Réinitialiser instantanément le pronostic et le ticket sélectionné pour la course en cours"
@@ -4187,11 +4319,44 @@ export default function App() {
                     />
                   )}
                   {activeTab === 'stats' && (
-                    <StatsPerformanceChart
-                      course={course}
-                      selectedHorseNumbers={selectedHorses}
-                      onSelectHorseForTicket={handleToggleHorse}
-                    />
+                    <div className="space-y-6">
+                      <div className="flex justify-end pb-2">
+                        <button
+                          type="button"
+                          onClick={() => setIsD3CompactMode((prev) => !prev)}
+                          className={`px-3.5 py-2 rounded-xl border text-xs font-black flex items-center gap-2 transition-all shadow-md active:scale-95 cursor-pointer ${
+                            isD3CompactMode
+                              ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400 shadow-indigo-600/30'
+                              : 'bg-slate-950 hover:bg-slate-800 text-slate-300 hover:text-white border-slate-700'
+                          }`}
+                          title={isD3CompactMode ? "Rétablir l'affichage étendu plein format" : "Basculer vers le mode compact (largeur réduite) pour mobile"}
+                        >
+                          {isD3CompactMode ? (
+                            <>
+                              <Maximize2 className="w-4 h-4 text-indigo-200" />
+                              <span>Mode Étendu</span>
+                            </>
+                          ) : (
+                            <>
+                              <Smartphone className="w-4 h-4 text-indigo-400" />
+                              <span>Mode Compact Mobile</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <D3V38HistogramChart
+                        course={course}
+                        selectedHorseNumbers={selectedHorses}
+                        onSelectHorseForTicket={handleToggleHorse}
+                        isCompactMode={isD3CompactMode}
+                        onToggleCompactMode={() => setIsD3CompactMode((prev) => !prev)}
+                      />
+                      <StatsPerformanceChart
+                        course={course}
+                        selectedHorseNumbers={selectedHorses}
+                        onSelectHorseForTicket={handleToggleHorse}
+                      />
+                    </div>
                   )}
                   {activeTab === 'ticket' && (
                     <TicketBetCalculator

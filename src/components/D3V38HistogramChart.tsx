@@ -1,12 +1,14 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
 import * as d3 from 'd3';
 import { CourseHippique, Partant } from '../types/turf';
-import { BarChart3, Sparkles, Trophy, ShieldCheck, Info, Layers, RefreshCw } from 'lucide-react';
+import { BarChart3, Sparkles, Trophy, ShieldCheck, Info, Layers, RefreshCw, Smartphone, Maximize2 } from 'lucide-react';
 
 interface D3V38HistogramChartProps {
   course: CourseHippique;
   selectedHorseNumbers?: number[];
   onSelectHorseForTicket?: (numero: number) => void;
+  isCompactMode?: boolean;
+  onToggleCompactMode?: () => void;
 }
 
 export interface V38HorseData {
@@ -29,6 +31,7 @@ export interface V38HorseData {
 export interface V38BinData {
   binKey: string;
   label: string;
+  shortLabel: string;
   minIndice: number;
   maxIndice: number;
   role: string;
@@ -121,12 +124,25 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
   course,
   selectedHorseNumbers = [],
   onSelectHorseForTicket,
+  isCompactMode,
+  onToggleCompactMode,
 }) => {
   if (!course) return null;
   const svgRef = useRef<SVGSVGElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   // States interactifs
+  const [internalCompact, setInternalCompact] = useState<boolean>(false);
+  const isCompact = isCompactMode !== undefined ? isCompactMode : internalCompact;
+
+  const handleToggleCompact = () => {
+    if (onToggleCompactMode) {
+      onToggleCompactMode();
+    } else {
+      setInternalCompact((prev) => !prev);
+    }
+  };
+
   const [metric, setMetric] = useState<'tauxPlace' | 'tauxVictoire' | 'tauxTop5'>('tauxPlace');
   const [viewMode, setViewMode] = useState<'binned' | 'individual'>('binned');
   const [filterMode, setFilterMode] = useState<'all' | 'quinte' | 'selected'>('all');
@@ -155,12 +171,12 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
   // Groupement par tranches (Histogram Bins) d'indice de valeur V38
   const binsData = useMemo(() => {
     const binsConfig = [
-      { key: 'top_base', label: 'Indice ≥ 85 (Bases Élite)', minIndice: 85, maxIndice: 100, role: 'Base V38 Supérieure', color: '#10b981' },
-      { key: 'base', label: 'Indice 75-84 (Bases Solides)', minIndice: 75, maxIndice: 84, role: 'Base V38 Standard', color: '#059669' },
-      { key: 'chance', label: 'Indice 65-74 (Bonnes Chances)', minIndice: 65, maxIndice: 74, role: 'Chance V38', color: '#f59e0b' },
-      { key: 'outsider', label: 'Indice 55-64 (Outsiders)', minIndice: 55, maxIndice: 64, role: 'Outsider V38', color: '#3b82f6' },
-      { key: 'tocard', label: 'Indice 45-54 (Tocards)', minIndice: 45, maxIndice: 54, role: 'Tocard V38', color: '#ec4899' },
-      { key: 'gros_tocard', label: 'Indice < 45 (Gros Tocards)', minIndice: 0, maxIndice: 44, role: 'Tocard Spéculatif', color: '#f43f5e' },
+      { key: 'top_base', label: 'Indice ≥ 85 (Bases Élite)', shortLabel: '≥85 (Élite)', minIndice: 85, maxIndice: 100, role: 'Base V38 Supérieure', color: '#10b981' },
+      { key: 'base', label: 'Indice 75-84 (Bases Solides)', shortLabel: '75-84 (Solide)', minIndice: 75, maxIndice: 84, role: 'Base V38 Standard', color: '#059669' },
+      { key: 'chance', label: 'Indice 65-74 (Bonnes Chances)', shortLabel: '65-74 (Chance)', minIndice: 65, maxIndice: 74, role: 'Chance V38', color: '#f59e0b' },
+      { key: 'outsider', label: 'Indice 55-64 (Outsiders)', shortLabel: '55-64 (Outs.)', minIndice: 55, maxIndice: 64, role: 'Outsider V38', color: '#3b82f6' },
+      { key: 'tocard', label: 'Indice 45-54 (Tocards)', shortLabel: '45-54 (Tocs)', minIndice: 45, maxIndice: 54, role: 'Tocard V38', color: '#ec4899' },
+      { key: 'gros_tocard', label: 'Indice < 45 (Gros Tocards)', shortLabel: '<45 (G.Tocs)', minIndice: 0, maxIndice: 44, role: 'Tocard Spéculatif', color: '#f43f5e' },
     ];
 
     return binsConfig.map((bin) => {
@@ -177,6 +193,7 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
       return {
         binKey: bin.key,
         label: bin.label,
+        shortLabel: bin.shortLabel,
         minIndice: bin.minIndice,
         maxIndice: bin.maxIndice,
         role: bin.role,
@@ -205,9 +222,12 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove(); // Clear previous drawing
 
-    const containerWidth = container.clientWidth || 700;
-    const height = 340;
-    const margin = { top: 35, right: 25, bottom: 65, left: 55 };
+    const rawWidth = container.clientWidth || 700;
+    const containerWidth = isCompact ? Math.min(rawWidth, 480) : rawWidth;
+    const height = isCompact ? 280 : 340;
+    const margin = isCompact
+      ? { top: 25, right: 15, bottom: 58, left: 45 }
+      : { top: 35, right: 25, bottom: 65, left: 55 };
     const width = containerWidth - margin.left - margin.right;
 
     svg.attr('width', containerWidth).attr('height', height);
@@ -243,13 +263,14 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
     if (viewMode === 'binned') {
       // ---------------- BIN VIEW (Histogramme par tranches d'Indice V38) ----------------
       const data = binsData;
+      const getBinLabel = (d: V38BinData) => (isCompact ? d.shortLabel : d.label);
 
       // X Scale: Categories (Tranches V38)
       const xScale = d3
         .scaleBand()
-        .domain(data.map((d) => d.label))
+        .domain(data.map(getBinLabel))
         .range([0, width])
-        .padding(0.28);
+        .padding(isCompact ? 0.20 : 0.28);
 
       // Y Scale: % Réussite (0 to 100%)
       const yScale = d3
@@ -287,16 +308,16 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
       xAxisGroup
         .selectAll('text')
         .attr('fill', '#cbd5e1')
-        .attr('font-size', '10px')
+        .attr('font-size', isCompact ? '9px' : '10px')
         .attr('font-weight', '600')
-        .attr('transform', width < 500 ? 'rotate(-25)' : 'rotate(0)')
-        .style('text-anchor', width < 500 ? 'end' : 'middle');
+        .attr('transform', isCompact || width < 500 ? 'rotate(-32)' : 'rotate(0)')
+        .style('text-anchor', isCompact || width < 500 ? 'end' : 'middle');
 
       // Y Axis
       const yAxis = d3.axisLeft(yScale).ticks(5).tickFormat((d) => `${d}%`);
       const yAxisGroup = g.append('g').call(yAxis);
       yAxisGroup.selectAll('path, line').attr('stroke', '#475569');
-      yAxisGroup.selectAll('text').attr('fill', '#cbd5e1').attr('font-size', '10px').attr('font-weight', '600');
+      yAxisGroup.selectAll('text').attr('fill', '#cbd5e1').attr('font-size', isCompact ? '9px' : '10px').attr('font-weight', '600');
 
       // Baseline Average Line
       if (overallAvgSuccess > 0) {
@@ -315,9 +336,9 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
           .attr('y', yScale(overallAvgSuccess) - 6)
           .attr('text-anchor', 'end')
           .attr('fill', '#fbbf24')
-          .attr('font-size', '10px')
+          .attr('font-size', isCompact ? '9px' : '10px')
           .attr('font-weight', 'bold')
-          .text(`Moyenne globale: ${overallAvgSuccess}%`);
+          .text(isCompact ? `Moy: ${overallAvgSuccess}%` : `Moyenne globale: ${overallAvgSuccess}%`);
       }
 
       // Render Bars with D3 Transitions
@@ -330,7 +351,7 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
 
       bars
         .append('rect')
-        .attr('x', (d) => xScale(d.label) || 0)
+        .attr('x', (d) => xScale(getBinLabel(d)) || 0)
         .attr('width', xScale.bandwidth())
         .attr('y', chartHeight)
         .attr('height', 0)
@@ -376,11 +397,11 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
       // Top Percentage Badges
       bars
         .append('text')
-        .attr('x', (d) => (xScale(d.label) || 0) + xScale.bandwidth() / 2)
+        .attr('x', (d) => (xScale(getBinLabel(d)) || 0) + xScale.bandwidth() / 2)
         .attr('y', chartHeight - 5)
         .attr('text-anchor', 'middle')
         .attr('fill', '#ffffff')
-        .attr('font-size', '11px')
+        .attr('font-size', isCompact ? '9.5px' : '11px')
         .attr('font-weight', 'bold')
         .attr('opacity', 0)
         .transition()
@@ -399,13 +420,13 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
       // Horse count label inside/below bar
       bars
         .append('text')
-        .attr('x', (d) => (xScale(d.label) || 0) + xScale.bandwidth() / 2)
-        .attr('y', chartHeight - 8)
+        .attr('x', (d) => (xScale(getBinLabel(d)) || 0) + xScale.bandwidth() / 2)
+        .attr('y', chartHeight - (isCompact ? 6 : 8))
         .attr('text-anchor', 'middle')
         .attr('fill', '#94a3b8')
-        .attr('font-size', '9px')
+        .attr('font-size', isCompact ? '8px' : '9px')
         .attr('font-weight', '500')
-        .text((d) => `${d.horsesCount} cheval${d.horsesCount > 1 ? 'x' : ''}`);
+        .text((d) => isCompact ? `${d.horsesCount} ch.` : `${d.horsesCount} cheval${d.horsesCount > 1 ? 'x' : ''}`);
 
     } else {
       // ---------------- INDIVIDUAL HORSES VIEW (Ordonné par Indice V38) ----------------
@@ -417,7 +438,7 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
         .scaleBand()
         .domain(data.map((d) => `N°${d.numero}`))
         .range([0, width])
-        .padding(0.25);
+        .padding(isCompact ? 0.16 : 0.25);
 
       // Y Scale: % Réussite (0-100)
       const yScale = d3
@@ -450,13 +471,19 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
         .call(xAxis);
 
       xAxisGroup.selectAll('path, line').attr('stroke', '#475569');
-      xAxisGroup.selectAll('text').attr('fill', '#e2e8f0').attr('font-size', '10px').attr('font-weight', 'bold');
+      xAxisGroup
+        .selectAll('text')
+        .attr('fill', '#e2e8f0')
+        .attr('font-size', isCompact ? '8px' : '10px')
+        .attr('font-weight', 'bold')
+        .attr('transform', isCompact || width < 550 ? 'rotate(-42)' : 'rotate(0)')
+        .style('text-anchor', isCompact || width < 550 ? 'end' : 'middle');
 
       // Y Axis
       const yAxis = d3.axisLeft(yScale).ticks(5).tickFormat((d) => `${d}%`);
       const yAxisGroup = g.append('g').call(yAxis);
       yAxisGroup.selectAll('path, line').attr('stroke', '#475569');
-      yAxisGroup.selectAll('text').attr('fill', '#cbd5e1').attr('font-size', '10px').attr('font-weight', '600');
+      yAxisGroup.selectAll('text').attr('fill', '#cbd5e1').attr('font-size', isCompact ? '9px' : '10px').attr('font-weight', '600');
 
       // Bars
       const bars = g
@@ -516,7 +543,7 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
         .attr('y', chartHeight - 5)
         .attr('text-anchor', 'middle')
         .attr('fill', '#ffffff')
-        .attr('font-size', '10px')
+        .attr('font-size', isCompact ? '8.5px' : '10px')
         .attr('font-weight', 'black')
         .attr('opacity', 0)
         .transition()
@@ -530,12 +557,12 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
       bars
         .append('text')
         .attr('x', (d) => (xScale(`N°${d.numero}`) || 0) + xScale.bandwidth() / 2)
-        .attr('y', chartHeight - 6)
+        .attr('y', chartHeight - (isCompact ? 4 : 6))
         .attr('text-anchor', 'middle')
         .attr('fill', '#cbd5e1')
-        .attr('font-size', '8px')
+        .attr('font-size', isCompact ? '7px' : '8px')
         .attr('font-weight', '600')
-        .text((d) => `V38:${d.indiceV38}`);
+        .text((d) => isCompact ? `${d.indiceV38}` : `V38:${d.indiceV38}`);
     }
 
     // Handle Window Resize
@@ -547,10 +574,14 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, [binsData, filteredHorses, viewMode, metric, overallAvgSuccess, onSelectHorseForTicket]);
+  }, [binsData, filteredHorses, viewMode, metric, overallAvgSuccess, onSelectHorseForTicket, isCompact]);
 
   return (
-    <div className="bg-slate-900/95 rounded-3xl border border-slate-700/80 p-5 sm:p-6 shadow-2xl space-y-6 backdrop-blur-xl">
+    <div className={`bg-slate-900/95 rounded-3xl border border-slate-700/80 shadow-2xl backdrop-blur-xl transition-all duration-300 ${
+      isCompact
+        ? 'p-3.5 sm:p-5 max-w-xl mx-auto space-y-4'
+        : 'p-5 sm:p-6 w-full space-y-6'
+    }`}>
       {/* Header & Controls */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
         <div className="space-y-1">
@@ -563,8 +594,12 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
                 <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
                   <span>Histogramme D3.js — Réussite vs Indice de Valeur V38</span>
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  Visualisation D3 Interactive
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border transition-all ${
+                  isCompact
+                    ? 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40'
+                    : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                }`}>
+                  {isCompact ? '📱 Format Compact Mobile' : 'Visualisation D3 Interactive'}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
@@ -576,6 +611,30 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
 
         {/* Toolbar Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {/* Mode Compact / Plein Format Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleCompact}
+            className={`px-3 py-1.5 rounded-xl font-bold text-xs transition-all flex items-center gap-1.5 border shadow-sm active:scale-95 cursor-pointer ${
+              isCompact
+                ? 'bg-indigo-600 hover:bg-indigo-500 text-white border-indigo-400 shadow-indigo-600/30 ring-2 ring-indigo-400/30'
+                : 'bg-slate-950 text-slate-300 hover:text-white border-slate-800 hover:border-slate-700'
+            }`}
+            title={isCompact ? "Basculer vers l'affichage étendu plein format" : "Basculer vers le mode compact (largeur réduite) pour mobile"}
+          >
+            {isCompact ? (
+              <>
+                <Maximize2 className="w-3.5 h-3.5 text-indigo-200" />
+                <span>Mode Étendu</span>
+              </>
+            ) : (
+              <>
+                <Smartphone className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Mode Compact</span>
+              </>
+            )}
+          </button>
+
           {/* View Mode Toggle */}
           <div className="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
             <button
@@ -670,8 +729,8 @@ export const D3V38HistogramChart: React.FC<D3V38HistogramChartProps> = ({
       </div>
 
       {/* D3 SVG Container */}
-      <div className="relative pt-2" ref={containerRef}>
-        <svg ref={svgRef} className="w-full h-[340px] overflow-visible" />
+      <div className={`relative pt-2 transition-all ${isCompact ? 'max-w-[480px] mx-auto' : 'w-full'}`} ref={containerRef}>
+        <svg ref={svgRef} className={`w-full ${isCompact ? 'h-[280px]' : 'h-[340px]'} overflow-visible transition-all`} />
 
         {/* Dynamic Hover Tooltip Overlay */}
         {hoveredData && (

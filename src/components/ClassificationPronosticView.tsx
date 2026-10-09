@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { computeV38Hierarchy, getHorseGenyOdds } from '../utils/v38Helper';
+import { DisciplineGridTable } from './DisciplineGridTable';
 import { RadarPerformanceChart } from './RadarPerformanceChart';
 import { exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { exportCourseToExcel } from '../utils/excelExport';
@@ -102,7 +103,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
       `🥇 FAVORIS (3 N°) : ${favoris.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
       `🥈 OUTSIDERS (3 N°) : ${outsiders.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
       `🥉 TOCARDS (3 N°) : ${tocardsSpeculatifs.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
-      `⚡ SURPRISES (4 N° classées par N° croissant) : ${surprises.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
+      `⚡ SURPRISES (4 N° classées par cote croissante) : ${surprises.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
       `💤 DÉLAISSÉS (classés du plus grand N° au plus petit) : ${delaisses.map(p => `N°${p.numero}`).join(', ')}`,
       ``,
       `🎯 SÉLECTION DES 12 N° CLASSÉS PAR COTE :`,
@@ -280,18 +281,22 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
 
             <div className="px-3 py-1 rounded-xl bg-slate-900 border border-slate-800 text-xs font-bold text-amber-300 flex items-center gap-1.5">
               <span>Quota Total :</span>
-              <strong className="text-white">5 (G1) + 3 (G2) + 4 (G3) = 12 Numéros</strong>
+              <strong className="text-white">
+                {v38Hierarchy.isPlat
+                  ? `5 (${v38Hierarchy.labelGroup1}) + 3 (${v38Hierarchy.labelGroup2}) + 4 (${v38Hierarchy.labelGroup3}) = 12 Numéros`
+                  : '5 (G1) + 3 (G2) + 4 (G3) = 12 Numéros'}
+              </strong>
             </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-            {/* GROUPE G1 (N° 1 à 6) */}
+            {/* GROUPE G1 (N° 1 à 6) / CA (Corde 1 à 5) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border-2 border-amber-500/40 shadow-xl flex flex-col space-y-3">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-amber-400 shadow-sm shadow-amber-400"></span>
-                  <h3 className="text-base font-black text-white">Groupe G1</h3>
-                  <span className="text-xs text-slate-400 font-bold">(N° 1 à 6)</span>
+                  <h3 className="text-base font-black text-white">{v38Hierarchy.isPlat ? 'Groupe CA' : 'Groupe G1'}</h3>
+                  <span className="text-xs text-slate-400 font-bold">{v38Hierarchy.isPlat ? '(Corde 1 à 5)' : '(N° 1 à 6)'}</span>
                 </div>
                 <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[11px] font-black">
                   Top 5 Retenus / {g1.length}
@@ -319,7 +324,12 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
                         </span>
                         <div>
                           <div className="font-extrabold text-white text-xs leading-tight">{p.nom}</div>
-                          <div className="text-[10px] text-slate-400">{p.driver}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {p.driver}
+                            {v38Hierarchy.isPlat && (
+                              <span className="ml-1 text-amber-300 font-bold">• Corde {p.corde ?? '—'}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -343,13 +353,13 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
               </div>
             </div>
 
-            {/* GROUPE G2 (N° 7 à 10) */}
+            {/* GROUPE G2 (N° 7 à 10) / CB (Corde 6 à 8) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border-2 border-emerald-500/40 shadow-xl flex flex-col space-y-3">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400"></span>
-                  <h3 className="text-base font-black text-white">Groupe G2</h3>
-                  <span className="text-xs text-slate-400 font-bold">(N° 7 à 10)</span>
+                  <h3 className="text-base font-black text-white">{v38Hierarchy.isPlat ? 'Groupe CB' : 'Groupe G2'}</h3>
+                  <span className="text-xs text-slate-400 font-bold">{v38Hierarchy.isPlat ? '(Corde 6 à 8)' : '(N° 7 à 10)'}</span>
                 </div>
                 <span className="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[11px] font-black">
                   Top 3 Retenus / {g2.length}
@@ -377,7 +387,12 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
                         </span>
                         <div>
                           <div className="font-extrabold text-white text-xs leading-tight">{p.nom}</div>
-                          <div className="text-[10px] text-slate-400">{p.driver}</div>
+                          <div className="text-[10px] text-slate-400">
+                            {p.driver}
+                            {v38Hierarchy.isPlat && (
+                              <span className="ml-1 text-emerald-300 font-bold">• Corde {p.corde ?? '—'}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -401,13 +416,13 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
               </div>
             </div>
 
-            {/* GROUPE G3 (N° 11 et plus) */}
+            {/* GROUPE G3 (N° 11 et plus) / CC (Corde 9 et +) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-slate-900/90 border-2 border-purple-500/40 shadow-xl flex flex-col space-y-3">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full bg-purple-400 shadow-sm shadow-purple-400"></span>
-                  <h3 className="text-base font-black text-white">Groupe G3</h3>
-                  <span className="text-xs text-slate-400 font-bold">(N° 11 et +)</span>
+                  <h3 className="text-base font-black text-white">{v38Hierarchy.isPlat ? 'Groupe CC' : 'Groupe G3'}</h3>
+                  <span className="text-xs text-slate-400 font-bold">{v38Hierarchy.isPlat ? '(Corde 9 et +)' : '(N° 11 et +)'}</span>
                 </div>
                 <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/30 text-[11px] font-black">
                   Top 4 Retenus / {g3.length}
@@ -417,7 +432,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
               <div className="space-y-2 flex-grow">
                 {g3.length === 0 ? (
                   <div className="p-6 text-center text-xs text-slate-500 italic">
-                    Course à 10 partants ou moins (Groupe G3 vide).
+                    Course à 10 partants ou moins (Groupe {v38Hierarchy.isPlat ? 'CC' : 'G3'} vide).
                   </div>
                 ) : (
                   g3.map((p, idx) => {
@@ -440,7 +455,12 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
                           </span>
                           <div>
                             <div className="font-extrabold text-white text-xs leading-tight">{p.nom}</div>
-                            <div className="text-[10px] text-slate-400">{p.driver}</div>
+                            <div className="text-[10px] text-slate-400">
+                              {p.driver}
+                              {v38Hierarchy.isPlat && (
+                                <span className="ml-1 text-purple-300 font-bold">• Corde {p.corde ?? '—'}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
 
@@ -663,7 +683,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
               </div>
             </div>
 
-            {/* 4. SURPRISES (3 N° classées par ordre de numéro) */}
+            {/* 4. SURPRISES (4 N° classées par cote croissante) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-purple-950/40 via-slate-900 to-slate-950 border-2 border-purple-500 shadow-xl space-y-3">
               <div className="flex items-center justify-between border-b border-purple-500/30 pb-2.5">
                 <div className="flex items-center gap-2">
@@ -723,6 +743,11 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
           </div>
         </section>
       )}
+
+      {/* GRILLE V38 DISCIPLINE (TABLEAU DE RÉPARTITION OFFICIEL) */}
+      <section className="space-y-4">
+        <DisciplineGridTable course={course} variant="dark" />
+      </section>
 
       {/* 5. ÉTAPE 4 : PROPOSITIONS DE JEUX PRODUITS PAR ALGORITHME */}
       {(activeStepFilter === 'ALL' || activeStepFilter === 'TICKETS') && (

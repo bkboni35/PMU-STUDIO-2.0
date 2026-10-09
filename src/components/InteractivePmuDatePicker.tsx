@@ -274,9 +274,11 @@ export const InteractivePmuDatePicker: React.FC<InteractivePmuDatePickerProps> =
           </button>
 
           {/* Date Picker Input Natif pour sélection arbitraire */}
-          <div className="relative flex items-center">
+          <div className="relative flex items-center gap-1 bg-slate-950 px-2 py-1.5 rounded-xl border border-slate-700 hover:border-amber-400 focus-within:border-amber-400 shadow-inner">
+            <CalendarIcon className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <input
               type="date"
+              aria-label="Sélectionner une date spécifique"
               value={(selectedDate === 'all' || selectedDate === 'last7' || selectedDate === 'upcoming7') ? '' : normalizeDateForQuery(selectedDate)}
               onChange={(e) => {
                 if (e.target.value) {
@@ -284,8 +286,8 @@ export const InteractivePmuDatePicker: React.FC<InteractivePmuDatePickerProps> =
                 }
               }}
               disabled={isLoading}
-              className="bg-slate-950 text-amber-300 font-mono font-black text-xs px-2.5 py-1.5 rounded-xl border border-slate-700 hover:border-amber-400 focus:border-amber-400 focus:outline-hidden cursor-pointer shadow-inner w-[125px]"
-              title="Choisir une date spécifique dans le calendrier"
+              className="bg-transparent text-amber-300 font-mono font-black text-xs focus:outline-hidden cursor-pointer w-[120px]"
+              title="Sélecteur de date : Choisir une date spécifique dans le calendrier"
             />
           </div>
 

@@ -52,18 +52,20 @@ export function buildGeminiCollegeTasks(course: CourseHippique): GeminiExpertTas
     },
     {
       id: 'gemini-3.8',
-      name: 'Gemini 3.8 Flash',
-      badge: 'Grand Stratège Quinté+',
-      role: 'Superviseur Général & Arbitrage Quinté+',
-      specialite: 'Stratégie globale, arbitrage Quinté+ en 8 chevaux, calcul du HippoScore et gestion de la hiérarchie officielle',
+      name: 'Gemini 3.8 Flash & 3.1 Pro',
+      badge: 'Cotes Réelles, Value Bet & Marché (20%)',
+      role: 'Rentabilité Mathématique & Équilibre du Quinté+ (Arrivée en Temps Réel)',
+      specialite: 'Rentabilité mathématique et équilibre du Quinté+, cotes réelles, value bet et affichage de l\'arrivée en temps réel',
       colorTheme: 'amber',
       tacheAttribuee:
-        'Synthétiser l\'ensemble des métriques de la course, hiérarchiser l\'ordre préférentiel des 8 partants pour le Quinté+, désigner les deux Bases Incontournables et fixer l\'indice de confiance global.',
-      focalisation: 'Équilibre mathématique du ticket, ratio risque / espérance de gain, et arbitrage des performances.',
-      methode: 'Modélisation probabiliste bayésienne pondérant forme, classe, engagement et cotes officielles.',
-      verdictGlobal: `Priorité absolue accordée aux chevaux N°${base1 || top8[0]} et N°${base2 || top8[1]} pour verrouiller les bases du Quinté+. Sélection équilibrée avec ${synthese?.outsiders?.length || 2} outsiders séduisants.`,
+        'Calculer la rentabilité mathématique, évaluer les value bets et préserver l\'équilibre du Quinté+ selon les cotes réelles officielles, synchronisées en direct avec l\'arrivée de la course en temps réel.',
+      focalisation: 'Rentabilité mathématique, cotes réelles, équilibre du Quinté+ et suivi de l\'arrivée officielle en temps réel.',
+      methode: 'Modélisation financière probabiliste de rentabilité mathématique (EV+) par Gemini 3.8 Flash & 3.1 Pro couplée au flux live des arrivées.',
+      verdictGlobal: course.arriveeOfficielle
+        ? `Arrivée officielle en temps réel validée : ${course.arriveeOfficielle}. Rentabilité mathématique optimale respectée pour les jeux combinés Quinté+.`
+        : `Surveillance de l'arrivée en temps réel activée. Équilibre du Quinté+ axé sur la base N°${base1 || top8[0]} et N°${base2 || top8[1]} avec analyse des cotes réelles.`,
       topChevauxRecommandes: [base1 || top8[0], base2 || top8[1], top8[2] || 3, top8[3] || 4].filter(Boolean) as number[],
-      indiceSpecialiste: 9.6,
+      indiceSpecialiste: 9.8,
     },
     {
       id: 'gemini-3.8-lite',
@@ -121,17 +123,17 @@ export function buildGeminiCollegeTasks(course: CourseHippique): GeminiExpertTas
     {
       id: 'gemini-3.5',
       name: 'Claude 4.6 & Gemini 3.6',
-      badge: 'Matériel, Ferrure D4 & Engagement',
-      role: 'Auditeur Tactique de Ferrure D4, Engagements & Tandems',
-      specialite: 'Configuration des pieds (D4 optimal vs ferré), recul 25m, plafond des gains, avantage au poids et synergie jockey/entraîneur',
+      badge: 'Matériel, Ferrure D4 & Engagement (20%)',
+      role: 'Configuration des pieds (D4 optimal vs ferré), recul 25m & plafond des gains',
+      specialite: 'Configuration des pieds (D4 optimal vs ferré), recul 25m et plafond des gains, avantage au poids et synergie jockey/entraîneur (géré par Claude 4.6 & Gemini 3.6)',
       colorTheme: 'purple',
       tacheAttribuee:
-        'Passer au crible les artifices techniques en synergie (Claude 4.6 & Gemini 3.6) : configuration de ferrure (priorité aux chevaux D4 présentés sans fers pour l\'objectif), recul de distance éventuel de 25m, et taux de réussite historique du tandem Driver/Jockey avec l\'Entraîneur.',
+        'Gestion intégrale par Claude 4.6 & Gemini 3.6 : configuration des pieds (D4 optimal vs ferré), recul 25m éventuel et optimisation du plafond des gains pour déceler les chevaux visés sans artifices inutiles.',
       focalisation: 'Configuration des pieds (D4 optimal vs ferré), recul 25m, plafond des gains et affûtage du jour.',
       methode: 'Croisement de l\'historique des écuries, des variations de ferrures et du rendement au poids par Claude 4.6 & Gemini 3.6.',
-      verdictGlobal: `Le N°${topFerrure} se présente en configuration commando (D4 - déferré des 4 fers). Le tandem Driver / Entraîneur affiche un taux de réussite de plus de 45% dans les Quinté+.`,
+      verdictGlobal: `Analyse conjointe Claude 4.6 & Gemini 3.6 : Le N°${topFerrure} se présente en configuration commando (D4 - déferré des 4 fers), engagement idéal au plafond des gains sans recul de 25m.`,
       topChevauxRecommandes: [topFerrure, base1 || 1, synthese?.outsiders?.[1] || 12].filter(Boolean) as number[],
-      indiceSpecialiste: 9.7,
+      indiceSpecialiste: 9.8,
     },
     {
       id: 'perplexity-ai',

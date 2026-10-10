@@ -1464,17 +1464,17 @@ function buildGeminiCollegeTasks(course) {
     },
     {
       id: "gemini-3.8",
-      name: "Gemini 3.8 Flash",
-      badge: "Grand Strat\xE8ge Quint\xE9+",
-      role: "Superviseur G\xE9n\xE9ral & Arbitrage Quint\xE9+",
-      specialite: "Strat\xE9gie globale, arbitrage Quint\xE9+ en 8 chevaux, calcul du HippoScore et gestion de la hi\xE9rarchie officielle",
+      name: "Gemini 3.8 Flash & 3.1 Pro",
+      badge: "Cotes R\xE9elles, Value Bet & March\xE9 (20%)",
+      role: "Rentabilit\xE9 Math\xE9matique & \xC9quilibre du Quint\xE9+ (Arriv\xE9e en Temps R\xE9el)",
+      specialite: "Rentabilit\xE9 math\xE9matique et \xE9quilibre du Quint\xE9+, cotes r\xE9elles, value bet et affichage de l'arriv\xE9e en temps r\xE9el",
       colorTheme: "amber",
-      tacheAttribuee: "Synth\xE9tiser l'ensemble des m\xE9triques de la course, hi\xE9rarchiser l'ordre pr\xE9f\xE9rentiel des 8 partants pour le Quint\xE9+, d\xE9signer les deux Bases Incontournables et fixer l'indice de confiance global.",
-      focalisation: "\xC9quilibre math\xE9matique du ticket, ratio risque / esp\xE9rance de gain, et arbitrage des performances.",
-      methode: "Mod\xE9lisation probabiliste bay\xE9sienne pond\xE9rant forme, classe, engagement et cotes officielles.",
-      verdictGlobal: `Priorit\xE9 absolue accord\xE9e aux chevaux N\xB0${base1 || top8[0]} et N\xB0${base2 || top8[1]} pour verrouiller les bases du Quint\xE9+. S\xE9lection \xE9quilibr\xE9e avec ${synthese?.outsiders?.length || 2} outsiders s\xE9duisants.`,
+      tacheAttribuee: "Calculer la rentabilit\xE9 math\xE9matique, \xE9valuer les value bets et pr\xE9server l'\xE9quilibre du Quint\xE9+ selon les cotes r\xE9elles officielles, synchronis\xE9es en direct avec l'arriv\xE9e de la course en temps r\xE9el.",
+      focalisation: "Rentabilit\xE9 math\xE9matique, cotes r\xE9elles, \xE9quilibre du Quint\xE9+ et suivi de l'arriv\xE9e officielle en temps r\xE9el.",
+      methode: "Mod\xE9lisation financi\xE8re probabiliste de rentabilit\xE9 math\xE9matique (EV+) par Gemini 3.8 Flash & 3.1 Pro coupl\xE9e au flux live des arriv\xE9es.",
+      verdictGlobal: course.arriveeOfficielle ? `Arriv\xE9e officielle en temps r\xE9el valid\xE9e : ${course.arriveeOfficielle}. Rentabilit\xE9 math\xE9matique optimale respect\xE9e pour les jeux combin\xE9s Quint\xE9+.` : `Surveillance de l'arriv\xE9e en temps r\xE9el activ\xE9e. \xC9quilibre du Quint\xE9+ ax\xE9 sur la base N\xB0${base1 || top8[0]} et N\xB0${base2 || top8[1]} avec analyse des cotes r\xE9elles.`,
       topChevauxRecommandes: [base1 || top8[0], base2 || top8[1], top8[2] || 3, top8[3] || 4].filter(Boolean),
-      indiceSpecialiste: 9.6
+      indiceSpecialiste: 9.8
     },
     {
       id: "gemini-3.8-lite",
@@ -1529,16 +1529,16 @@ function buildGeminiCollegeTasks(course) {
     {
       id: "gemini-3.5",
       name: "Claude 4.6 & Gemini 3.6",
-      badge: "Mat\xE9riel, Ferrure D4 & Engagement",
-      role: "Auditeur Tactique de Ferrure D4, Engagements & Tandems",
-      specialite: "Configuration des pieds (D4 optimal vs ferr\xE9), recul 25m, plafond des gains, avantage au poids et synergie jockey/entra\xEEneur",
+      badge: "Mat\xE9riel, Ferrure D4 & Engagement (20%)",
+      role: "Configuration des pieds (D4 optimal vs ferr\xE9), recul 25m & plafond des gains",
+      specialite: "Configuration des pieds (D4 optimal vs ferr\xE9), recul 25m et plafond des gains, avantage au poids et synergie jockey/entra\xEEneur (g\xE9r\xE9 par Claude 4.6 & Gemini 3.6)",
       colorTheme: "purple",
-      tacheAttribuee: "Passer au crible les artifices techniques en synergie (Claude 4.6 & Gemini 3.6) : configuration de ferrure (priorit\xE9 aux chevaux D4 pr\xE9sent\xE9s sans fers pour l'objectif), recul de distance \xE9ventuel de 25m, et taux de r\xE9ussite historique du tandem Driver/Jockey avec l'Entra\xEEneur.",
+      tacheAttribuee: "Gestion int\xE9grale par Claude 4.6 & Gemini 3.6 : configuration des pieds (D4 optimal vs ferr\xE9), recul 25m \xE9ventuel et optimisation du plafond des gains pour d\xE9celer les chevaux vis\xE9s sans artifices inutiles.",
       focalisation: "Configuration des pieds (D4 optimal vs ferr\xE9), recul 25m, plafond des gains et aff\xFBtage du jour.",
       methode: "Croisement de l'historique des \xE9curies, des variations de ferrures et du rendement au poids par Claude 4.6 & Gemini 3.6.",
-      verdictGlobal: `Le N\xB0${topFerrure} se pr\xE9sente en configuration commando (D4 - d\xE9ferr\xE9 des 4 fers). Le tandem Driver / Entra\xEEneur affiche un taux de r\xE9ussite de plus de 45% dans les Quint\xE9+.`,
+      verdictGlobal: `Analyse conjointe Claude 4.6 & Gemini 3.6 : Le N\xB0${topFerrure} se pr\xE9sente en configuration commando (D4 - d\xE9ferr\xE9 des 4 fers), engagement id\xE9al au plafond des gains sans recul de 25m.`,
       topChevauxRecommandes: [topFerrure, base1 || 1, synthese?.outsiders?.[1] || 12].filter(Boolean),
-      indiceSpecialiste: 9.7
+      indiceSpecialiste: 9.8
     },
     {
       id: "perplexity-ai",

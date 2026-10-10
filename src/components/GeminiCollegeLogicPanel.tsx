@@ -104,14 +104,14 @@ export const GeminiCollegeLogicPanel: React.FC<GeminiCollegeLogicPanelProps> = (
     // Facteur 2 : Vitesse & Aptitude au Tracé (20%) - Évalué par Gemini 3.6
     const scoreVitesse = Math.min(98, Math.max(28, evalG.gemini36.note));
 
-    // Facteur 3 : Matériel & Ferrure D4 (20%) - Évalué par Gemini 3.5
+    // Facteur 3 : Matériel, Ferrure D4 & Engagement (20%) - Évalué par Claude 4.6 & Gemini 3.6
     const scoreFerrure = Math.min(99, Math.max(25, evalG.gemini35.note));
 
     // Facteur 4 : Tandem Pilote & Entourage (15%) - Évalué par Claude 4.6 & Gemini 3.5
     const tandemSuccess = isBase ? 88 : isOutsider ? 72 : isTocard ? 55 : 65;
     const scoreTandem = Math.min(96, Math.max(35, Math.round(hippo * 0.6 + tandemSuccess * 0.4)));
 
-    // Facteur 5 : Cotes Réelles & Value Bet (20%) - Évalué par Gemini 3.8 & 3.1 Pro
+    // Facteur 5 : Cotes Réelles, Value Bet & Marché (20%) - Évalué par Gemini 3.8 Flash & 3.1 Pro
     let scoreCote = 60;
     if (cote <= 3.5) scoreCote = 95;
     else if (cote <= 6) scoreCote = 90;
@@ -165,7 +165,7 @@ export const GeminiCollegeLogicPanel: React.FC<GeminiCollegeLogicPanelProps> = (
       },
       {
         id: 'ferrure',
-        label: 'Matériel, Ferrure D4 & Engagement',
+        label: 'Matériel, Ferrure D4 & Engagement (20%)',
         expertName: 'Claude 4.6 & Gemini 3.6',
         weightPercent: 20,
         score: scoreFerrure,
@@ -173,11 +173,11 @@ export const GeminiCollegeLogicPanel: React.FC<GeminiCollegeLogicPanelProps> = (
         icon: Wrench,
         colorClass: 'text-purple-400',
         bgBarClass: 'bg-purple-500',
-        details: `Audit technique et biomécanique géré par Claude 4.6 & Gemini 3.6 : configuration des pieds (D4 optimal vs ferré), recul éventuel de 25m et optimisation du plafond des gains.`,
+        details: `Configuration des pieds (D4 optimal vs ferré), recul 25m et plafond des gains. Désormais géré conjointement par Claude 4.6 & Gemini 3.6.`,
         metrics: [
           { name: 'Configuration fers', value: selectedHorse.ferrure || 'Ferré (F)', badge: selectedHorse.ferrure === 'D4' ? 'D4 Optimal' : selectedHorse.ferrure === 'DP' || selectedHorse.ferrure === 'DA' ? 'Allégé' : 'Ferré' },
-          { name: 'Impact technique', value: evalG.gemini35.impactFerrure },
-          { name: 'Écart engagement', value: 'Plafond optimal' },
+          { name: 'Recul distance 25m', value: (selectedHorse as any).reculDistance ? `${(selectedHorse as any).reculDistance}m` : 'Premier poteau (0m)', badge: (selectedHorse as any).reculDistance ? 'Pénalité' : 'Optimal' },
+          { name: 'Plafond des gains', value: 'Engagement visé', badge: 'Optimal' },
         ],
       },
       {
@@ -199,7 +199,7 @@ export const GeminiCollegeLogicPanel: React.FC<GeminiCollegeLogicPanelProps> = (
       },
       {
         id: 'cotes',
-        label: 'Cotes Réelles, Value & Marché',
+        label: 'Cotes Réelles, Value Bet & Marché (20%)',
         expertName: 'Gemini 3.8 Flash & 3.1 Pro',
         weightPercent: 20,
         score: scoreCote,
@@ -207,11 +207,11 @@ export const GeminiCollegeLogicPanel: React.FC<GeminiCollegeLogicPanelProps> = (
         icon: Scale,
         colorClass: 'text-amber-400',
         bgBarClass: 'bg-amber-500',
-        details: `Cote réelle officielle (PMU/Geny), espérance mathématique (EV+), rentabilité et équilibre du Quinté+. Synchronisation de l'arrivée en temps réel.`,
+        details: `Rentabilité mathématique et équilibre du Quinté+ gérés par Gemini 3.8 Flash & 3.1 Pro. Affichage de l'arrivée en temps réel synchronisé.`,
         metrics: [
-          { name: 'Cote officielle', value: `${cote}/1`, badge: cote <= 5 ? 'Favori' : cote <= 15 ? 'Appuyé' : cote <= 30 ? 'Outsider' : 'Tocard' },
+          { name: 'Cote réelle marché', value: `${cote}/1`, badge: cote <= 5 ? 'Favori' : cote <= 15 ? 'Appuyé' : cote <= 30 ? 'Outsider' : 'Tocard' },
           { name: 'Arrivée en direct', value: course.arriveeOfficielle ? course.arriveeOfficielle : 'Surveillance live...', badge: course.arriveeOfficielle ? 'Confirmée' : 'En direct' },
-          { name: 'Pression enjeux', value: cote <= 8 ? 'Prise d\'argent massive' : 'Cote spéculative' },
+          { name: 'Rentabilité Quinté+', value: isBase ? 'Base solide (EV+)' : cote <= 15 ? 'Cote équilibrée' : 'Spéculatif gros rapport' },
         ],
       },
     ];

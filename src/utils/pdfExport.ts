@@ -5,6 +5,7 @@ import { convertToUTC } from './timeConversion';
 import { computePartantHippoScore, computeQuinteOrdres } from './geminiMultiModelEngine';
 import { computeV38Hierarchy, computeDisciplineGrid, computeHorseSuccessProbabilities } from './v38Helper';
 import { downloadPdfDocument } from './exportUtils';
+import { generateFicheV38PdfFromDom } from './ficheV38PdfGenerator';
 
 /**
  * Exporte l'analyse complète de la course au format PDF structuré et soigné.
@@ -931,11 +932,9 @@ export function buildQuinteOnlyPdfDoc(course: CourseHippique): jsPDF {
 export function exportQuinteOnlyToPdf(course: CourseHippique): void {
   try {
     if (typeof document !== 'undefined' && document.getElementById('fiche-v38-page-1')) {
-      import('./ficheV38PdfGenerator').then(({ generateFicheV38PdfFromDom }) => {
-        generateFicheV38PdfFromDom(course, 'download').catch(() => {
-          fallbackExport();
-        });
-      }).catch(() => fallbackExport());
+      generateFicheV38PdfFromDom(course, 'download').catch(() => {
+        fallbackExport();
+      });
       return;
     }
   } catch {}
@@ -965,11 +964,9 @@ export function exportQuinteOnlyToPdf(course: CourseHippique): void {
 export function printQuinteOnlyPdf(course: CourseHippique): void {
   try {
     if (typeof document !== 'undefined' && document.getElementById('fiche-v38-page-1')) {
-      import('./ficheV38PdfGenerator').then(({ generateFicheV38PdfFromDom }) => {
-        generateFicheV38PdfFromDom(course, 'print').catch(() => {
-          fallbackPrint();
-        });
-      }).catch(() => fallbackPrint());
+      generateFicheV38PdfFromDom(course, 'print').catch(() => {
+        fallbackPrint();
+      });
       return;
     }
   } catch {}

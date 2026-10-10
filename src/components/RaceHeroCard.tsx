@@ -345,15 +345,15 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
               showDepartureBadge={true}
             />
           </div>
-          {/* Bouton Expertise Discipline /100 */}
+          {/* Bouton PRONOSTICS DE JEU */}
           <button
             type="button"
-            onClick={() => setIsExpertModalOpen(true)}
-            className="flex items-center gap-1.5 font-extrabold text-slate-950 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 px-3.5 py-1.5 rounded-xl shadow-md shadow-amber-500/20 transition-all text-xs active:scale-95 border border-amber-300 shrink-0"
-            title="Ouvrir la synthèse experte 100% conforme aux Prompts de Recherche Hippique (Trot Attelé, Trot Monté, Plat, Obstacles)"
+            onClick={() => onNavigateTab && onNavigateTab('pronostics-jeu')}
+            className="flex items-center gap-1.5 font-black text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-400 hover:from-amber-300 hover:to-amber-400 px-3.5 py-1.5 rounded-xl shadow-md shadow-amber-500/25 transition-all text-xs active:scale-95 border border-amber-300 shrink-0 cursor-pointer"
+            title="Consulter les PRONOSTICS DE JEU (Base ≤ 4.9, TOP 8 et Gros Rapport)"
           >
             <Sparkles className="w-3.5 h-3.5 text-slate-950 fill-slate-950" />
-            <span>Expertise {course.discipline || 'Discipline'} /100</span>
+            <span>PRONOSTICS DE JEU</span>
           </button>
 
           {/* Bouton Tracé & Facteurs */}

@@ -59,6 +59,33 @@ export default defineConfig(() => {
         '@': path.resolve(__dirname, '.'),
       },
     },
+    build: {
+      chunkSizeWarningLimit: 6000,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            // Regroupe les bibliothèques lourdes de PDF et le générateur de fiches V38
+            if (
+              id.includes('ficheV38PdfGenerator') ||
+              id.includes('jspdf') ||
+              id.includes('html2canvas')
+            ) {
+              return 'fiche-v38-pdf';
+            }
+          },
+        },
+        onwarn(warning, warn) {
+          // Traitement spécifique de l'avertissement INEFFECTIVE_DYNAMIC_IMPORT
+          if (
+            warning.code === 'INEFFECTIVE_DYNAMIC_IMPORT' ||
+            (warning.message && warning.message.includes('ficheV38PdfGenerator'))
+          ) {
+            return;
+          }
+          warn(warning);
+        },
+      },
+    },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modifyâfile watching is disabled to prevent flickering during agent edits.

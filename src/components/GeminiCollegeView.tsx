@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Brain,
   Sparkles,
@@ -18,6 +18,8 @@ import {
   FileDown,
   Cpu,
   Sliders,
+  Scale,
+  Clock,
 } from 'lucide-react';
 import { CourseHippique, GeminiModelId, Partant } from '../types/turf';
 import { buildGeminiCollegeTasks, computeHorseGeminiEvaluation } from '../utils/geminiMultiModelEngine';
@@ -62,6 +64,15 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
     setSelectedExpertForLogic(expertId);
     setIsLogicPanelOpen(true);
   };
+
+  // Numéros de l'arrivée officielle en temps réel
+  const arrivalNumbers = useMemo((): number[] => {
+    if (!course.arriveeOfficielle) return [];
+    return course.arriveeOfficielle
+      .split(/[-,\s]+/)
+      .map((s) => parseInt(s.trim(), 10))
+      .filter((n) => !isNaN(n));
+  }, [course.arriveeOfficielle]);
 
   // Configuration visuelle par modèle
   const getModelConfig = (id: GeminiModelId) => {
@@ -234,6 +245,94 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
 
       {/* Fact-Checking Audit Certificate Banner */}
       <FactCheckingAuditCard course={course} />
+
+      {/* Affichage de l'Arrivée en Temps Réel & Cotes Réelles, Value Bet & Marché (20%) - Gemini 3.8 Flash & 3.1 Pro */}
+      <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-500/50 rounded-3xl p-5 sm:p-6 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-80 h-full bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
+        
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${course.arriveeOfficielle ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${course.arriveeOfficielle ? 'bg-emerald-500' : 'bg-amber-500'}`} />
+              </span>
+              <span className="text-[11px] font-black tracking-wider uppercase text-amber-400">
+                Arrivée en Temps Réel · Cotes Réelles, Value Bet & Marché (20%)
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                Gemini 3.8 Flash & 3.1 Pro
+              </span>
+            </div>
+
+            <h3 className="text-lg sm:text-xl font-black text-white flex items-center gap-2 flex-wrap">
+              <span>{course.arriveeOfficielle ? '🏁 Arrivée Officielle Validée en Direct' : '📡 Surveillance de l\'Arrivée en Temps Réel'}</span>
+              <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
+                course.arriveeOfficielle
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : 'bg-slate-800 text-slate-300 border border-slate-700'
+              }`}>
+                {course.statutCourse || (course.arriveeOfficielle ? 'Arrivée officielle' : 'Surveillance live PMU/Geny')}
+              </span>
+            </h3>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Rentabilité mathématique et équilibre du Quinté+ : analyse de la valeur marchande (EV+) corrélée en direct avec l'arrivée officielle de la course.
+            </p>
+          </div>
+
+          {/* Affichage des numéros de l'arrivée ou radar d'attente */}
+          <div className="shrink-0 flex items-center gap-3">
+            {arrivalNumbers.length > 0 ? (
+              <div className="flex flex-col items-start md:items-end gap-1.5">
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  Combinaison Officielle Quinté+ :
+                </div>
+                <div className="flex items-center gap-2">
+                  {arrivalNumbers.slice(0, 5).map((num, idx) => {
+                    const partant = (course.partants || []).find((p) => p.numero === num);
+                    return (
+                      <div
+                        key={`arr-pill-${num}-${idx}`}
+                        className="flex flex-col items-center group cursor-pointer"
+                        onClick={() => onSelectHorseForTicket && onSelectHorseForTicket(num)}
+                        title={partant ? `N°${num} ${partant.nom} (${partant.driver}) - Cliquez pour ajouter au ticket` : `N°${num}`}
+                      >
+                        <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl flex items-center justify-center font-black text-sm sm:text-base transition-all shadow-lg ${
+                          idx === 0
+                            ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-300 shadow-amber-500/30'
+                            : idx === 1
+                            ? 'bg-slate-200 text-slate-950 shadow-slate-300/20'
+                            : idx === 2
+                            ? 'bg-amber-600 text-white shadow-amber-700/20'
+                            : 'bg-slate-800 text-amber-300 border border-amber-500/40'
+                        }`}>
+                          {num}
+                        </div>
+                        <span className="text-[9px] font-bold text-slate-400 mt-1">
+                          {idx === 0 ? '1er' : `${idx + 1}e`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-slate-950/80 border border-slate-800 text-xs">
+                <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 animate-pulse">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="font-bold text-white">En attente de l'arrivée officielle</div>
+                  <div className="text-[11px] text-slate-400">
+                    Départ prévu : <span className="text-amber-400 font-mono font-bold">{course.heure || 'Imminent'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Sub-tabs Navigation */}
       <div className="flex flex-wrap items-center justify-between gap-2 p-1.5 bg-slate-900/90 rounded-2xl border border-slate-800">
@@ -524,7 +623,7 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Gemini 3.8 Flash
+                Gemini 3.8 Flash & 3.1 Pro (Marché)
               </button>
               <button
                 type="button"
@@ -568,7 +667,7 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                Gemini 3.5 Flash
+                Claude 4.6 & Gemini 3.6 (Ferrure D4)
               </button>
               <button
                 type="button"

@@ -11,6 +11,7 @@ import { DisciplineGridTable } from './DisciplineGridTable';
 import { TrackWeatherAnalysisCard } from './TrackWeatherAnalysisCard';
 import { EcartsFormeAnalysisCard } from './EcartsFormeAnalysisCard';
 import { ClassificationPronosticView } from './ClassificationPronosticView';
+import { PronosticsDeJeuView } from './PronosticsDeJeuView';
 import { sendRaceAnalysisEmail } from '../utils/gmailService';
 import { getStoredUserSession } from '../utils/userAuthStorage';
 import { computeV38Hierarchy, computeHorseSuccessProbabilities, buildRealV38Synthese, isDummySequentialSelection } from '../utils/v38Helper';
@@ -21,7 +22,7 @@ interface SyntheseHippoAnalyseProps {
   selectedHorseNumbers: number[];
   onNavigateToCalendar?: () => void;
   onNavigateToCollege?: () => void;
-  initialSubView?: 'pronostic' | 'classification' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout';
+  initialSubView?: 'pronostic' | 'classification' | 'pronostics-jeu' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout';
 }
 
 export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
@@ -55,10 +56,10 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         piegesCourse: []
       });
   const partants = course.partants || [];
-  const [subView, setSubView] = useState<'pronostic' | 'classification' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout'>(initialSubView);
+  const [subView, setSubView] = useState<'pronostic' | 'classification' | 'pronostics-jeu' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout'>(initialSubView);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const handleSubViewChange = (newSubView: 'pronostic' | 'classification' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout') => {
+  const handleSubViewChange = (newSubView: 'pronostic' | 'classification' | 'pronostics-jeu' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout') => {
     setSubView(newSubView);
     if (containerRef.current) {
       containerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -326,6 +327,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       <div ref={containerRef} className="flex items-center gap-2 p-2 bg-slate-900/90 rounded-2xl border border-slate-800 overflow-x-auto shadow-xl backdrop-blur-md scrollbar-none sticky top-16 z-30">
         {[
           { id: 'pronostic', label: '🎯 Pronostic', icon: Trophy },
+          { id: 'pronostics-jeu', label: '⚡ PRONOSTICS DE JEU', icon: Sparkles, badge: 'Base ≤ 4.9 • Top 8 • Gros Rapport' },
           { id: 'classification', label: '👑 Classification V38', icon: Crown },
           { id: 'classement', label: '🏆 Classement Côte', icon: Trophy },
           { id: 'valeur', label: '📈 Index Valeur', icon: Sparkles },
@@ -345,6 +347,13 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
             }`}
           >
             <span>{tab.label}</span>
+            {tab.badge && (
+              <span className={`px-1.5 py-0.5 rounded text-[10px] font-black hidden sm:inline ${
+                subView === tab.id ? 'bg-slate-950 text-amber-300' : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+              }`}>
+                {tab.badge}
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -489,6 +498,18 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       )}
 
       <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+
+      {/* SECTION PRONOSTICS DE JEU (Base ≤ 4.9 • Top 8 • Gros Rapport) */}
+      {(subView === 'pronostics-jeu' || subView === 'tout') && (
+        <div className="space-y-6">
+          <PronosticsDeJeuView
+            course={course}
+            selectedHorseNumbers={selectedHorseNumbers}
+            onSelectHorseForTicket={onSelectHorseForTicket}
+          />
+          <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+        </div>
+      )}
 
       {/* SECTION CLASSIFICATION & PRONOSTIC V38 */}
       {subView === 'classification' && (
@@ -808,6 +829,35 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       {/* 3. SECTION PRONOSTIC */}
       {(subView === 'pronostic' || subView === 'tout') && (
         <div className="space-y-10">
+          {/* Bannière Accès Direct : PRONOSTICS DE JEU */}
+          <div className="bg-gradient-to-r from-slate-900 via-slate-950 to-slate-900 border-2 border-amber-500/60 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-2xl relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-80 h-full bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="relative z-10 flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-amber-500 text-slate-950 font-black shadow-lg shadow-amber-500/30 shrink-0">
+                <Sparkles className="w-5 h-5 fill-slate-950" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm sm:text-base font-black text-white">NOUVEL ONGLET : PRONOSTICS DE JEU</h4>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950">
+                    Base ≤ 4,9 • Top 8 • Gros Rapport
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  Accédez à la stratégie de jeu condensée : Base stricte (cote ≤ 4,9), Sélection TOP 8 Quinté+ et Gros Rapport (3e Tocard + 3 Surprises, max 4 N°).
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleSubViewChange('pronostics-jeu')}
+              className="relative z-10 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs transition-all shadow-md flex items-center gap-1.5 self-start sm:self-auto cursor-pointer active:scale-95 shrink-0"
+            >
+              <span>Ouvrir PRONOSTICS DE JEU</span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+
           {/* Nouveau Module d'Intégrité : 7-Step n8n Pipeline & Integrity Audit */}
           <div className="bg-gradient-to-br from-slate-900 via-slate-950 to-slate-900 border-2 border-emerald-500/40 rounded-3xl p-5 shadow-2xl relative overflow-hidden">
             <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none" />

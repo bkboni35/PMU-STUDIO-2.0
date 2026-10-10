@@ -33,7 +33,7 @@ import { computeQuinteOrdres, buildArchitectureMultiAi } from '../utils/geminiMu
 
 interface StudioV38PipelineProps {
   course: CourseHippique;
-  onNavigateTab: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38' | 'trace-facteurs') => void;
+  onNavigateTab: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38' | 'trace-facteurs' | 'pronostics-jeu') => void;
   activeTab: string;
 }
 

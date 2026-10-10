@@ -1,7 +1,7 @@
 import { CourseHippique, Partant, GeminiExpertTask, HorseGeminiMultiEvaluation, ArchitectureMultiAiEngine, ExpertDisciplineAnalysis, ExpertHorseRow } from '../types/turf';
 import { parseHorseCordeNumber } from './cordeExtractor';
 import { getDisciplineCategory, getExpertPromptForCourse, buildExpertDisciplineAnalysis } from './expertDisciplinePrompts';
-import { computeV38Hierarchy } from './v38Helper';
+import { computeV38Hierarchy, buildRealV38Synthese, isDummySequentialSelection } from './v38Helper';
 
 /**
  * Définit les tâches attribuées à chacun des modèles Gemini pour l'analyse hippique
@@ -11,9 +11,12 @@ export function buildGeminiCollegeTasks(course: CourseHippique): GeminiExpertTas
   const { synthese } = course;
   const partants = (course.partants || []).filter(p => !p.estNonPartant && p.statut !== 'Non-partant');
   const validNums = partants.map(p => p.numero);
-  const top8 = (synthese?.selection8 || []).filter(n => validNums.includes(n));
-  const base1 = (synthese?.baseIncontournable && validNums.includes(synthese.baseIncontournable)) ? synthese.baseIncontournable : validNums[0];
-  const base2 = (synthese?.secondeBase && validNums.includes(synthese.secondeBase) && synthese.secondeBase !== base1) ? synthese.secondeBase : validNums.find(n => n !== base1);
+  const realV38 = buildRealV38Synthese(course);
+  const isDummy = isDummySequentialSelection(synthese?.selection8);
+  const effSynthese = (!synthese || isDummy) ? realV38 : synthese;
+  const top8 = (effSynthese.selection8 || realV38.selection8).filter(n => validNums.includes(n));
+  const base1 = (effSynthese.baseIncontournable && validNums.includes(effSynthese.baseIncontournable)) ? effSynthese.baseIncontournable : (realV38.baseIncontournable || validNums[0]);
+  const base2 = (effSynthese.secondeBase && validNums.includes(effSynthese.secondeBase) && effSynthese.secondeBase !== base1) ? effSynthese.secondeBase : (realV38.secondeBase || validNums.find(n => n !== base1));
 
   // Calcul du cheval le plus rapide (meilleur chrono/record) parmi les partants actifs
   const partantsTriesVitesse = [...partants].sort((a, b) => {
@@ -491,22 +494,33 @@ export function sanitizePronostics(course: CourseHippique): CourseHippique {
   const { synthese } = course;
   if (!synthese) return course;
 
-  // 1. S'assurer que baseIncontournable est valide
-  let base1 = synthese.baseIncontournable;
+  const realV38 = buildRealV38Synthese(course);
+  const isDummy = isDummySequentialSelection(synthese.selection8);
+
+  // 1. S'assurer que baseIncontournable est valide et issue de l'analyse réelle
+  let base1 = isDummy ? realV38.baseIncontournable : synthese.baseIncontournable;
   if (!validNums.includes(base1)) {
-    base1 = validNums[0] || 1;
+    base1 = realV38.baseIncontournable || validNums[0] || 1;
   }
 
   // 2. S'assurer que secondeBase est valide
-  let base2 = synthese.secondeBase;
+  let base2 = isDummy ? realV38.secondeBase : synthese.secondeBase;
   if (!validNums.includes(base2) || base2 === base1) {
-    base2 = validNums.find(n => n !== base1) || validNums[0] || 2;
+    base2 = realV38.secondeBase !== base1 ? realV38.secondeBase : (validNums.find(n => n !== base1) || 2);
   }
 
-  // 3. S'assurer que selection8 ne contient que des numéros valides uniques
-  let selection8 = (synthese.selection8 || []).filter(n => typeof n === 'number' && validNums.includes(n));
+  // 3. S'assurer que selection8 provient de la hiérarchie V38 réelle et ne contient que des numéros valides uniques
+  let selection8 = isDummy
+    ? [...realV38.selection8].filter(n => validNums.includes(n))
+    : (synthese.selection8 || []).filter(n => typeof n === 'number' && validNums.includes(n));
   selection8 = Array.from(new Set(selection8));
   const targetLen = Math.min(8, validNums.length);
+  for (const n of realV38.selection8) {
+    if (selection8.length >= targetLen) break;
+    if (!selection8.includes(n) && validNums.includes(n)) {
+      selection8.push(n);
+    }
+  }
   for (const n of validNums) {
     if (selection8.length >= targetLen) break;
     if (!selection8.includes(n)) {
@@ -515,24 +529,26 @@ export function sanitizePronostics(course: CourseHippique): CourseHippique {
   }
 
   // 4. S'assurer que outsiders ne contient que des numéros valides hors bases
-  let outsiders = (synthese.outsiders || []).filter(n => typeof n === 'number' && validNums.includes(n) && n !== base1 && n !== base2);
+  let outsiders = isDummy
+    ? [...realV38.outsiders].filter(n => validNums.includes(n) && n !== base1 && n !== base2)
+    : (synthese.outsiders || []).filter(n => typeof n === 'number' && validNums.includes(n) && n !== base1 && n !== base2);
   outsiders = Array.from(new Set(outsiders));
   if (outsiders.length === 0) {
-    const candidates = validNums.filter(n => n !== base1 && n !== base2 && !selection8.includes(n));
-    outsiders = candidates.slice(0, 2);
+    outsiders = realV38.outsiders.filter(n => validNums.includes(n) && n !== base1 && n !== base2);
     if (outsiders.length === 0) {
-      outsiders = validNums.filter(n => n !== base1 && n !== base2).slice(0, 2);
+      outsiders = validNums.filter(n => n !== base1 && n !== base2).slice(0, 3);
     }
   }
 
   // 5. S'assurer que tocards ne contient que des numéros valides hors bases
-  let tocards = (synthese.tocards || []).filter(n => typeof n === 'number' && validNums.includes(n) && n !== base1 && n !== base2 && !outsiders.includes(n));
+  let tocards = isDummy
+    ? [...realV38.tocards].filter(n => validNums.includes(n) && n !== base1 && n !== base2 && !outsiders.includes(n))
+    : (synthese.tocards || []).filter(n => typeof n === 'number' && validNums.includes(n) && n !== base1 && n !== base2 && !outsiders.includes(n));
   tocards = Array.from(new Set(tocards));
   if (tocards.length === 0) {
-    const candidates = validNums.filter(n => n !== base1 && n !== base2 && !selection8.includes(n) && !outsiders.includes(n));
-    tocards = candidates.slice(0, 1);
+    tocards = realV38.tocards.filter(n => validNums.includes(n) && n !== base1 && n !== base2 && !outsiders.includes(n));
     if (tocards.length === 0) {
-      tocards = validNums.filter(n => n !== base1 && n !== base2 && !outsiders.includes(n)).slice(0, 1);
+      tocards = validNums.filter(n => n !== base1 && n !== base2 && !outsiders.includes(n)).slice(0, 2);
     }
   }
 
@@ -604,16 +620,20 @@ export function computeQuinteOrdres(course?: CourseHippique): {
   const partants = (c.partants || []).filter(p => !p.estNonPartant && p.statut !== 'Non-partant');
   const partantsNums = partants.map(p => p.numero);
 
-  // Sélections de base
-  const base1 = synthese?.baseIncontournable && partantsNums.includes(synthese.baseIncontournable)
-    ? synthese.baseIncontournable
-    : (partantsNums[0] || 1);
+  const realV38 = buildRealV38Synthese(c);
+  const isDummy = isDummySequentialSelection(synthese?.selection8);
+  const effSynthese = (!synthese || isDummy) ? realV38 : synthese;
 
-  const base2 = synthese?.secondeBase && partantsNums.includes(synthese.secondeBase) && synthese.secondeBase !== base1
-    ? synthese.secondeBase
-    : (partantsNums.find(n => n !== base1) || 2);
+  // Sélections de base issues des cotes réelles V38
+  const base1 = effSynthese.baseIncontournable && partantsNums.includes(effSynthese.baseIncontournable)
+    ? effSynthese.baseIncontournable
+    : (realV38.baseIncontournable || partantsNums[0] || 1);
 
-  const top8 = (synthese?.selection8 || partantsNums.slice(0, 8)).filter(n => partantsNums.includes(n));
+  const base2 = effSynthese.secondeBase && partantsNums.includes(effSynthese.secondeBase) && effSynthese.secondeBase !== base1
+    ? effSynthese.secondeBase
+    : (realV38.secondeBase || partantsNums.find(n => n !== base1) || 2);
+
+  const top8 = (effSynthese.selection8 || realV38.selection8).filter(n => partantsNums.includes(n));
   
   // Chances
   let chances = (synthese?.chances || []).filter(n => partantsNums.includes(n) && n !== base1 && n !== base2);
@@ -712,12 +732,16 @@ export function build5StagePipelineMetadata(course?: CourseHippique, step1Ms = 3
   const c = course || ({} as CourseHippique);
   const { synthese, partants = [] } = c;
   const partantsCount = partants.length;
-  const base1 = synthese?.baseIncontournable || partants[0]?.numero || 1;
-  const base2 = synthese?.secondeBase || partants[1]?.numero || 2;
-  const selection8 = synthese?.selection8 || partants.slice(0, 8).map(p => p.numero);
-  const outsiders = synthese?.outsiders || [];
-  const tocards = synthese?.tocards || [];
-  const confiance = synthese?.indiceConfiance || 8.6;
+  const realV38 = buildRealV38Synthese(c);
+  const isDummy = isDummySequentialSelection(synthese?.selection8);
+  const effSynthese = (!synthese || isDummy) ? realV38 : synthese;
+
+  const base1 = effSynthese.baseIncontournable || realV38.baseIncontournable || partants[0]?.numero || 1;
+  const base2 = effSynthese.secondeBase || realV38.secondeBase || partants[1]?.numero || 2;
+  const selection8 = effSynthese.selection8 || realV38.selection8;
+  const outsiders = effSynthese.outsiders || realV38.outsiders;
+  const tocards = effSynthese.tocards || realV38.tocards;
+  const confiance = effSynthese.indiceConfiance || 8.8;
 
   const ordres = computeQuinteOrdres(course);
 
@@ -970,11 +994,15 @@ export function computePartantHippoScore(p: Partant, course?: CourseHippique): n
 export function buildArchitectureMultiAi(course?: CourseHippique): ArchitectureMultiAiEngine {
   const c = course || ({} as CourseHippique);
   const { partants = [], synthese, reunion, course: cNum, prixNom, hippodrome, discipline, distance, corde, terrain } = c;
-  const top8 = synthese?.selection8 || partants.slice(0, 8).map(p => p.numero);
-  const base1 = synthese?.baseIncontournable || top8[0] || partants[0]?.numero || 1;
-  const base2 = synthese?.secondeBase || top8[1] || partants[1]?.numero || 2;
-  const outsiders = synthese?.outsiders || [];
-  const tocards = synthese?.tocards || [];
+  const realV38 = buildRealV38Synthese(c);
+  const isDummy = isDummySequentialSelection(synthese?.selection8);
+  const effSynthese = (!synthese || isDummy) ? realV38 : synthese;
+
+  const top8 = effSynthese.selection8 || realV38.selection8;
+  const base1 = effSynthese.baseIncontournable || realV38.baseIncontournable;
+  const base2 = effSynthese.secondeBase || realV38.secondeBase;
+  const outsiders = effSynthese.outsiders || realV38.outsiders;
+  const tocards = effSynthese.tocards || realV38.tocards;
   const count = partants.length;
 
   const horse1 = partants.find((p) => p.numero === base1);
@@ -1560,16 +1588,35 @@ export function enrichRaceWithGeminiCollege(course?: CourseHippique, sourceUrl?:
     .map(p => Number(p.numero))
     .sort((a, b) => b - a);
 
+  // Synthèse certifiée V38 100% basée sur les cotes réelles
+  const realV38Synthese = buildRealV38Synthese(sanitizedCourse);
+  const isDummySelection = isDummySequentialSelection(sanitizedCourse.synthese?.selection8);
+
+  const finalBase1 = isDummySelection ? realV38Synthese.baseIncontournable : (sanitizedCourse.synthese?.baseIncontournable || realV38Synthese.baseIncontournable);
+  const finalBase2 = isDummySelection ? realV38Synthese.secondeBase : (sanitizedCourse.synthese?.secondeBase || realV38Synthese.secondeBase);
+  const finalSelection8 = isDummySelection ? realV38Synthese.selection8 : (sanitizedCourse.synthese?.selection8 || realV38Synthese.selection8);
+
   const courseWithDelaisses: CourseHippique = {
     ...sanitizedCourse,
     delaisses: delaissesDecroissants,
     synthese: {
       ...sanitizedCourse.synthese,
+      baseIncontournable: finalBase1,
+      secondeBase: finalBase2,
+      selection8: finalSelection8,
       favoris: (v38Hierarchy.favoris || []).map(p => Number(p.numero)),
       outsiders: (v38Hierarchy.outsiders || []).map(p => Number(p.numero)),
       tocards: (v38Hierarchy.tocardsSpeculatifs || []).map(p => Number(p.numero)),
       surprises: (v38Hierarchy.surprises || []).map(p => Number(p.numero)),
       delaisses: delaissesDecroissants,
+      selectionJustification: sanitizedCourse.synthese?.selectionJustification && !isDummySelection
+        ? sanitizedCourse.synthese.selectionJustification
+        : realV38Synthese.selectionJustification,
+      conseilPari: sanitizedCourse.synthese?.conseilPari && !isDummySelection
+        ? sanitizedCourse.synthese.conseilPari
+        : realV38Synthese.conseilPari,
+      ordreProbable: realV38Synthese.ordreProbable,
+      ordrePossible: realV38Synthese.ordrePossible,
     },
   };
 

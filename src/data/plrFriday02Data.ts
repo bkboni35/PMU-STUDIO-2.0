@@ -1,4 +1,5 @@
 import { PmuMeeting, CourseHippique } from '../types/turf';
+import { buildRealV38Synthese } from '../utils/v38Helper';
 
 export const PLR_FRIDAY_02_MEETINGS: PmuMeeting[] = [
   {
@@ -237,10 +238,10 @@ export function getFriday02Meetings(): PmuMeeting[] {
 
 export function getDefaultInitialCourse(): CourseHippique {
   const defaultM = PLR_FRIDAY_02_MEETINGS.find((m) => m.estQuinte) || PLR_FRIDAY_02_MEETINGS[0];
-  return {
+  const draftCourse = {
     id: defaultM.id,
     sourceUrl: defaultM.lienGeny,
-    sourceType: 'geny.com',
+    sourceType: 'geny.com' as const,
     titre: `${defaultM.nomCoursePhare} (${defaultM.reunion} ${defaultM.courseNumero}) - ${defaultM.hippodrome}`,
     prixNom: defaultM.nomCoursePhare,
     hippodrome: defaultM.hippodrome,
@@ -256,19 +257,11 @@ export function getDefaultInitialCourse(): CourseHippique {
     terrain: 'Sable - Bon état',
     allocation: 46000,
     conditions: defaultM.description,
-    statutCourse: 'À venir',
+    statutCourse: 'À venir' as const,
     partants: defaultM.partants || [],
-    synthese: {
-      baseIncontournable: 1,
-      secondeBase: 2,
-      selection8: (defaultM.partants || []).slice(0, 8).map((p) => p.numero),
-      outsiders: (defaultM.partants || []).slice(4, 7).map((p) => p.numero),
-      tocards: (defaultM.partants || []).slice(7, 9).map((p) => p.numero),
-      selectionJustification: 'Analyse initiale du programme officiel.',
-      conseilPari: 'Couplé et Quinté+.',
-      indiceConfiance: 9.0,
-      analyseParcours: 'Parcours sélectif.',
-      piegesCourse: ['Gestion du trafic']
-    }
+  };
+  return {
+    ...draftCourse,
+    synthese: buildRealV38Synthese(draftCourse as CourseHippique),
   };
 }

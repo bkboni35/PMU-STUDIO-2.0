@@ -17,11 +17,13 @@ import {
   Crown,
   FileDown,
   Cpu,
+  Sliders,
 } from 'lucide-react';
 import { CourseHippique, GeminiModelId, Partant } from '../types/turf';
 import { buildGeminiCollegeTasks, computeHorseGeminiEvaluation } from '../utils/geminiMultiModelEngine';
 import { exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { FactCheckingAuditCard } from './FactCheckingAuditCard';
+import { GeminiCollegeLogicPanel } from './GeminiCollegeLogicPanel';
 
 interface GeminiCollegeViewProps {
   course?: CourseHippique | null;
@@ -46,6 +48,20 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
   const [subTab, setSubTab] = useState<'tasks' | 'matrix' | 'consensus'>('tasks');
   const [selectedFilterModel, setSelectedFilterModel] = useState<GeminiModelId | 'all'>('all');
   const [expandedHorseNum, setExpandedHorseNum] = useState<number | null>(null);
+  const [isLogicPanelOpen, setIsLogicPanelOpen] = useState(false);
+  const [selectedHorseForLogic, setSelectedHorseForLogic] = useState<number | null>(null);
+  const [selectedExpertForLogic, setSelectedExpertForLogic] = useState<GeminiModelId | null>(null);
+
+  const handleOpenLogicForHorse = (num: number) => {
+    setSelectedHorseForLogic(num);
+    setSelectedExpertForLogic(null);
+    setIsLogicPanelOpen(true);
+  };
+
+  const handleOpenLogicForExpert = (expertId: GeminiModelId) => {
+    setSelectedExpertForLogic(expertId);
+    setIsLogicPanelOpen(true);
+  };
 
   // Configuration visuelle par modèle
   const getModelConfig = (id: GeminiModelId) => {
@@ -267,6 +283,20 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
           <button
             type="button"
             onClick={() => {
+              setSelectedHorseForLogic(null);
+              setSelectedExpertForLogic(null);
+              setIsLogicPanelOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500/20 via-amber-500/30 to-amber-600/20 hover:from-amber-500/30 hover:to-amber-600/30 text-amber-300 border border-amber-500/50 font-black text-xs transition-all shadow-md shadow-amber-500/10"
+            title="Ouvrir le panneau contextuel détaillant la logique d'analyse et les facteurs pondérés de chaque expert IA"
+          >
+            <Sliders className="w-4 h-4 text-amber-400" />
+            <span>🔬 Logique & Facteurs Pondérés</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
               if (onOpenQuinteHierarchy) {
                 onOpenQuinteHierarchy();
               } else {
@@ -428,17 +458,29 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
                     </div>
                   </div>
 
-                  {/* Footer Action */}
-                  {onOpenAdvisorWithModel && (
+                  {/* Footer Actions */}
+                  <div className="mt-4 space-y-2">
                     <button
                       type="button"
-                      onClick={() => onOpenAdvisorWithModel(expert.id)}
-                      className={`mt-4 w-full py-2.5 px-4 rounded-xl border ${cfg.border} ${cfg.bgGlow} hover:bg-opacity-30 flex items-center justify-center gap-2 text-xs font-extrabold ${cfg.textColor} transition-all`}
+                      onClick={() => handleOpenLogicForExpert(expert.id)}
+                      className="w-full py-2 px-3 rounded-xl bg-slate-950/90 hover:bg-slate-950 border border-amber-500/30 hover:border-amber-400 flex items-center justify-center gap-2 text-xs font-black text-amber-300 transition-all shadow-xs"
+                      title={`Voir les facteurs pondérés et la logique d'analyse de ${expert.name}`}
                     >
-                      <span>Consulter {expert.name} ({expert.badge})</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Logique d'analyse & pondérations</span>
                     </button>
-                  )}
+
+                    {onOpenAdvisorWithModel && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenAdvisorWithModel(expert.id)}
+                        className={`w-full py-2.5 px-4 rounded-xl border ${cfg.border} ${cfg.bgGlow} hover:bg-opacity-30 flex items-center justify-center gap-2 text-xs font-extrabold ${cfg.textColor} transition-all`}
+                      >
+                        <span>Consulter {expert.name} ({expert.badge})</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -569,8 +611,8 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
                   </th>
                   <th className="py-3 px-3 text-center">
                     <div className="flex flex-col items-center">
-                      <span className="text-purple-400">Gemini 3.5 Flash</span>
-                      <span className="text-[9px] font-normal text-slate-400">Ferrure</span>
+                      <span className="text-purple-400">Claude 4.6 & 3.6</span>
+                      <span className="text-[9px] font-normal text-slate-400">Ferrure D4</span>
                     </div>
                   </th>
                   <th className="py-3 px-3 text-center">
@@ -673,13 +715,24 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
 
                         {/* Action Détail */}
                         <td className="py-3 px-3 text-right">
-                          <button
-                            type="button"
-                            onClick={() => setExpandedHorseNum(isExpanded ? null : partant.numero)}
-                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition-all"
-                          >
-                            {isExpanded ? 'Masquer' : 'Avis détaillés'}
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenLogicForHorse(partant.numero)}
+                              className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 text-[11px] font-black transition-all border border-amber-500/40 flex items-center gap-1"
+                              title={`Décomposer les facteurs pondérés pour le N°${partant.numero} ${partant.nom}`}
+                            >
+                              <Sliders className="w-3 h-3 text-amber-400" />
+                              <span>Pondérations</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setExpandedHorseNum(isExpanded ? null : partant.numero)}
+                              className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-bold transition-all"
+                            >
+                              {isExpanded ? 'Masquer' : 'Avis'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
 
@@ -819,6 +872,16 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Panneau Contextuel de Logique d'Analyse des Experts IA & Facteurs Pondérés */}
+      <GeminiCollegeLogicPanel
+        isOpen={isLogicPanelOpen}
+        onClose={() => setIsLogicPanelOpen(false)}
+        course={course}
+        initialHorseNumber={selectedHorseForLogic}
+        initialExpertId={selectedExpertForLogic}
+        onSelectHorseForTicket={onSelectHorseForTicket}
+      />
     </div>
   );
 };

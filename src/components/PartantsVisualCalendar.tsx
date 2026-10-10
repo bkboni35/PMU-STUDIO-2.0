@@ -23,6 +23,7 @@ import { CourseHippique, PmuMeeting, Partant } from '../types/turf';
 import { PLR_FRIDAY_02_MEETINGS } from '../data/plrFriday02Data';
 import { normalizeDateForQuery } from '../utils/timeConversion';
 import { HeaderDatePicker } from './HeaderDatePicker';
+import { buildRealV38Synthese } from '../utils/v38Helper';
 
 interface PartantsVisualCalendarProps {
   currentCourse: CourseHippique;
@@ -285,10 +286,10 @@ export const PartantsVisualCalendar: React.FC<PartantsVisualCalendarProps> = ({
             statut: idx < 3 ? 'Favori' : 'Outsider',
           }));
 
-      const newCourse: CourseHippique = {
+      const baseCourse = {
         id: meeting.id,
         sourceUrl: meeting.lienGeny || `https://www.geny.com/partants-pmu/${meeting.hippodrome.toLowerCase()}`,
-        sourceType: 'pmu.lonacionline.ci',
+        sourceType: 'pmu.lonacionline.ci' as const,
         titre: `${meeting.nomCoursePhare} (${meeting.reunion} ${meeting.courseNumero}) - ${meeting.hippodrome}`,
         prixNom: meeting.nomCoursePhare,
         hippodrome: meeting.hippodrome,
@@ -299,25 +300,18 @@ export const PartantsVisualCalendar: React.FC<PartantsVisualCalendarProps> = ({
         date: meeting.date || activeDayData?.fullDateLabel || 'Mardi 29 Septembre 2026',
         heure: meeting.heure || '13h50',
         distance: typeof meeting.distance === 'number' ? meeting.distance : 2700,
-        corde: meeting.corde === 'Droite' ? 'Droite' : 'Gauche',
+        corde: meeting.corde === 'Droite' ? ('Droite' as const) : ('Gauche' as const),
         terrain: 'Bon',
         allocation: typeof meeting.allocation === 'number' ? meeting.allocation : 35000,
         conditions: meeting.description || `Course officielle ${meeting.discipline} à ${meeting.hippodrome}`,
-        statutCourse: meeting.statut === 'Terminé' ? 'Arrivée officielle' : 'À venir',
+        statutCourse: meeting.statut === 'Terminé' ? ('Arrivée officielle' as const) : ('À venir' as const),
         arriveeOfficielle: meeting.arriveeOfficielle,
-        synthese: {
-          baseIncontournable: partantsList[0]?.numero || 1,
-          secondeBase: partantsList[1]?.numero || 2,
-          outsiders: partantsList.slice(2, 5).map((p) => p.numero),
-          tocards: partantsList.slice(5, 8).map((p) => p.numero),
-          selection8: partantsList.slice(0, 8).map((p) => p.numero),
-          selectionJustification: `Analyse experte du ${meeting.nomCoursePhare} (${meeting.reunion} ${meeting.courseNumero}) - ${meeting.hippodrome}.`,
-          conseilPari: 'Base couplé gagnant / placé et combinaison 2sur4.',
-          indiceConfiance: 8.9,
-          analyseParcours: `Épreuve disputée sur ${meeting.distance}m à ${meeting.hippodrome}.`,
-          piegesCourse: ['Attention aux relais au premier tournant.'],
-        },
         partants: partantsList,
+      };
+
+      const newCourse: CourseHippique = {
+        ...baseCourse,
+        synthese: buildRealV38Synthese(baseCourse as CourseHippique),
       };
 
       onSelectCourse(newCourse);

@@ -34,6 +34,7 @@ import {
 } from '../utils/favoritesStorage';
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
 import { TrackWeatherAnalysisCard } from './TrackWeatherAnalysisCard';
+import { PronosticsDeJeuView } from './PronosticsDeJeuView';
 
 interface HistoryManagerProps {
   history: HistoryCourseItem[];
@@ -42,7 +43,7 @@ interface HistoryManagerProps {
   onRemoveItem: (id: string) => void;
   onClearAll: () => void;
   onUpdateHistory?: (updatedHistory: HistoryCourseItem[]) => void;
-  onNavigateTab?: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38' | 'trace-facteurs') => void;
+  onNavigateTab?: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38' | 'trace-facteurs' | 'pronostics-jeu') => void;
 }
 
 export const HistoryManager: React.FC<HistoryManagerProps> = ({
@@ -55,10 +56,12 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
   onNavigateTab,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [historyFilter, setHistoryFilter] = useState<'all' | 'pronostics' | 'arrivals'>('all');
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
-  // Cartes comparatives dépliées (Analyse Après Course & Tracé)
+  // Cartes comparatives dépliées (Analyse Après Course & Tracé & Pronostics de Jeu)
+  const [expandedPronosticsId, setExpandedPronosticsId] = useState<string | null>(null);
   const [expandedComparisonId, setExpandedComparisonId] = useState<string | null>(null);
   const [expandedScoreId, setExpandedScoreId] = useState<string | null>(null);
   const [expandedValueId, setExpandedValueId] = useState<string | null>(null);
@@ -868,6 +871,25 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                       <span>Partants</span>
                     </button>
 
+                    {/* Bouton Onglet PRONOSTICS DE JEU */}
+                    <button
+                      type="button"
+                      onClick={() => setExpandedPronosticsId(expandedPronosticsId === item.id ? null : item.id)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border shrink-0 active:scale-95 cursor-pointer shadow-sm ${
+                        expandedPronosticsId === item.id
+                          ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-slate-950 border-amber-300 ring-2 ring-amber-300 shadow-amber-500/30'
+                          : 'bg-gradient-to-r from-amber-500/20 via-purple-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-purple-500/30 text-amber-300 border-amber-500/50'
+                      }`}
+                      title="Afficher l'onglet Pronostics de Jeu (Base de Jeu cote ≤ 4,9, TOP 8, Gros Rapport)"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>Pronostics de Jeu</span>
+                      <span className="px-1.5 py-0.2 rounded-md text-[9px] font-black bg-slate-950 text-amber-300 hidden sm:inline border border-amber-500/40">
+                        Base • Top 8 • Gros Rapport
+                      </span>
+                      {expandedPronosticsId === item.id ? <ChevronUp className="w-3 h-3 text-slate-950" /> : <ChevronDown className="w-3 h-3 text-amber-400" />}
+                    </button>
+
                     {/* Bouton Tracé & Facteurs (avec classement des numéros par cote) */}
                     <button
                       type="button"
@@ -1013,6 +1035,48 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                 <div className="mt-3">
                   <HierarchieQuinteV38Banner course={course} />
                 </div>
+
+                {/* Panneau dépliant : PRONOSTICS DE JEU (Base de Jeu, TOP 8, Gros Rapport) */}
+                {expandedPronosticsId === item.id && (
+                  <div className="mt-4 pt-4 border-t border-amber-500/40 space-y-4 animate-fadeIn bg-slate-950/95 p-4 sm:p-6 rounded-3xl border-2 border-amber-500/50 shadow-2xl">
+                    <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400">
+                          <Sparkles className="w-5 h-5 text-amber-400" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm sm:text-base font-black text-white flex items-center gap-2 flex-wrap">
+                            <span>PRONOSTICS DE JEU</span>
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                              {course.reunion} {course.course} · {course.hippodrome}
+                            </span>
+                          </h4>
+                          <p className="text-xs text-slate-400 mt-0.5">
+                            Base de Jeu (Côte ≤ 4,9) · TOP 8 Sélection · Gros Rapport (Max 4 numéros)
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onSelectCourse(course);
+                          if (onNavigateTab) onNavigateTab('pronostics-jeu');
+                        }}
+                        className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                        title="Ouvrir dans l'onglet Pronostics de Jeu des résultats"
+                      >
+                        <span>Ouvrir dans l'espace résultat</span>
+                        <ExternalLink className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <PronosticsDeJeuView
+                      course={course}
+                      onSelectHorseForTicket={() => onSelectCourse(course)}
+                    />
+                  </div>
+                )}
 
                 {/* Panneau dépliant : Tracé & Facteurs (Piste, Météo, Corde & Facteurs avec Classement des Cotes) */}
                 {expandedTrackId === item.id && (

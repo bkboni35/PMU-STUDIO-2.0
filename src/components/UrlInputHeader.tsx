@@ -12,6 +12,7 @@ import { HeaderDatePicker } from './HeaderDatePicker';
 import { BandePassanteArrivees } from './BandePassanteArrivees';
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
 import { PWAInstallButton } from './PWAInstallButton';
+import { buildRealV38Synthese } from '../utils/v38Helper';
 
 interface UrlInputHeaderProps {
   currentUrl: string;
@@ -96,10 +97,10 @@ function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
         };
       });
 
-  return {
+  const baseCourse = {
     id: m.id,
     sourceUrl: m.lienGeny || constructedGenyUrl,
-    sourceType: 'pmu.lonacionline.ci',
+    sourceType: 'pmu.lonacionline.ci' as const,
     titre: `${m.nomCoursePhare} (${m.reunion} ${m.courseNumero}) - ${m.hippodrome}`,
     prixNom: m.nomCoursePhare,
     hippodrome: m.hippodrome,
@@ -115,20 +116,8 @@ function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
     terrain: 'Bon',
     allocation: allocNum,
     conditions: m.description,
-    statutCourse: (m.statut?.toLowerCase().includes('termin') || Boolean(m.arriveeOfficielle)) ? 'Arrivée officielle' : 'À venir',
+    statutCourse: (m.statut?.toLowerCase().includes('termin') || Boolean(m.arriveeOfficielle)) ? ('Arrivée officielle' as const) : ('À venir' as const),
     arriveeOfficielle: m.arriveeOfficielle,
-    synthese: {
-      baseIncontournable: 1,
-      secondeBase: 2,
-      outsiders: [3, 4, 5],
-      tocards: [6, 7],
-      selection8: basePartants.slice(0, 8).map((p) => p.numero),
-      selectionJustification: `Analyse certifiée du ${m.nomCoursePhare} (${m.reunion} ${m.courseNumero}) - ${m.hippodrome}.`,
-      conseilPari: "Base solide couplé gagnant / placé.",
-      indiceConfiance: 8.8,
-      analyseParcours: `Épreuve disputée sur ${distNum}m à ${m.hippodrome}.`,
-      piegesCourse: ["Gérer les relais au départ."],
-    },
     partants: basePartants.map((p) => {
       const pDist = typeof p.distance === 'number' ? p.distance : parseInt(String(p.distance || distNum).replace(/\D/g, ''), 10) || distNum;
       return {
@@ -147,6 +136,11 @@ function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
         statut: p.statut as any,
       };
     }),
+  };
+
+  return {
+    ...baseCourse,
+    synthese: buildRealV38Synthese(baseCourse as CourseHippique),
   };
 }
 

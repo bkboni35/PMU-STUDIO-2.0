@@ -59,8 +59,10 @@ import { SystemPresentationModal } from './components/SystemPresentationModal';
 import { AiQuotasModal } from './components/AiQuotasModal';
 import { FicheImpressionPdfV38View } from './components/FicheImpressionPdfV38View';
 import { ClassificationPronosticView } from './components/ClassificationPronosticView';
+import { PronosticsDeJeuView } from './components/PronosticsDeJeuView';
 import { UserProfile } from './types/userAuth';
 import { getStoredUserSession, incrementUserAnalysesCount, saveUserSession, clearUserSession } from './utils/userAuthStorage';
+import { buildRealV38Synthese, isDummySequentialSelection } from './utils/v38Helper';
 import { db, ensureFirebaseAuth, handleFirestoreError, OperationType, testFirestoreConnection } from './firebase';
 import { doc, onSnapshot, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { initThemeListener } from './utils/themeManager';
@@ -611,7 +613,7 @@ export default function App() {
   const [validationStatus, setValidationStatus] = useState<{ status: 'idle' | 'loading' | 'valid' | 'error'; errors?: string[] }>({ status: 'idle' });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoNotice, setInfoNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'synthese' | 'classification-prono' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs'>('synthese');
+  const [activeTab, setActiveTab] = useState<'synthese' | 'classification-prono' | 'pronostics-jeu' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs'>('synthese');
   const [isD3CompactMode, setIsD3CompactMode] = useState<boolean>(false);
   const prevTabRef = useRef<string>(activeTab);
   useEffect(() => {
@@ -632,7 +634,7 @@ export default function App() {
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isQuinteHierarchyModalOpen, setIsQuinteHierarchyModalOpen] = useState(false);
 
-  const openTabInForeground = (tab: 'synthese' | 'classification-prono' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs') => {
+  const openTabInForeground = (tab: 'synthese' | 'classification-prono' | 'pronostics-jeu' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs') => {
     setActiveTab(tab);
     setIsForegroundModalOpen(true);
   };
@@ -1674,8 +1676,19 @@ export default function App() {
   };
 
   const setCourseWithTime = (c: CourseHippique) => {
-    const isAnalyzed = Boolean((c as any)?.cotesScellees || c?.synthese);
-    const enriched = isAnalyzed ? c : enrichRaceWithGeminiCollege(c);
+    let target = c;
+    if (!target.synthese || isDummySequentialSelection(target.synthese.selection8)) {
+      const realV38 = buildRealV38Synthese(target);
+      target = {
+        ...target,
+        synthese: {
+          ...(target.synthese || {}),
+          ...realV38,
+        }
+      };
+    }
+    const isAnalyzed = Boolean((target as any)?.cotesScellees || target?.synthese);
+    const enriched = isAnalyzed ? target : enrichRaceWithGeminiCollege(target);
     const finalCourse: CourseHippique = {
       ...enriched,
       cotesScellees: isAnalyzed ? true : enriched.cotesScellees,
@@ -2450,12 +2463,17 @@ export default function App() {
           });
         }
 
-        // Initialiser avec les 8 chevaux de la sélection Quinté
-        if (data.course.synthese?.selection8 && data.course.synthese.selection8.length >= 8) {
+        // Initialiser avec les 8 chevaux de la sélection Quinté (garantie V38 cotes réelles)
+        const isDummy = isDummySequentialSelection(data.course.synthese?.selection8);
+        if (isDummy || !data.course.synthese?.selection8 || data.course.synthese.selection8.length < 8) {
+          const realV38 = buildRealV38Synthese(courseWithLockedOdds);
+          courseWithLockedOdds.synthese = {
+            ...(courseWithLockedOdds.synthese || {}),
+            ...realV38,
+          };
+          setSelectedHorses(realV38.selection8);
+        } else {
           setSelectedHorses(data.course.synthese.selection8);
-        } else if (data.course.partants && data.course.partants.length > 0) {
-          const validHorses = data.course.partants.filter((p: any) => !p.estNonPartant).map((p: any) => p.numero);
-          setSelectedHorses(validHorses.slice(0, Math.min(8, validHorses.length)));
         }
       } else {
         console.warn('[handleAnalyzeUrl] Scraper returned OK status but no course object was present in data:', data);
@@ -2599,7 +2617,7 @@ export default function App() {
       console.warn("Bascule vers le constructeur direct de course:", err);
       // Garde-Fou Suprême : Si l'API échoue, charger immédiatement la course avec ses partants
       if (meeting.partants && meeting.partants.length > 0) {
-        const directCourse: CourseHippique = {
+        const baseDirectCourse = {
           id: `meeting-${meeting.id}-${Date.now()}`,
           titre: `${meeting.nomCoursePhare} (${meeting.reunion} ${meeting.courseNumero || 'C1'}) - ${meeting.hippodrome}`,
           prixNom: meeting.nomCoursePhare,
@@ -2617,30 +2635,25 @@ export default function App() {
           allocation: typeof meeting.allocation === 'number' ? meeting.allocation : 35000,
           conditions: meeting.description || `Pour chevaux de 5 à 10 ans. Course officielle ${meeting.nomCoursePhare}.`,
           sourceUrl: meeting.lienGeny,
-          sourceType: 'autre',
+          sourceType: 'autre' as const,
           partants: meeting.partants,
           arriveeOfficielle: meeting.arriveeOfficielle || undefined,
-          statutCourse: meeting.arriveeOfficielle ? 'Arrivée officielle' : 'À venir',
-          synthese: {
-            baseIncontournable: meeting.partants[0]?.numero || 1,
-            secondeBase: meeting.partants[1]?.numero || 2,
-            selection8: meeting.partants.slice(0, 8).map(p => p.numero),
-            outsiders: meeting.partants.slice(4, 7).map(p => p.numero),
-            tocards: meeting.partants.slice(7, 9).map(p => p.numero),
-            selectionJustification: `Sélection experte officielle issue des ${meeting.partants.length} partants certifiés pour ${meeting.nomCoursePhare}.`,
-            conseilPari: `Quinté+ combiné Flexi 50% sur les bases (${meeting.partants[0]?.numero || 1} - ${meeting.partants[1]?.numero || 2}).`,
-            indiceConfiance: 8.8,
-            analyseParcours: `Parcours sélectif de ${meeting.distance || 2700}m à ${meeting.hippodrome}.`,
-            piegesCourse: ['Attention au départ volte', 'Gestion du trafic'],
-          },
+          statutCourse: meeting.arriveeOfficielle ? ('Arrivée officielle' as const) : ('À venir' as const),
         };
 
-        setCourseWithTime(directCourse);
-        saveRaceToHistory(directCourse);
-        setSelectedHorses(directCourse.synthese.selection8);
+        const realV38 = buildRealV38Synthese(baseDirectCourse as CourseHippique);
+        const directCourse: CourseHippique = {
+          ...baseDirectCourse,
+          synthese: realV38,
+        };
+
+        const enrichedCourse = enrichRaceWithGeminiCollege(directCourse);
+        setCourseWithTime(enrichedCourse);
+        saveRaceToHistory(enrichedCourse);
+        setSelectedHorses(enrichedCourse.synthese?.selection8 || realV38.selection8);
         setActiveTab('synthese');
         setIsCalendarModalOpen(false);
-        setInfoNotice(`✅ Course "${meeting.nomCoursePhare}" (${meeting.partants.length} partants) extraite et prête !`);
+        setInfoNotice(`✅ Course "${meeting.nomCoursePhare}" (${meeting.partants.length} partants) analysée avec la hiérarchie V38 !`);
       } else {
         setErrorMessage(err.message || "Erreur lors de l'analyse de la réunion.");
       }
@@ -3115,6 +3128,30 @@ export default function App() {
                   </span>
                 </button>
 
+                {/* Bouton Onglet PRONOSTICS DE JEU */}
+                <button
+                  type="button"
+                  onClick={() => openTabInForeground('pronostics-jeu')}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all cursor-pointer ${
+                    activeTab === 'pronostics-jeu'
+                      ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-slate-950 shadow-lg shadow-amber-500/25 font-black ring-2 ring-amber-300'
+                      : 'text-amber-300 hover:text-amber-200 hover:bg-slate-800 border border-amber-500/40 bg-amber-950/20'
+                  }`}
+                  title="Pronostics de Jeu : Base de Jeu (cote ≤ 4,9), TOP 8 et Gros Rapport (au plus 4 numéros)"
+                >
+                  <Sparkles className="w-4 h-4 text-amber-400 fill-amber-400" />
+                  <span>PRONOSTICS DE JEU</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-black ${
+                      activeTab === 'pronostics-jeu'
+                        ? 'bg-slate-950 text-amber-300'
+                        : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                    }`}
+                  >
+                    Base • Top 8 • Gros Rapport
+                  </span>
+                </button>
+
                 {/* Bouton Onglet Tracé & Facteurs (Classement des numéros par cote) */}
                 <button
                   type="button"
@@ -3406,6 +3443,16 @@ export default function App() {
                   selectedHorseNumbers={selectedHorses}
                   onSelectHorseForTicket={handleToggleHorse}
                   onToggleHorse={handleToggleHorse}
+                />
+              </div>
+            )}
+
+            {activeTab === 'pronostics-jeu' && (
+              <div className="bg-slate-900/90 border border-slate-700/80 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-xl w-full space-y-6">
+                <PronosticsDeJeuView
+                  course={course}
+                  selectedHorseNumbers={selectedHorses}
+                  onSelectHorseForTicket={handleToggleHorse}
                 />
               </div>
             )}
@@ -4116,6 +4163,7 @@ export default function App() {
                 <div className="p-2 sm:p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 font-black shadow-inner">
                   {activeTab === 'synthese' && <Trophy className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'classification-prono' && <Crown className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 fill-amber-400" />}
+                  {activeTab === 'pronostics-jeu' && <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400 fill-amber-400" />}
                   {activeTab === 'propositions-ia' && <Target className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'partants' && <Table className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'college-gemini' && <Brain className="w-5 h-5 sm:w-6 sm:h-6" />}
@@ -4130,6 +4178,7 @@ export default function App() {
                     <h2 className="text-base sm:text-xl font-black text-white">
                       {activeTab === 'synthese' && 'Synthèse & Pronostic Quinté+'}
                       {activeTab === 'classification-prono' && 'Classification par Groupes & Pronostic Officiel V38'}
+                      {activeTab === 'pronostics-jeu' && 'Pronostics de Jeu (Base • TOP 8 • Gros Rapport)'}
                       {activeTab === 'trace-facteurs' && 'Tracé, Facteurs & Classement des Cotes'}
                       {activeTab === 'propositions-ia' && 'Proposition de Jeux des IA (Base • T5 • Q6 • Q7)'}
                       {activeTab === 'partants' && `Tableau des Partants (${course?.partants?.length || 0})`}
@@ -4214,6 +4263,13 @@ export default function App() {
                       selectedHorseNumbers={selectedHorses}
                       onSelectHorseForTicket={handleToggleHorse}
                       onToggleHorse={handleToggleHorse}
+                    />
+                  )}
+                  {activeTab === 'pronostics-jeu' && (
+                    <PronosticsDeJeuView
+                      course={course}
+                      selectedHorseNumbers={selectedHorses}
+                      onSelectHorseForTicket={handleToggleHorse}
                     />
                   )}
                   {activeTab === 'trace-facteurs' && (

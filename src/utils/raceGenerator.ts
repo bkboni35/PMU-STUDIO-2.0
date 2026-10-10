@@ -1,6 +1,7 @@
 import { CourseHippique, Discipline, Partant, PronosticSynthese, TurfSource } from '../types/turf';
 import { SAMPLE_RACES } from '../data/sampleRaces';
 import { enrichRaceWithGeminiCollege } from './geminiMultiModelEngine';
+import { buildRealV38Synthese } from './v38Helper';
 
 interface UrlMetadata {
   hippodrome: string;
@@ -198,16 +199,10 @@ export function buildFallbackRace(
       };
     });
 
-    // Tri pour la sélection des meilleurs
-    const sortedActive = [...realPartants]
-      .filter((p) => !p.estNonPartant)
-      .sort((a, b) => (b.hippoScore || 0) - (a.hippoScore || 0));
-
-    const base1 = sortedActive[0]?.numero || 1;
-    const base2 = sortedActive[1]?.numero || 2;
-    const selection8 = sortedActive.slice(0, 8).map((p) => p.numero);
-    const outsiders = sortedActive.slice(4, 7).map((p) => p.numero);
-    const tocards = sortedActive.slice(7, 9).map((p) => p.numero);
+    const realV38 = buildRealV38Synthese({
+      partants: realPartants,
+      discipline: extractedData.discipline || meta.discipline,
+    } as any);
 
     const hippoNom = extractedData.hippodrome || meta.hippodrome;
     const distanceVal = extractedData.distance || meta.distance;
@@ -217,14 +212,16 @@ export function buildFallbackRace(
     const courseVal = extractedData.course || meta.course;
 
     const synthese: PronosticSynthese = {
-      baseIncontournable: base1,
-      secondeBase: base2,
-      selection8,
-      outsiders,
-      tocards,
+      baseIncontournable: realV38.baseIncontournable,
+      secondeBase: realV38.secondeBase,
+      selection8: realV38.selection8,
+      outsiders: realV38.outsiders,
+      tocards: realV38.tocards,
+      surprises: realV38.surprises,
+      delaisses: realV38.delaisses,
       indiceConfiance: 8.7,
-      conseilPari: `Quinté+ combiné Flexi 50% appuyé sur les bases (${base1} - ${base2}) associées aux ${selection8.filter((n) => n !== base1 && n !== base2).join(', ')}. Pour le jeu simple : le ${base1} Gagnant / Placé.`,
-      selectionJustification: `Pour ce ${prixNomVal} (${realPartants.length} partants réels), le n°${base1} offre les meilleures garanties de régularité et d'engagement, escorté par le n°${base2}.`,
+      conseilPari: realV38.conseilPari || `Quinté+ combiné Flexi 50% appuyé sur les bases (${realV38.baseIncontournable} - ${realV38.secondeBase}) associées aux ${realV38.selection8.filter((n) => n !== realV38.baseIncontournable && n !== realV38.secondeBase).join(', ')}. Pour le jeu simple : le N°${realV38.baseIncontournable} Gagnant / Placé.`,
+      selectionJustification: realV38.selectionJustification || `Pour ce ${prixNomVal} (${realPartants.length} partants réels), le n°${realV38.baseIncontournable} offre les meilleures garanties de régularité et d'engagement, escorté par le n°${realV38.secondeBase}.`,
       analyseParcours: `Piste de ${hippoNom}, tracé de ${distanceVal} mètres (corde à ${cordeVal.toLowerCase()}). Épreuve sélective avec peloton officiel de ${realPartants.length} partants.`,
       piegesCourse: [
         'Gestion du premier tournant corde à ' + cordeVal.toLowerCase(),
@@ -287,37 +284,27 @@ export function buildFallbackRace(
     adaptedPartants = generateDeterministicField(meta, countToApply, url);
   }
 
-  // Calcul dynamique et intelligent de la synthèse pour ne JAMAIS reproduire une liste statique figée
-  const activePartantsList = adaptedPartants.filter((p) => !p.estNonPartant && p.statut !== 'Non-partant');
-  const sortedPartants = [...activePartantsList]
-    .sort((a, b) => (b.hippoScore || 0) - (a.hippoScore || 0));
+  // Calcul dynamique et rigoureusement conforme à la hiérarchie V38
+  const realV38Adapted = buildRealV38Synthese({
+    partants: adaptedPartants,
+    discipline: meta.discipline,
+  } as any);
 
-  const validMax = activePartantsList.length;
-  const filteredSelection8 = sortedPartants.slice(0, Math.min(8, validMax)).map((p) => p.numero);
-
-  // Compléter avec les partants actifs restants si besoin
-  for (const p of activePartantsList) {
-    if (filteredSelection8.length >= Math.min(8, validMax)) break;
-    if (!filteredSelection8.includes(p.numero)) filteredSelection8.push(p.numero);
-  }
-
-  const base1 = filteredSelection8[0] || 1;
-  const base2 = filteredSelection8[1] || 2;
-  const horse1 = activePartantsList.find((p) => p.numero === base1);
-  const horse2 = activePartantsList.find((p) => p.numero === base2);
-  const outsidersList = sortedPartants.slice(4, 7).map((p) => p.numero);
-  const tocardsList = sortedPartants.slice(7, 9).map((p) => p.numero);
+  const horse1 = adaptedPartants.find((p) => p.numero === realV38Adapted.baseIncontournable);
+  const horse2 = adaptedPartants.find((p) => p.numero === realV38Adapted.secondeBase);
 
   const adaptedSynthese: PronosticSynthese = {
-    baseIncontournable: base1,
-    secondeBase: base2,
-    selection8: filteredSelection8,
-    outsiders: outsidersList.length > 0 ? outsidersList : [filteredSelection8[4] || 5, filteredSelection8[5] || 6],
-    tocards: tocardsList.length > 0 ? tocardsList : [filteredSelection8[6] || 7, filteredSelection8[7] || 8],
+    baseIncontournable: realV38Adapted.baseIncontournable,
+    secondeBase: realV38Adapted.secondeBase,
+    selection8: realV38Adapted.selection8,
+    outsiders: realV38Adapted.outsiders,
+    tocards: realV38Adapted.tocards,
+    surprises: realV38Adapted.surprises,
+    delaisses: realV38Adapted.delaisses,
     indiceConfiance: 8.6,
-    conseilPari: `Quinté+ combiné Flexi 50% avec les bases (${base1} - ${base2}) associées aux concurrents ${filteredSelection8.filter((n) => n !== base1 && n !== base2).join(', ')}. Pour le jeu simple : le N°${base1} (${horse1?.nom || 'Favori'}) Gagnant/Placé.`,
+    conseilPari: realV38Adapted.conseilPari || `Quinté+ combiné Flexi 50% avec les bases (${realV38Adapted.baseIncontournable} - ${realV38Adapted.secondeBase}) associées aux concurrents ${realV38Adapted.selection8.filter((n) => n !== realV38Adapted.baseIncontournable && n !== realV38Adapted.secondeBase).join(', ')}. Pour le jeu simple : le N°${realV38Adapted.baseIncontournable} (${horse1?.nom || 'Favori'}) Gagnant/Placé.`,
     analyseParcours: `Parcours sélectif de ${meta.distance} mètres, corde à ${(meta.corde || 'Gauche').toLowerCase()} sur l'hippodrome de ${meta.hippodrome}. Peloton de ${adaptedPartants.length} partants.`,
-    selectionJustification: `Pour ce ${meta.prixNom} (${adaptedPartants.length} partants), nous plaçons en tête le N°${base1} ${horse1?.nom ? `(${horse1.nom})` : ''} en grande forme et piloté par ${horse1?.driver || 'son driver attitré'}, appuyé par le N°${base2} ${horse2?.nom ? `(${horse2.nom})` : ''}.`,
+    selectionJustification: realV38Adapted.selectionJustification || `Pour ce ${meta.prixNom} (${adaptedPartants.length} partants), nous plaçons en tête le N°${realV38Adapted.baseIncontournable} ${horse1?.nom ? `(${horse1.nom})` : ''} en grande forme et piloté par ${horse1?.driver || 'son driver attitré'}, appuyé par le N°${realV38Adapted.secondeBase} ${horse2?.nom ? `(${horse2.nom})` : ''}.`,
     piegesCourse: [
       `Premier virage corde à ${(meta.corde || 'Gauche').toLowerCase()} souvent décisif`,
       'Rythme soutenu dès le départ qui peut pénaliser les attentistes',
@@ -354,7 +341,7 @@ export function buildFallbackRace(
  */
 export function buildFallbackAdvisorAnswer(question: string, course?: CourseHippique): string {
   const c = course || ({} as CourseHippique);
-  const synthese = c.synthese || {
+  const synthese = c.synthese || (c.partants && c.partants.length > 0 ? buildRealV38Synthese(c) : {
     baseIncontournable: 1,
     secondeBase: 2,
     selection8: [1,2,3,4,5,6,7,8],
@@ -365,7 +352,7 @@ export function buildFallbackAdvisorAnswer(question: string, course?: CourseHipp
     selectionJustification: '',
     conseilPari: '',
     analyseParcours: ''
-  };
+  });
   const partants = c.partants || [];
   const qLower = question.toLowerCase();
   const base1 = partants.find((p) => p.numero === synthese.baseIncontournable);

@@ -7,6 +7,7 @@ import { exportCourseToExcel } from '../utils/excelExport';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
 import { assignUniqueCordesForPlat, getHorseGenyOdds, computeV38Hierarchy, computeHorseSuccessProbabilities, HorseSuccessProbability } from '../utils/v38Helper';
+import { PartantsPieChart } from './PartantsPieChart';
 
 interface PartantsTableProps {
   partants: Partant[];
@@ -2956,6 +2957,14 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
           </tbody>
         </table>
       </div>
+
+      {/* Répartition circulaire interactive des partants par groupes de cotes */}
+      <PartantsPieChart
+        partants={partants}
+        selectedHorses={selectedHorses}
+        onToggleHorse={onToggleHorse}
+        courseTitle={course?.titre || course?.prixNom}
+      />
     </div>
   );
 };

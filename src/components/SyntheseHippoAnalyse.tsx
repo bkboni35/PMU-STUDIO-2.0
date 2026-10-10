@@ -13,7 +13,7 @@ import { EcartsFormeAnalysisCard } from './EcartsFormeAnalysisCard';
 import { ClassificationPronosticView } from './ClassificationPronosticView';
 import { sendRaceAnalysisEmail } from '../utils/gmailService';
 import { getStoredUserSession } from '../utils/userAuthStorage';
-import { computeV38Hierarchy, computeHorseSuccessProbabilities } from '../utils/v38Helper';
+import { computeV38Hierarchy, computeHorseSuccessProbabilities, buildRealV38Synthese, isDummySequentialSelection } from '../utils/v38Helper';
 
 interface SyntheseHippoAnalyseProps {
   course: CourseHippique;
@@ -39,18 +39,21 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       </div>
     );
   }
-  const synthese = course.synthese || {
-    baseIncontournable: 1,
-    secondeBase: 2,
-    selection8: [],
-    outsiders: [],
-    tocards: [],
-    selectionJustification: 'En attente de sélection de course.',
-    conseilPari: 'Veuillez sélectionner ou analyser une course.',
-    indiceConfiance: 0,
-    analyseParcours: '',
-    piegesCourse: []
-  };
+  const isDummy = isDummySequentialSelection(course.synthese?.selection8);
+  const synthese = (!course.synthese || isDummy) && course.partants && course.partants.length > 0
+    ? buildRealV38Synthese(course)
+    : (course.synthese || {
+        baseIncontournable: 1,
+        secondeBase: 2,
+        selection8: [],
+        outsiders: [],
+        tocards: [],
+        selectionJustification: 'En attente de sélection de course.',
+        conseilPari: 'Veuillez sélectionner ou analyser une course.',
+        indiceConfiance: 0,
+        analyseParcours: '',
+        piegesCourse: []
+      });
   const partants = course.partants || [];
   const [subView, setSubView] = useState<'pronostic' | 'classification' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout'>(initialSubView);
   const containerRef = useRef<HTMLDivElement | null>(null);

@@ -74,7 +74,7 @@ export const PronosticsDeJeuView: React.FC<PronosticsDeJeuViewProps> = ({
   // 2. TOP 8 : Les 8 premiers numéros de la sélection de l'analyse
   // =========================================================================
   const top8Nums = useMemo((): number[] => {
-    const rawSel = course.synthese?.selection8 || v38.selection8 || [];
+    const rawSel = course.synthese?.selection8 || (v38.selectionV38 || []).map((p) => Number(p.numero));
     const validNums = activePartants.map((p) => p.numero);
     const filtered = rawSel.filter((n) => validNums.includes(n));
 

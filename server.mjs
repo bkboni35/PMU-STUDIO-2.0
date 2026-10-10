@@ -1528,17 +1528,17 @@ function buildGeminiCollegeTasks(course) {
     },
     {
       id: "gemini-3.5",
-      name: "Gemini 3.5 Flash",
-      badge: "Sp\xE9cialiste Mat\xE9riel & Duos",
-      role: "Auditeur Tactique de Ferrure, Engagements & Tandems",
-      specialite: "Impact du d\xE9ferrage (D4, DP, DA, F), avantage au poids / rendement de distance, et synergie jockey/entra\xEEneur",
+      name: "Claude 4.6 & Gemini 3.6",
+      badge: "Mat\xE9riel, Ferrure D4 & Engagement",
+      role: "Auditeur Tactique de Ferrure D4, Engagements & Tandems",
+      specialite: "Configuration des pieds (D4 optimal vs ferr\xE9), recul 25m, plafond des gains, avantage au poids et synergie jockey/entra\xEEneur",
       colorTheme: "purple",
-      tacheAttribuee: "Passer au crible les artifices techniques : configuration de ferrure (priorit\xE9 aux chevaux D4 pr\xE9sent\xE9s sans fers pour l'objectif), recul de distance \xE9ventuel de 25m, et taux de r\xE9ussite historique du tandem Driver/Jockey avec l'Entra\xEEneur.",
-      focalisation: "Engagement cibl\xE9, aff\xFBtage du jour et complicit\xE9 de l'entourage professionnel.",
-      methode: "Croisement de l'historique des \xE9curies, des variations de ferrures et du rendement au poids.",
+      tacheAttribuee: "Passer au crible les artifices techniques en synergie (Claude 4.6 & Gemini 3.6) : configuration de ferrure (priorit\xE9 aux chevaux D4 pr\xE9sent\xE9s sans fers pour l'objectif), recul de distance \xE9ventuel de 25m, et taux de r\xE9ussite historique du tandem Driver/Jockey avec l'Entra\xEEneur.",
+      focalisation: "Configuration des pieds (D4 optimal vs ferr\xE9), recul 25m, plafond des gains et aff\xFBtage du jour.",
+      methode: "Croisement de l'historique des \xE9curies, des variations de ferrures et du rendement au poids par Claude 4.6 & Gemini 3.6.",
       verdictGlobal: `Le N\xB0${topFerrure} se pr\xE9sente en configuration commando (D4 - d\xE9ferr\xE9 des 4 fers). Le tandem Driver / Entra\xEEneur affiche un taux de r\xE9ussite de plus de 45% dans les Quint\xE9+.`,
       topChevauxRecommandes: [topFerrure, base1 || 1, synthese?.outsiders?.[1] || 12].filter(Boolean),
-      indiceSpecialiste: 9.1
+      indiceSpecialiste: 9.7
     },
     {
       id: "perplexity-ai",

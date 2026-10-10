@@ -528,6 +528,28 @@ export const GeminiCollegeLogicPanel: React.FC<GeminiCollegeLogicPanelProps> = (
                           {factor.details}
                         </p>
 
+                        {/* Affichage de l'arrivée en temps réel pour le facteur Cotes & Marché */}
+                        {factor.id === 'cotes' && (
+                          <div className="p-2.5 rounded-xl bg-slate-900 border border-amber-500/40 flex items-center justify-between gap-2 shadow-inner">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                              <span className="text-[11px] font-black text-amber-300">
+                                🏁 Arrivée en temps réel :
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-xs font-black text-white">
+                                {course.arriveeOfficielle ? course.arriveeOfficielle : 'Surveillance active des flux live...'}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded text-[9px] font-black ${
+                                course.arriveeOfficielle ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 text-amber-300 border border-amber-500/30'
+                              }`}>
+                                {course.arriveeOfficielle ? 'Officielle certifiée' : 'En direct'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Métriques clés */}
                         <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-850">
                           {factor.metrics.map((m, mIdx) => (

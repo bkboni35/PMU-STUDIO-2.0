@@ -783,10 +783,10 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
                                 </p>
                               </div>
 
-                              {/* Avis Gemini 3.5 Flash */}
+                              {/* Avis Claude 4.6 & Gemini 3.6 */}
                               <div className="p-3 rounded-xl bg-slate-900 border border-purple-500/30 space-y-1">
                                 <div className="flex items-center justify-between text-[11px] font-black text-purple-400">
-                                  <span>Gemini 3.5 Flash (Ferrure)</span>
+                                  <span>Claude 4.6 & Gemini 3.6 (Ferrure D4)</span>
                                   <span>{evalG.gemini35.note}/100</span>
                                 </div>
                                 <div className="text-[10px] text-purple-300/80 font-bold">

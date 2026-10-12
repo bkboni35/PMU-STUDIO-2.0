@@ -21,6 +21,7 @@ import {
   Crown,
 } from 'lucide-react';
 import { UserProfile } from '../types/userAuth';
+import { scrollToTopInstant } from '../utils/scrollHelper';
 import {
   loginWithEmail,
   loginWithFirebaseUser,
@@ -85,8 +86,9 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
       if (currentUser?.email) {
         setLoginEmailInput(currentUser.email);
       }
+      scrollToTopInstant();
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, activeTab]);
 
   if (!isOpen) return null;
 

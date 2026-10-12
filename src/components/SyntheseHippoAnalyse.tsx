@@ -1,10 +1,9 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Sparkles, Trophy, ShieldCheck, Flame, AlertOctagon, HelpCircle, Check, ArrowRight, FileDown, FileSpreadsheet, Printer, CheckCircle2, Calendar, Brain, Star, Crown, Copy, FileText, Compass, Mail, Loader2, TrendingDown, TrendingUp, Filter, ArrowDownUp, ShieldAlert } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { exportCourseToExcel } from '../utils/excelExport';
 import { StatsPerformanceChart } from './StatsPerformanceChart';
-import { HierarchieQuinteV38Banner } from './HierarchieQuinteV38Banner';
 import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
 import { QuinteOrdresSection } from './QuinteOrdresSection';
 import { DisciplineGridTable } from './DisciplineGridTable';
@@ -15,6 +14,7 @@ import { PronosticsDeJeuView } from './PronosticsDeJeuView';
 import { sendRaceAnalysisEmail } from '../utils/gmailService';
 import { getStoredUserSession } from '../utils/userAuthStorage';
 import { computeV38Hierarchy, computeHorseSuccessProbabilities, buildRealV38Synthese, isDummySequentialSelection } from '../utils/v38Helper';
+import { scrollToTopInstant } from '../utils/scrollHelper';
 
 interface SyntheseHippoAnalyseProps {
   course: CourseHippique;
@@ -23,6 +23,7 @@ interface SyntheseHippoAnalyseProps {
   onNavigateToCalendar?: () => void;
   onNavigateToCollege?: () => void;
   initialSubView?: 'pronostic' | 'classification' | 'pronostics-jeu' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout';
+  onOpenMusiqueDecoder?: (musique: string, nom: string) => void;
 }
 
 export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
@@ -32,6 +33,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   onNavigateToCalendar,
   onNavigateToCollege,
   initialSubView = 'pronostic',
+  onOpenMusiqueDecoder,
 }) => {
   if (!course) {
     return (
@@ -61,12 +63,12 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
 
   const handleSubViewChange = (newSubView: 'pronostic' | 'classification' | 'pronostics-jeu' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout') => {
     setSubView(newSubView);
-    if (containerRef.current) {
-      containerRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    } else {
-      window.scrollTo({ top: 350, behavior: 'smooth' });
-    }
+    scrollToTopInstant();
   };
+
+  useEffect(() => {
+    scrollToTopInstant();
+  }, [subView, course?.sourceUrl]);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [isExportingQuintePdf, setIsExportingQuintePdf] = useState(false);
@@ -474,7 +476,18 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                     </div>
 
                     <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-800/80">
-                      <span className="truncate max-w-[120px] font-mono">{p.musique || '—'}</span>
+                      {onOpenMusiqueDecoder && p.musique && p.musique !== '?' && p.musique !== 'Inconnu' && p.musique.trim() !== '' ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenMusiqueDecoder(p.musique, p.nom)}
+                          className="font-mono text-amber-300 hover:text-amber-200 underline truncate max-w-[120px] text-left cursor-pointer"
+                          title="Cliquez pour décrypter cette musique"
+                        >
+                          {p.musique}
+                        </button>
+                      ) : (
+                        <span className="truncate max-w-[120px] font-mono">{p.musique || '—'}</span>
+                      )}
                       <span className="font-bold text-slate-300">{p.hippoScore} pts</span>
                     </div>
 
@@ -642,7 +655,20 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                                 </div>
                               </div>
                             </td>
-                            <td className="py-4 px-4 font-mono text-xs opacity-90 border-r border-slate-700/60">{p.musique || '—'}</td>
+                            <td className="py-4 px-4 font-mono text-xs opacity-90 border-r border-slate-700/60">
+                              {onOpenMusiqueDecoder && p.musique && p.musique !== '?' && p.musique !== 'Inconnu' && p.musique.trim() !== '' ? (
+                                <button
+                                  type="button"
+                                  onClick={() => onOpenMusiqueDecoder(p.musique, p.nom)}
+                                  className="text-amber-300 hover:text-amber-200 underline cursor-pointer font-mono"
+                                  title="Cliquez pour décrypter cette musique"
+                                >
+                                  {p.musique}
+                                </button>
+                              ) : (
+                                p.musique || '—'
+                              )}
+                            </td>
                             <td className="py-4 px-4 text-xs uppercase tracking-tight border-r border-slate-700/60">{p.driver || '—'}</td>
                             <td className="py-4 px-4 text-center border-r border-slate-700/60">
                               <span className="bg-slate-950/60 px-2 py-1 rounded-lg border border-slate-800 text-xs font-semibold">
@@ -900,9 +926,6 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
               ))}
             </div>
           </div>
-
-          {/* Tableau Officiel de Répartition par Discipline (Hiérarchie V38) */}
-          <DisciplineGridTable course={course} variant="dark" />
 
           {/* Rectangle d'Alerte : Les 5 baisses de cotes significatives */}
           {topBaisses && topBaisses.length > 0 && (
@@ -1188,11 +1211,6 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
               </button>
 
             </div>
-          </div>
-
-          {/* Bandeau Officiel Spécifié avec les différentes parties (BASE, 2e BASE, CHANCES, OUTSIDERS, TOCARDS) */}
-          <div className="my-4 relative z-10">
-            <HierarchieQuinteV38Banner course={course} />
           </div>
 
           {/* Bandeau interactif de sélection directe */}
@@ -1528,9 +1546,20 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
 
                     {/* Musique & HippoScore V38 */}
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
-                      <span className="font-mono text-slate-300 font-medium truncate max-w-[120px]">
-                        {h.musique || '—'}
-                      </span>
+                      {onOpenMusiqueDecoder && h.musique && h.musique !== '?' && h.musique !== 'Inconnu' && h.musique.trim() !== '' ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenMusiqueDecoder(h.musique, h.nom)}
+                          className="font-mono text-amber-300 hover:text-amber-200 underline truncate max-w-[120px] text-left cursor-pointer"
+                          title="Cliquez pour décrypter cette musique"
+                        >
+                          {h.musique}
+                        </button>
+                      ) : (
+                        <span className="font-mono text-slate-300 font-medium truncate max-w-[120px]">
+                          {h.musique || '—'}
+                        </span>
+                      )}
                       <span className="font-black text-amber-300">
                         {h.hippoScore} pts
                       </span>

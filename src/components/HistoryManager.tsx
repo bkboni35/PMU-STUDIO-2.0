@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   History,
   Trash2,
@@ -12,6 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
   BarChart2,
+  BarChart3,
   RefreshCw,
   Radio,
   Zap,
@@ -20,10 +21,14 @@ import {
   AlertTriangle,
   Printer,
   FileText,
+  Calendar,
+  CalendarDays,
+  Filter,
+  X,
 } from 'lucide-react';
 import { CourseHippique } from '../types/turf';
 import { CountdownTimer } from './CountdownTimer';
-import { HierarchieQuinteV38Banner } from './HierarchieQuinteV38Banner';
+import { scrollToTopInstant } from '../utils/scrollHelper';
 import { convertToUTC } from '../utils/timeConversion';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import {
@@ -35,6 +40,7 @@ import {
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
 import { TrackWeatherAnalysisCard } from './TrackWeatherAnalysisCard';
 import { PronosticsDeJeuView } from './PronosticsDeJeuView';
+import { BacktestStrategieModal } from './BacktestStrategieModal';
 
 interface HistoryManagerProps {
   history: HistoryCourseItem[];
@@ -57,8 +63,82 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'pronostics' | 'arrivals'>('all');
+
+  // Filtrage par calendrier / plage de dates
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
+  const [datePreset, setDatePreset] = useState<'all' | 'today' | 'yesterday' | '7days' | '30days' | 'month' | 'custom'>('all');
+  const [dateTargetMode, setDateTargetMode] = useState<'analyzedAt' | 'raceDate' | 'both'>('analyzedAt');
+
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isBacktestModalOpen, setIsBacktestModalOpen] = useState(false);
+
+  useLayoutEffect(() => {
+    scrollToTopInstant();
+  }, [historyFilter, datePreset, startDate, endDate, dateTargetMode]);
+
+  useEffect(() => {
+    scrollToTopInstant();
+  }, [historyFilter, datePreset, startDate, endDate, dateTargetMode]);
+
+  // Gestionnaires pour le filtre par calendrier
+  const handleSelectDatePreset = (preset: 'all' | 'today' | 'yesterday' | '7days' | '30days' | 'month' | 'custom') => {
+    setDatePreset(preset);
+    const now = new Date();
+    const formatYMD = (d: Date) => {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    if (preset === 'all') {
+      setStartDate('');
+      setEndDate('');
+    } else if (preset === 'today') {
+      const todayStr = formatYMD(now);
+      setStartDate(todayStr);
+      setEndDate(todayStr);
+    } else if (preset === 'yesterday') {
+      const y = new Date(now);
+      y.setDate(y.getDate() - 1);
+      const yStr = formatYMD(y);
+      setStartDate(yStr);
+      setEndDate(yStr);
+    } else if (preset === '7days') {
+      const d7 = new Date(now);
+      d7.setDate(d7.getDate() - 6);
+      setStartDate(formatYMD(d7));
+      setEndDate(formatYMD(now));
+    } else if (preset === '30days') {
+      const d30 = new Date(now);
+      d30.setDate(d30.getDate() - 29);
+      setStartDate(formatYMD(d30));
+      setEndDate(formatYMD(now));
+    } else if (preset === 'month') {
+      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      setStartDate(formatYMD(firstOfMonth));
+      setEndDate(formatYMD(now));
+    } else if (preset === 'custom') {
+      // conserver les valeurs saisies manuellement
+    }
+  };
+
+  const handleClearDateFilter = () => {
+    setDatePreset('all');
+    setStartDate('');
+    setEndDate('');
+  };
+
+  const formatDateFR = (ymdStr: string) => {
+    if (!ymdStr) return '';
+    const parts = ymdStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return ymdStr;
+  };
 
   // Cartes comparatives dépliées (Analyse Après Course & Tracé & Pronostics de Jeu)
   const [expandedPronosticsId, setExpandedPronosticsId] = useState<string | null>(null);
@@ -261,10 +341,11 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
       // Interroger en premier lieu les arrivées en direct via Google Search Grounding (PMU & Paris-Turf)
       let liveGroundingArrivals: any[] = [];
       try {
+        const todayIso = new Date().toISOString().split('T')[0];
         const gResp = await fetch('/api/extract-arrivals-grounding', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: 'all', date: '2026-10-01' })
+          body: JSON.stringify({ source: 'all', date: todayIso })
         });
         if (gResp.ok) {
           const gData = await gResp.json();
@@ -362,17 +443,66 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
   };
 
   const filteredHistory = history.filter((item) => {
+    // 1. Filtrage par recherche textuelle
     const q = searchQuery.toLowerCase().trim();
-    if (!q) return true;
-    const course = item.course;
-    return (
-      course.titre.toLowerCase().includes(q) ||
-      course.hippodrome.toLowerCase().includes(q) ||
-      (course.reunion && course.reunion.toLowerCase().includes(q)) ||
-      (course.discipline && course.discipline.toLowerCase().includes(q)) ||
-      (course.arriveeOfficielle && course.arriveeOfficielle.includes(q)) ||
-      course.partants?.some((p) => p.nom.toLowerCase().includes(q))
-    );
+    if (q) {
+      const course = item.course;
+      const matchSearch =
+        course.titre.toLowerCase().includes(q) ||
+        course.hippodrome.toLowerCase().includes(q) ||
+        (course.reunion && course.reunion.toLowerCase().includes(q)) ||
+        (course.discipline && course.discipline.toLowerCase().includes(q)) ||
+        (course.arriveeOfficielle && course.arriveeOfficielle.includes(q)) ||
+        course.partants?.some((p) => p.nom.toLowerCase().includes(q));
+      if (!matchSearch) return false;
+    }
+
+    // 2. Filtre par type d'historique (historyFilter)
+    if (historyFilter === 'pronostics') {
+      if (!item.course.synthese?.selection8 || item.course.synthese.selection8.length === 0) return false;
+    } else if (historyFilter === 'arrivals') {
+      if (!item.course.arriveeOfficielle) return false;
+    }
+
+    // 3. Filtrage par Calendrier / Plage de dates
+    if (startDate || endDate) {
+      // Date d'analyse (formatted YYYY-MM-DD)
+      const d = new Date(item.analyzedAt);
+      const analyzedYMD = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+      // Date de la course (si disponible et analysable)
+      let raceYMD: string | null = null;
+      if (item.course.date) {
+        const rawDate = item.course.date.trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(rawDate)) {
+          raceYMD = rawDate;
+        } else {
+          const matchFR = rawDate.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+          if (matchFR) {
+            raceYMD = `${matchFR[3]}-${matchFR[2]}-${matchFR[1]}`;
+          }
+        }
+      }
+
+      const checkRange = (ymd: string) => {
+        if (startDate && ymd < startDate) return false;
+        if (endDate && ymd > endDate) return false;
+        return true;
+      };
+
+      if (dateTargetMode === 'analyzedAt') {
+        if (!checkRange(analyzedYMD)) return false;
+      } else if (dateTargetMode === 'raceDate') {
+        const target = raceYMD || analyzedYMD;
+        if (!checkRange(target)) return false;
+      } else if (dateTargetMode === 'both') {
+        const matchAnalyzed = checkRange(analyzedYMD);
+        const matchRace = raceYMD ? checkRange(raceYMD) : false;
+        if (!matchAnalyzed && !matchRace) return false;
+      }
+    }
+
+    return true;
   });
 
   const handleDelete = (id: string, titre: string) => {
@@ -587,6 +717,17 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
               <span>🏁 Arrivées Live Grounding</span>
             </button>
 
+            {/* Bouton Backtest Stratégique & Simulateur */}
+            <button
+              type="button"
+              onClick={() => setIsBacktestModalOpen(true)}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
+              title="🎯 Lancer le Backtest Stratégique et simuler vos règles mécaniques de jeu (Trio, Simple, Couplé)"
+            >
+              <BarChart3 className="w-4 h-4 text-slate-950" />
+              <span>🎯 Backtest & Simulateur IA</span>
+            </button>
+
             {/* Bouton de Purge Automatique des courses passées */}
             {history.length > 0 && (
               <button
@@ -645,6 +786,192 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
         </div>
       )}
 
+      {/* FILTRAGE PAR CALENDRIER & PLAGE DE DATES */}
+      {history.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-black text-white">
+                    Filtrage par Calendrier & Plage de Dates
+                  </h3>
+                  {(startDate || endDate) && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black animate-pulse flex items-center gap-1">
+                      <Filter className="w-3 h-3 text-amber-400" />
+                      Filtre actif : {startDate ? formatDateFR(startDate) : 'Début'} {endDate ? `➔ ${formatDateFR(endDate)}` : ''}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Retrouvez vos analyses passées par date d'analyse ou date de la course ({filteredHistory.length} sur {history.length} affichée{filteredHistory.length > 1 ? 's' : ''}).
+                </p>
+              </div>
+            </div>
+
+            {/* Mode Cible : Date d'Analyse vs Date de la Course */}
+            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-2xl border border-slate-800 shrink-0 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setDateTargetMode('analyzedAt')}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                  dateTargetMode === 'analyzedAt'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Filtrer selon la date à laquelle la course a été analysée"
+              >
+                Date d'Analyse
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateTargetMode('raceDate')}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                  dateTargetMode === 'raceDate'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Filtrer selon la date programmée de la course"
+              >
+                Date de Course
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateTargetMode('both')}
+                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                  dateTargetMode === 'both'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Filtrer si la date d'analyse OU la date de course correspond"
+              >
+                Les Deux
+              </button>
+            </div>
+          </div>
+
+          {/* Presets rapides (Aujourd'hui, Hier, 7j, 30j, Ce mois-ci, Tout) */}
+          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+            <span className="text-[11px] font-bold text-slate-400 mr-1 flex items-center gap-1">
+              <CalendarDays className="w-3.5 h-3.5 text-amber-400" />
+              Accès rapide :
+            </span>
+
+            {[
+              { id: 'all', label: 'Toutes les dates' },
+              { id: 'today', label: 'Aujourd\'hui' },
+              { id: 'yesterday', label: 'Hier' },
+              { id: '7days', label: '7 derniers jours' },
+              { id: '30days', label: '30 derniers jours' },
+              { id: 'month', label: 'Ce mois-ci' },
+              { id: 'custom', label: 'Plage sur mesure' },
+            ].map((p) => {
+              const isActive = datePreset === p.id && (p.id !== 'custom' || (startDate || endDate));
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => handleSelectDatePreset(p.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                    isActive
+                      ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 border-amber-300 font-black shadow-sm'
+                      : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700/80 hover:border-amber-500/30'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              );
+            })}
+
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={handleClearDateFilter}
+                className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-500/40 text-xs font-black transition-all flex items-center gap-1 ml-auto"
+                title="Effacer le filtre calendrier"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Réinitialiser</span>
+              </button>
+            )}
+          </div>
+
+          {/* Formulaire Sélection de Dates Personnalisée */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80">
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                <span>Date de début (du) :</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => {
+                    setStartDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-500/60 transition-all font-mono"
+                />
+                {startDate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStartDate('');
+                      if (!endDate) setDatePreset('all');
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                <span>Date de fin (au) :</span>
+              </label>
+              <div className="relative">
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => {
+                    setEndDate(e.target.value);
+                    setDatePreset('custom');
+                  }}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-500/60 transition-all font-mono"
+                />
+                {endDate && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEndDate('');
+                      if (!startDate) setDatePreset('all');
+                    }}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Information résumé du filtre de dates */}
+            <div className="space-y-1 flex flex-col justify-end">
+              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 flex items-center justify-between">
+                <span className="text-slate-400 text-[11px]">Analyses dans la plage :</span>
+                <span className="font-mono font-extrabold text-amber-400 text-sm">
+                  {filteredHistory.length} / {history.length}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Search Input Bar */}
       {history.length > 0 && (
         <div className="relative">
@@ -672,17 +999,37 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
       {filteredHistory.length === 0 ? (
         <div className="text-center py-16 px-4 bg-slate-900/60 rounded-3xl border border-slate-800/80 space-y-4">
           <div className="w-16 h-16 mx-auto rounded-3xl bg-slate-800 flex items-center justify-center text-slate-500">
-            <History className="w-8 h-8" />
+            {startDate || endDate ? (
+              <Calendar className="w-8 h-8 text-amber-400" />
+            ) : (
+              <History className="w-8 h-8" />
+            )}
           </div>
           <div>
             <h3 className="text-lg font-bold text-slate-200">
-              {searchQuery ? 'Aucun résultat pour cette recherche' : 'Aucune course dans l\'historique'}
+              {startDate || endDate
+                ? 'Aucune analyse trouvée pour cette plage de dates'
+                : searchQuery
+                ? 'Aucun résultat pour cette recherche'
+                : 'Aucune course dans l\'historique'}
             </h3>
             <p className="text-xs text-slate-400 max-w-md mx-auto mt-1">
-              {searchQuery
+              {startDate || endDate
+                ? `Aucune analyse enregistrée entre ${startDate ? formatDateFR(startDate) : 'le début'} et ${endDate ? formatDateFR(endDate) : 'aujourd\'hui'}. Essayez de modifier ou réinitialiser le filtre calendrier.`
+                : searchQuery
                 ? 'Essayez de modifier votre recherche avec un autre nom de cheval ou hippodrome.'
                 : 'Chaque analyse de lien officiel (Geny.com, Paris-Turf) s\'enregistre automatiquement ici avec mise à jour temps réel.'}
             </p>
+            {(startDate || endDate) && (
+              <button
+                type="button"
+                onClick={handleClearDateFilter}
+                className="mt-4 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-black transition-all shadow inline-flex items-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Réinitialiser le filtre calendrier</span>
+              </button>
+            )}
           </div>
         </div>
       ) : (
@@ -1029,11 +1376,6 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
                   </div>
-                </div>
-
-                {/* Bandeau Officiel HIÉRARCHIE QUINTÉ+ V38 (BASE, 2e BASE, CHANCES, OUTSIDERS, TOCARDS) */}
-                <div className="mt-3">
-                  <HierarchieQuinteV38Banner course={course} />
                 </div>
 
                 {/* Panneau dépliant : PRONOSTICS DE JEU (Base de Jeu, TOP 8, Gros Rapport) */}
@@ -1405,6 +1747,13 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
             setIsArrivalsModalOpen(false);
           }
         }}
+      />
+
+      {/* Modale de Backtesting Stratégique & Simulation Walk-Forward */}
+      <BacktestStrategieModal
+        isOpen={isBacktestModalOpen}
+        onClose={() => setIsBacktestModalOpen(false)}
+        history={history}
       />
     </div>
   );

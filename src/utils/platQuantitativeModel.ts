@@ -1,11 +1,14 @@
 import * as XLSX from 'xlsx';
 import { CourseHippique, Partant } from '../types/turf';
+import { getEvolutionPoids } from './turfCalculations';
 
 export interface PlatQuantitativeRunner {
   numero: number;
   nom: string;
   corde: number | string;
   poids: number | string;
+  poidsPrecedent?: number | string;
+  evolutionPoids?: number | string;
   jockey: string;
   entraineur: string;
   musique: string;
@@ -289,10 +292,16 @@ export function calculerModelePlatPondere(course: CourseHippique): PlatQuantitat
     }
     scoreClasse = Math.min(100, Math.max(0, scoreClasse));
 
-    // Module Poids (12%) : Score = 100 * (MAX - Poids) / (MAX - MIN) (Inversé : poids faible = avantage)
+    // Module Poids (12%) : Score = 100 * (MAX - Poids) / (MAX - MIN) + Ajustement Évolution Poids
     let scorePoids = 50;
     if (maxPoids > minPoids) {
       scorePoids = Number((100 * (maxPoids - it.poidsNum) / (maxPoids - minPoids)).toFixed(1));
+    }
+    const evolPoidsInfo = getEvolutionPoids(it as any);
+    if (evolPoidsInfo && evolPoidsInfo.diff !== 0) {
+      // Perte de poids (diff < 0) = avantage (+5 pts/kg), Surcharge (diff > 0) = pénalité (-4 pts/kg)
+      const adj = evolPoidsInfo.diff < 0 ? Math.abs(evolPoidsInfo.diff) * 5.0 : -evolPoidsInfo.diff * 4.0;
+      scorePoids = Number((scorePoids + adj).toFixed(1));
     }
     scorePoids = Math.min(100, Math.max(0, scorePoids));
 
@@ -324,6 +333,8 @@ export function calculerModelePlatPondere(course: CourseHippique): PlatQuantitat
       nom: it.nom,
       corde: it.corde,
       poids: it.poidsStr,
+      poidsPrecedent: (it as any).poidsPrecedent,
+      evolutionPoids: (it as any).evolutionPoids,
       jockey: it.jockey,
       entraineur: it.entraineur,
       musique: it.musique,

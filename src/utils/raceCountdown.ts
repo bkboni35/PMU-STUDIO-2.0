@@ -208,6 +208,24 @@ export function isCourseFinished(course: Partial<CourseHippique> | null | undefi
 }
 
 /**
+ * Vérifie si l'heure de départ officielle de la course est atteinte ou dépassée.
+ * Active le cycle de polling toutes les 15 secondes après l'heure de départ.
+ */
+export function isPastDepartureTime(course: Partial<CourseHippique> | null | undefined): boolean {
+  if (!course) return false;
+  if (!course.heure) return false;
+
+  try {
+    const targetTime = getRaceParisTargetTime(course.date, course.heure);
+    const now = new Date();
+    return now.getTime() >= targetTime.getTime();
+  } catch (e) {
+    console.warn("Erreur calcul isPastDepartureTime:", e);
+    return false;
+  }
+}
+
+/**
  * Calcule le temps restant en secondes avant l'heure de départ d'une course (format "HH:mm" ou "HHhMM")
  */
 export function getSecondsUntilRace(heureStr: string): number {

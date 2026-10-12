@@ -31,6 +31,7 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
   } | null>(null);
 
   const [timezoneMode, setTimezoneMode] = useState<'france' | 'ivory_coast'>('ivory_coast');
+  const [delayMinutes, setDelayMinutes] = useState<number>(0);
 
   useEffect(() => {
     try {
@@ -41,6 +42,39 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
     } catch {}
   }, []);
 
+  // Écouter les retards enregistrés en temps réel
+  useEffect(() => {
+    const checkDelay = () => {
+      try {
+        const stored = localStorage.getItem('hippo_race_delays');
+        if (stored) {
+          const delays = JSON.parse(stored);
+          const key = `${date}_${heure}`.toLowerCase().replace(/\s+/g, '');
+          const genericKey = heure.toLowerCase().replace(/\s+/g, '');
+          if (delays[key]) {
+            setDelayMinutes(delays[key].delayMinutes || 0);
+          } else if (delays[genericKey]) {
+            setDelayMinutes(delays[genericKey].delayMinutes || 0);
+          } else {
+            setDelayMinutes(0);
+          }
+        } else {
+          setDelayMinutes(0);
+        }
+      } catch {
+        setDelayMinutes(0);
+      }
+    };
+
+    checkDelay();
+    window.addEventListener('hippo_race_delay_updated', checkDelay);
+    window.addEventListener('storage', checkDelay);
+    return () => {
+      window.removeEventListener('hippo_race_delay_updated', checkDelay);
+      window.removeEventListener('storage', checkDelay);
+    };
+  }, [date, heure]);
+
   const { franceTime, ciTime } = getDualDepartureTimes(heure);
   const displayDepartureHour = timezoneMode === 'ivory_coast' ? ciTime : franceTime;
 
@@ -49,6 +83,9 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
       try {
         const now = new Date();
         const targetTime = getRaceParisTargetTime(date, heure);
+        if (delayMinutes > 0) {
+          targetTime.setTime(targetTime.getTime() + delayMinutes * 60 * 1000);
+        }
         const difference = targetTime.getTime() - now.getTime();
 
         if (difference <= 0) {
@@ -73,13 +110,28 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
     const timer = setInterval(calculateTimeLeft, 1000);
 
     return () => clearInterval(timer);
-  }, [date, heure]);
+  }, [date, heure, delayMinutes]);
 
   if (!timeLeft) return null;
 
   const isExplicitProvisional = isProvisional || statutCourse?.toLowerCase()?.includes('provisoire');
   const isExplicitOfficial = !isExplicitProvisional && (statutCourse?.toLowerCase()?.includes('officiel'));
-  const isExplicitFinished = !isExplicitProvisional && !isExplicitOfficial && (statutCourse?.toLowerCase()?.includes('termin'));
+  const isExplicitCourseEnCours = !isExplicitProvisional && !isExplicitOfficial && (statutCourse === 'Course en cours' || statutCourse?.toLowerCase()?.includes('en cours'));
+  const isExplicitFinished = !isExplicitProvisional && !isExplicitOfficial && !isExplicitCourseEnCours && (statutCourse?.toLowerCase()?.includes('termin'));
+
+  // 0. Statut explicite Course en cours
+  if (isExplicitCourseEnCours) {
+    return (
+      <div className={`inline-flex items-center gap-1.5 ${compact ? 'px-2.5 py-0.5 text-[10px]' : 'px-3 py-1 text-xs'} font-black text-rose-200 bg-rose-950/80 rounded-xl border border-rose-500/60 animate-pulse shadow-md shadow-rose-950/40`}>
+        <span className="relative flex h-2 w-2">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500"></span>
+        </span>
+        <Clock className={`${compact ? 'w-3 h-3 text-rose-300' : 'w-3.5 h-3.5 text-rose-300'}`} />
+        <span>Course en cours (Départ : {timezoneMode === 'ivory_coast' ? `${ciTime} CI` : `${franceTime} FR`})</span>
+      </div>
+    );
+  }
 
   // 1. Statut quand l'arrivée est provisoire (commissaires / homologation en cours)
   if (isExplicitProvisional) {
@@ -193,6 +245,12 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
           <span className="opacity-50">:</span>
           <span className={compact ? 'text-[11px]' : 'text-xs'}>{String(timeLeft.seconds).padStart(2, '0')}s</span>
         </div>
+
+        {delayMinutes > 0 && (
+          <span className="ml-1 px-1.5 py-0.5 rounded bg-rose-500/30 text-rose-300 text-[10px] font-black border border-rose-500/60 animate-pulse shrink-0">
+            Retard +{delayMinutes}m
+          </span>
+        )}
 
         {!compact && isImminent10Min && (
           <span className="text-[10px] font-extrabold uppercase tracking-wider opacity-90 ml-1">

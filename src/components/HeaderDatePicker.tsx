@@ -6,12 +6,14 @@ interface HeaderDatePickerProps {
   selectedDate: string;
   onDateChange: (newDate: string) => void;
   onOpenCalendar?: () => void;
+  onOpenPmuApiHub?: () => void;
 }
 
 export const HeaderDatePicker: React.FC<HeaderDatePickerProps> = ({
   selectedDate,
   onDateChange,
   onOpenCalendar,
+  onOpenPmuApiHub,
 }) => {
   // Calcul dynamique des dates calées sur la Côte d'Ivoire (GMT / Africa/Abidjan)
   const [todayCI, setTodayCI] = useState<string>(() => getIvoryCoastDate(0));
@@ -183,15 +185,16 @@ export const HeaderDatePicker: React.FC<HeaderDatePickerProps> = ({
           </button>
         </div>
 
-        {/* Bouton Voir Programme : ouvre le calendrier officiel actualisé */}
-        {onOpenCalendar && (
+        {/* Bouton Hub PMU API : remplace programme du jour */}
+        {(onOpenPmuApiHub || onOpenCalendar) && (
           <button
             type="button"
-            onClick={onOpenCalendar}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 active:scale-95 transition-all shrink-0"
-            title="Consulter le calendrier PMU officiel actualisé pour cette date (Auto-refresh 00h00 GMT)"
+            onClick={onOpenPmuApiHub || onOpenCalendar}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs shadow-md shadow-amber-500/25 active:scale-95 transition-all shrink-0 border border-amber-300 cursor-pointer"
+            title="Hub PMU API : Programmes officiels en direct, Turfinfo, Open PMU API & PMU Tech"
           >
-            <span>Voir Programme</span>
+            <Sparkles className="w-3.5 h-3.5 text-slate-950 fill-current" />
+            <span>Hub PMU API</span>
             <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
           </button>
         )}

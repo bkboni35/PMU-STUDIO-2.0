@@ -242,8 +242,8 @@ export const MobileMoneySubscriptionModal: React.FC<MobileMoneySubscriptionModal
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto">
-      <div className="relative w-full max-w-4xl my-auto bg-slate-900 border-2 border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-[100] flex items-start justify-center p-1 sm:p-3 sm:pt-2 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto">
+      <div className="relative w-full max-w-4xl mt-0 sm:mt-1 bg-slate-900 border-2 border-amber-500/40 rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[calc(100vh-1rem)]">
 
         {/* En-tête Supérieur */}
         <div className="bg-gradient-to-r from-slate-950 via-amber-950/50 to-slate-950 p-4 sm:p-5 border-b border-amber-500/30 flex items-center justify-between shrink-0">

@@ -5,6 +5,7 @@ import { buildExpertDisciplineAnalysis } from '../utils/expertDisciplinePrompts'
 import { exportCourseToExcel } from '../utils/excelExport';
 import { calculerModelePlatPondere, exportPlatModelToExcel } from '../utils/platQuantitativeModel';
 import { computeV38Hierarchy } from '../utils/v38Helper';
+import { getEvolutionPoids } from '../utils/turfCalculations';
 import { DisciplineGridTable } from './DisciplineGridTable';
 
 interface DisciplineExpertAnalysisModalProps {
@@ -269,7 +270,7 @@ export const DisciplineExpertAnalysisModal: React.FC<DisciplineExpertAnalysisMod
                     <tr className="bg-slate-900/90 text-slate-400 border-b border-slate-800 text-[10px] font-black uppercase tracking-wider">
                       <th className="py-3 px-2.5 text-center">Rang</th>
                       <th className="py-3 px-2.5">Cheval</th>
-                      <th className="py-3 px-2 text-center">Poids / Corde</th>
+                      <th className="py-3 px-2 text-center">Poids & Évol. / Corde</th>
                       <th className="py-3 px-2 text-center">Valeur</th>
                       <th className="py-3 px-2 text-center">Cote PMU</th>
                       <th className="py-3 px-2 text-center">Forme (22%)</th>
@@ -334,7 +335,19 @@ export const DisciplineExpertAnalysisModal: React.FC<DisciplineExpertAnalysisMod
                             </span>
                           </td>
                           <td className="py-2.5 px-2 text-center font-mono text-[11px] text-slate-300">
-                            {r.poids} kg · C{r.corde}
+                            {(() => {
+                              const evol = getEvolutionPoids(r as any);
+                              return (
+                                <div className="flex flex-col items-center justify-center leading-tight">
+                                  <span>{r.poids} kg {r.corde ? `· C${r.corde}` : ''}</span>
+                                  {evol && evol.hasChange && (
+                                    <span className={`text-[9px] font-black px-1 rounded border mt-0.5 ${evol.badgeBg}`} title={evol.label}>
+                                      {evol.text}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="py-2.5 px-2 text-center font-mono font-bold text-sky-300">
                             {r.valeur !== null ? r.valeur : '—'}

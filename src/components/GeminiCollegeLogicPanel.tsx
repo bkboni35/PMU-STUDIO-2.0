@@ -228,8 +228,8 @@ export const GeminiCollegeLogicPanel: React.FC<GeminiCollegeLogicPanelProps> = (
   }, [collegeTasks, selectedExpertId]);
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto">
-      <div className="bg-slate-900 border-2 border-amber-500/60 rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden my-auto flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-[9999] flex items-start justify-center p-1 sm:p-3 sm:pt-2 bg-slate-950/85 backdrop-blur-md animate-fadeIn overflow-y-auto">
+      <div className="bg-slate-900 border-2 border-amber-500/60 rounded-3xl w-full max-w-6xl shadow-2xl overflow-hidden mt-0 sm:mt-1 flex flex-col max-h-[96vh] sm:max-h-[calc(100vh-1rem)]">
         {/* Header de la Modal */}
         <div className="bg-slate-950 p-4 sm:p-5 border-b border-amber-500/40 flex items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-3">

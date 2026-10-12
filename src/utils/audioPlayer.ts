@@ -202,4 +202,54 @@ export function playOfficialArrivalFanfare(): void {
   }
 }
 
+/**
+ * Plays an urgent alert audio sequence when a post-arrival modification / retrogradation is detected by the commissaires.
+ */
+export function playArrivalModificationAlertAudio(): void {
+  try {
+    if (typeof window === 'undefined') return;
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+
+    const ctx = new AudioCtx();
+    if (ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+
+    const now = ctx.currentTime;
+
+    // Urgent alert sequence (sawtooth, sharp warning notes)
+    const notes = [
+      { freq: 880.00, start: 0.00, duration: 0.12 }, // A5
+      { freq: 659.25, start: 0.14, duration: 0.12 }, // E5
+      { freq: 523.25, start: 0.28, duration: 0.30 }, // C5
+      { freq: 440.00, start: 0.60, duration: 0.45 }, // A4
+    ];
+
+    notes.forEach(({ freq, start, duration }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(freq, now + start);
+
+      gain.gain.setValueAtTime(0.001, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.25, now + start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + start + duration);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now + start);
+      osc.stop(now + start + duration);
+    });
+
+    setTimeout(() => {
+      ctx.close().catch(() => {});
+    }, 1500);
+  } catch (err) {
+    console.warn('Could not play modification alert audio:', err);
+  }
+}
+
 export const audioPlayer = new AudioPlayerService();

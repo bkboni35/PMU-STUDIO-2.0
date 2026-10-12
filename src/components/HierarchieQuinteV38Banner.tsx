@@ -116,9 +116,9 @@ export const HierarchieQuinteV38Banner: React.FC<HierarchieQuinteV38BannerProps>
 
   return (
     <div
-      className={`rounded-xl bg-gradient-to-r from-slate-950 via-[#0a101d] to-slate-950 border-2 border-amber-500/80 p-2 sm:p-2.5 shadow-2xl transition-all overflow-x-auto w-full ${className}`}
+      className={`rounded-xl bg-gradient-to-r from-slate-950 via-[#0a101d] to-slate-950 border-2 border-amber-500/80 p-2 sm:p-2.5 shadow-2xl transition-all overflow-x-auto scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden w-full ${className}`}
     >
-      <div className="flex flex-nowrap items-center justify-between gap-1.5 sm:gap-2.5 text-xs font-black whitespace-nowrap w-full print:flex-nowrap print:whitespace-nowrap print:text-[10px]">
+      <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 sm:gap-2.5 text-xs font-black sm:whitespace-nowrap w-full print:flex-nowrap print:whitespace-nowrap print:text-[10px]">
         {/* Titre QUINTE + V38 : avec mention NP si non partant */}
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>

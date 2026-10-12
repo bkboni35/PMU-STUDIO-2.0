@@ -1,9 +1,10 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { CourseHippique } from '../types/turf';
+import { CourseHippique, Partant } from '../types/turf';
 import { convertToUTC } from './timeConversion';
 import { computePartantHippoScore, computeQuinteOrdres } from './geminiMultiModelEngine';
 import { computeV38Hierarchy, computeDisciplineGrid, computeHorseSuccessProbabilities } from './v38Helper';
+import { classerChevauxFormeEtPoints } from './turfCalculations';
 import { downloadPdfDocument } from './exportUtils';
 import { generateFicheV38PdfFromDom } from './ficheV38PdfGenerator';
 
@@ -11,6 +12,35 @@ import { generateFicheV38PdfFromDom } from './ficheV38PdfGenerator';
  * Exporte l'analyse complète de la course au format PDF structuré et soigné.
  */
 export function exportCourseToPdf(course: CourseHippique): void {
+  try {
+    if (typeof document !== 'undefined') {
+      generateFicheV38PdfFromDom(course, 'download').catch((err) => {
+        console.warn('DOM PDF export failed, fallback to jsPDF:', err);
+        fallbackCourseExport();
+      });
+      return;
+    }
+  } catch {}
+
+  fallbackCourseExport();
+
+  function fallbackCourseExport() {
+    try {
+      const doc = buildCoursePdfDoc(course);
+      const cleanHippodrome = (course.hippodrome || 'Course')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .toLowerCase();
+      const cleanDate = (course.date || 'date').replace(/[^a-zA-Z0-9]/g, '-');
+      const filename = `PRONOS_PMU_STUDIO_2_0_HIERARCHIE_V38_${course.reunion || 'R1'}${course.course || 'C1'}_${cleanHippodrome}_${cleanDate}.pdf`;
+
+      downloadPdfDocument(doc, filename);
+    } catch (err) {
+      console.error('Erreur génération PDF Course V38:', err);
+    }
+  }
+}
+
+function buildCoursePdfDoc(course: CourseHippique): jsPDF {
   try {
     const partantsCount = course.partants?.length || 0;
     const doc = new jsPDF({
@@ -466,7 +496,11 @@ export function exportCourseToPdf(course: CourseHippique): void {
       doc.text(ruleText, margin, gridStartY + 4);
 
       const gridHeaders = [['CATEGORIE', 'FAVORIS', 'OUTSIDERS', 'TOCARDS', 'SURPRISES']];
-      const gridRows = disciplineGrid.rows.map(r => [
+      const allGridRowsList = [
+        ...disciplineGrid.rows,
+        ...(disciplineGrid.formRows || []),
+      ];
+      const gridRows = allGridRowsList.map(r => [
         r.label || r.key,
         r.bases.length > 0 ? r.bases.join(' - ') : '—',
         r.chances.length > 0 ? r.chances.join(' - ') : '—',
@@ -537,8 +571,10 @@ export function exportCourseToPdf(course: CourseHippique): void {
     const filename = `PRONOS -PMU -STUDIO 2.0 - ${course.reunion || 'R1'}${course.course || 'C1'}_${cleanHippodrome}_${cleanDate}.pdf`;
 
     downloadPdfDocument(doc, filename);
+    return doc;
   } catch (err) {
     console.error('Erreur génération PDF:', err);
+    return new jsPDF();
   }
 }
 
@@ -627,6 +663,8 @@ export function buildQuinteOnlyPdfDoc(course: CourseHippique): jsPDF {
   // --- PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE) ---
   const v38Data = computeV38Hierarchy(course);
   const { selection11, basesSolides, chancesSerieuses, favoris = basesSolides, outsiders = chancesSerieuses, tocardsSpeculatifs, surprises, delaisses, isPlat } = v38Data;
+  const formClassification = classerChevauxFormeEtPoints(course.partants || []);
+  const disciplineGrid = computeDisciplineGrid(course);
 
   // Box Header Bar (Navy #0b1329)
   doc.setFillColor(11, 19, 41);
@@ -637,117 +675,432 @@ export function buildQuinteOnlyPdfDoc(course: CourseHippique): jsPDF {
   doc.setFontSize(8.5);
   doc.text('PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE)', margin + 4, yPos + 4.8);
 
-  // Right Badge: 🔒 COTES SCELLÉES SANS VARIATION
+  // Right Badge: COTES SCELLÉES SANS VARIATION (avec cadenas vectoriel propre, zéro artefact emoji)
+  const badgeW = 55;
+  const badgeH = 5.2;
+  const badgeX = pageWidth - margin - badgeW - 2;
+  const badgeY = yPos + 0.9;
   doc.setFillColor(6, 78, 59); // emerald-950
-  doc.setDrawColor(16, 185, 129);
-  doc.roundedRect(pageWidth - margin - 58, yPos + 1, 54, 5, 1, 1, 'FD');
+  doc.setDrawColor(16, 185, 129); // emerald-500
+  doc.setLineWidth(0.35);
+  doc.roundedRect(badgeX, badgeY, badgeW, badgeH, 1, 1, 'FD');
+
+  // Cadenas vectoriel soigné
+  const lockX = badgeX + 3.2;
+  const lockY = badgeY + 1.2;
+  doc.setDrawColor(52, 211, 153);
+  doc.setLineWidth(0.35);
+  doc.roundedRect(lockX + 0.5, lockY, 1.6, 1.6, 0.8, 0.8, 'S'); // arceau
+  doc.setFillColor(52, 211, 153);
+  doc.roundedRect(lockX, lockY + 1.2, 2.6, 2.0, 0.3, 0.3, 'F'); // corps
+
   doc.setTextColor(52, 211, 153); // emerald-400
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(6.5);
-  doc.text('🔒 COTES SCELLÉES SANS VARIATION', pageWidth - margin - 31, yPos + 4.2, { align: 'center' });
+  doc.text('COTES SCELLÉES SANS VARIATION', badgeX + 7.5, badgeY + 3.8);
 
-  yPos += 9;
+  yPos += 7.5;
 
-  // Container box for categories (Dark Navy #0b1329 for premium look)
+  // Container box for categories (Dark Navy #0b1329 matching Image 2)
   const boxWidth = pageWidth - margin * 2;
-  const boxHeight = 28;
+  const boxHeight = 36.5;
   doc.setFillColor(11, 19, 41); // #0b1329
   doc.setDrawColor(30, 41, 59); // slate-800
   doc.setLineWidth(0.4);
   doc.roundedRect(margin, yPos, boxWidth, boxHeight, 2, 2, 'FD');
 
+  // Helper pour dessiner un badge avec numéro en rectangle arrondi et cote dessous
+  const drawHorseBadgeWithCote = (
+    num: number | string,
+    coteVal: any,
+    x: number,
+    y: number,
+    bgRgb: [number, number, number],
+    borderRgb: [number, number, number],
+    textRgb: [number, number, number] = [255, 255, 255],
+    coteRgb: [number, number, number] = [255, 255, 255]
+  ) => {
+    const w = 9.2;
+    const h = 7.8;
+    const r = 1.6;
+
+    // Rectangle arrondi plein
+    doc.setFillColor(bgRgb[0], bgRgb[1], bgRgb[2]);
+    doc.setDrawColor(borderRgb[0], borderRgb[1], borderRgb[2]);
+    doc.setLineWidth(0.3);
+    doc.roundedRect(x, y, w, h, r, r, 'FD');
+
+    // Numéro centré en blanc gras
+    doc.setTextColor(textRgb[0], textRgb[1], textRgb[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text(String(num), x + w / 2, y + 5.3, { align: 'center' });
+
+    // Cote en dessous, centrée
+    const rawCote = typeof coteVal === 'number' ? coteVal.toString() : (coteVal || '—');
+    const coteStr = rawCote === '—' ? '—' : `${rawCote}/1`;
+    doc.setTextColor(coteRgb[0], coteRgb[1], coteRgb[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.text(coteStr, x + w / 2, y + h + 3.2, { align: 'center' });
+  };
+
   // Row 1: FAVORIS, OUTSIDERS, TOCARDS
   const colW3 = (boxWidth - 8) / 3;
+  const innerY = yPos + 3.5;
 
-  const formatCategoryText = (list: typeof basesSolides) =>
-    list.length > 0
-      ? list.map(p => `N°${p.numero} (${p.coteProbable || p.genyOdds || '—'}/1)`).join('   ')
-      : '—';
-
-  // 1. FAVORIS
-  const xCol1 = margin + 4;
+  // 1. FAVORIS (3 N°)
+  const col1X = margin + 4;
   doc.setTextColor(52, 211, 153); // emerald-400
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text('FAVORIS (3 N°) :', xCol1, yPos + 5);
-  doc.setTextColor(236, 253, 245); // emerald-50
-  doc.setFontSize(8);
-  doc.text(formatCategoryText(favoris), xCol1, yPos + 10);
+  doc.text('FAVORIS (3 N°) :', col1X, innerY + 1.5);
+  favoris.slice(0, 3).forEach((p, idx) => {
+    drawHorseBadgeWithCote(
+      p.numero,
+      p.coteProbable || p.genyOdds,
+      col1X + idx * 11.5,
+      innerY + 3.2,
+      [5, 150, 105], // #059669
+      [16, 185, 129],
+      [255, 255, 255],
+      [255, 255, 255]
+    );
+  });
 
-  // 2. OUTSIDERS
-  const xCol2 = margin + 4 + colW3 + 2;
-  doc.setTextColor(245, 158, 11); // amber-400
+  // 2. OUTSIDERS (3 N°)
+  const col2X = margin + 4 + colW3 + 2;
+  doc.setTextColor(56, 189, 248); // sky-400
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text('OUTSIDERS (3 N°) :', xCol2, yPos + 5);
-  doc.setTextColor(254, 243, 199); // amber-50
-  doc.setFontSize(8);
-  doc.text(formatCategoryText(outsiders), xCol2, yPos + 10);
+  doc.text('OUTSIDERS (3 N°) :', col2X, innerY + 1.5);
+  outsiders.slice(0, 3).forEach((p, idx) => {
+    drawHorseBadgeWithCote(
+      p.numero,
+      p.coteProbable || p.genyOdds,
+      col2X + idx * 11.5,
+      innerY + 3.2,
+      [2, 132, 199], // #0284c7
+      [56, 189, 248],
+      [255, 255, 255],
+      [255, 255, 255]
+    );
+  });
 
-  // 3. TOCARDS
-  const xCol3 = margin + 4 + (colW3 * 2) + 4;
+  // 3. TOCARDS (3 N°)
+  const col3X = margin + 4 + (colW3 * 2) + 4;
   doc.setTextColor(251, 113, 133); // rose-400
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text('TOCARDS (3 N°) :', xCol3, yPos + 5);
-  doc.setTextColor(255, 241, 242); // rose-50
-  doc.setFontSize(8);
-  doc.text(formatCategoryText(tocardsSpeculatifs), xCol3, yPos + 10);
+  doc.text('TOCARDS (3 N°) :', col3X, innerY + 1.5);
+  tocardsSpeculatifs.slice(0, 3).forEach((p, idx) => {
+    drawHorseBadgeWithCote(
+      p.numero,
+      p.coteProbable || p.genyOdds,
+      col3X + idx * 11.5,
+      innerY + 3.2,
+      [225, 29, 72], // #e11d48
+      [251, 113, 133],
+      [255, 255, 255],
+      [255, 255, 255]
+    );
+  });
 
   // Separator line
   doc.setDrawColor(30, 41, 59); // slate-800
   doc.setLineWidth(0.2);
-  doc.line(margin + 4, yPos + 14, margin + boxWidth - 4, yPos + 14);
+  doc.line(margin + 4, innerY + 16.5, margin + boxWidth - 4, innerY + 16.5);
 
   // Row 2: SURPRISES & DÉLAISSÉS
   const colW2 = (boxWidth - 8) / 2;
+  const row2Y = innerY + 18.5;
 
   // 4. SURPRISES
-  const xRow2Col1 = margin + 4;
   doc.setTextColor(192, 132, 252); // purple-400
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text(`SURPRISES (${surprises.length} N°) :`, xRow2Col1, yPos + 19);
-  doc.setTextColor(250, 245, 255); // purple-50
-  doc.setFontSize(8);
-  doc.text(formatCategoryText(surprises), xRow2Col1, yPos + 24);
+  doc.text(`SURPRISES (${surprises.length} N°) :`, col1X, row2Y + 1.5);
+  surprises.slice(0, 4).forEach((p, idx) => {
+    drawHorseBadgeWithCote(
+      p.numero,
+      p.coteProbable || p.genyOdds,
+      col1X + idx * 11.5,
+      row2Y + 3.2,
+      [190, 18, 60], // #be123c
+      [244, 63, 94],
+      [255, 255, 255],
+      [255, 255, 255]
+    );
+  });
 
   // 5. DÉLAISSÉS
-  const xRow2Col2 = margin + 4 + colW2 + 2;
+  const colDelaisseX = margin + 4 + colW2 + 2;
   doc.setTextColor(148, 163, 184); // slate-400
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text('DÉLAISSÉS (↓ N°) :', xRow2Col2, yPos + 19);
-  doc.setTextColor(241, 245, 249); // slate-100
+  doc.text('DÉLAISSÉS (↓ N°) :', colDelaisseX, row2Y + 1.5);
+  if (!delaisses || delaisses.length === 0) {
+    doc.setTextColor(148, 163, 184);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9.5);
+    doc.text('—', colDelaisseX + 2, row2Y + 8);
+  } else {
+    delaisses.slice(0, 6).forEach((p, idx) => {
+      drawHorseBadgeWithCote(
+        p.numero,
+        p.coteProbable || p.genyOdds,
+        colDelaisseX + idx * 11.5,
+        row2Y + 3.2,
+        [51, 65, 85], // #334155
+        [71, 85, 105],
+        [255, 255, 255],
+        [203, 213, 225]
+      );
+    });
+  }
+
+  yPos += boxHeight + 4;
+
+  // --- 4. GRILLE V38 DISCIPLINE (TABLEAU DE RÉPARTITION) ---
+  doc.setFillColor(11, 19, 41);
+  doc.roundedRect(margin, yPos, boxWidth, 6, 1.2, 1.2, 'F');
+  doc.setTextColor(251, 191, 36); // amber-400
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.text(`CRITÈRES D'ATTRIBUTION DES LIGNES (${disciplineGrid.title}) :`, margin + 3, yPos + 4.2);
+
+  doc.setTextColor(148, 163, 184);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(6.5);
+  const critDesc = `${disciplineGrid.rows[0]?.label || 'A'} : ${disciplineGrid.rows[0]?.description} | ${disciplineGrid.rows[1]?.label || 'B'} : ${disciplineGrid.rows[1]?.description} | ${disciplineGrid.rows[2]?.label || 'C'} : ${disciplineGrid.rows[2]?.description}`;
+  doc.text(critDesc, pageWidth - margin - 3, yPos + 4.2, { align: 'right' });
+
+  yPos += 7;
+
+  // En-tête de la grille de répartition (Sky blue #38bdf8, colonnes 4 cm)
+  const colCatW = 26;
+  const colGroupW = 40;
+  doc.setFillColor(56, 189, 248); // #38bdf8
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.35);
+
+  doc.rect(margin, yPos, colCatW, 6.2, 'FD');
+  doc.rect(margin + colCatW, yPos, colGroupW, 6.2, 'FD');
+  doc.rect(margin + colCatW + colGroupW, yPos, colGroupW, 6.2, 'FD');
+  doc.rect(margin + colCatW + colGroupW * 2, yPos, colGroupW, 6.2, 'FD');
+  doc.rect(margin + colCatW + colGroupW * 3, yPos, colGroupW, 6.2, 'FD');
+
+  doc.setTextColor(15, 23, 42); // Black/Navy
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7.5);
+  doc.text('CATEGORIE', margin + colCatW / 2, yPos + 4.2, { align: 'center' });
+  doc.text('FAVORIS', margin + colCatW + colGroupW / 2, yPos + 4.2, { align: 'center' });
+  doc.text('OUTSIDERS', margin + colCatW + colGroupW + colGroupW / 2, yPos + 4.2, { align: 'center' });
+  doc.text('TOCARDS', margin + colCatW + colGroupW * 2 + colGroupW / 2, yPos + 4.2, { align: 'center' });
+  doc.text('SURPRISES', margin + colCatW + colGroupW * 3 + colGroupW / 2, yPos + 4.2, { align: 'center' });
+
+  yPos += 6.2;
+
+  // Lignes A, B, C de la Grille de Répartition avec rectangles arrondis de numéros
+  const drawGridMiniBadges = (
+    nums: number[],
+    cellStartX: number,
+    cellW: number,
+    rowY: number,
+    bgRgb: [number, number, number],
+    borderRgb: [number, number, number],
+    txtRgb: [number, number, number] = [255, 255, 255]
+  ) => {
+    if (!nums || nums.length === 0) {
+      doc.setTextColor(100, 116, 139);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.5);
+      doc.text('—', cellStartX + cellW / 2, rowY + 6.2, { align: 'center' });
+      return;
+    }
+
+    const bW = 7.5;
+    const bH = 6.6;
+    const bGap = 2.0;
+    const totalW = nums.length * bW + (nums.length - 1) * bGap;
+    const startX = cellStartX + (cellW - totalW) / 2;
+
+    nums.forEach((n, idx) => {
+      const curX = startX + idx * (bW + bGap);
+      doc.setFillColor(bgRgb[0], bgRgb[1], bgRgb[2]);
+      doc.setDrawColor(borderRgb[0], borderRgb[1], borderRgb[2]);
+      doc.setLineWidth(0.25);
+      doc.roundedRect(curX, rowY + 1.8, bW, bH, 1.4, 1.4, 'FD');
+
+      doc.setTextColor(txtRgb[0], txtRgb[1], txtRgb[2]);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(8.2);
+      doc.text(String(n), curX + bW / 2, rowY + 6.2, { align: 'center' });
+    });
+  };
+
+  const gridRowH = 10.2;
+  disciplineGrid.rows.forEach((r) => {
+    doc.setFillColor(15, 23, 42); // #0f172a Dark
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.35);
+
+    doc.rect(margin, yPos, colCatW, gridRowH, 'FD');
+    doc.rect(margin + colCatW, yPos, colGroupW, gridRowH, 'FD');
+    doc.rect(margin + colCatW + colGroupW, yPos, colGroupW, gridRowH, 'FD');
+    doc.rect(margin + colCatW + colGroupW * 2, yPos, colGroupW, gridRowH, 'FD');
+    doc.rect(margin + colCatW + colGroupW * 3, yPos, colGroupW, gridRowH, 'FD');
+
+    // Catégorie Badge (A / B / C)
+    doc.setFillColor(30, 41, 59);
+    doc.roundedRect(margin + colCatW / 2 - 3.8, yPos + 1.2, 7.6, 5.0, 1.2, 1.2, 'F');
+    doc.setTextColor(251, 191, 36);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8.2);
+    doc.text(r.label || r.key, margin + colCatW / 2, yPos + 4.7, { align: 'center' });
+
+    doc.setTextColor(148, 163, 184);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.2);
+    doc.text(r.description || '', margin + colCatW / 2, yPos + 8.6, { align: 'center' });
+
+    // Colonnes FAVORIS (Vert), OUTSIDERS (Jaune/Ambre), TOCARDS (Orange), SURPRISES (Violet)
+    drawGridMiniBadges(r.bases, margin + colCatW, colGroupW, yPos, [5, 150, 105], [16, 185, 129], [255, 255, 255]);
+    drawGridMiniBadges(r.chances, margin + colCatW + colGroupW, colGroupW, yPos, [245, 158, 11], [252, 211, 77], [15, 23, 42]);
+    drawGridMiniBadges(r.tocards, margin + colCatW + colGroupW * 2, colGroupW, yPos, [249, 115, 22], [251, 146, 60], [255, 255, 255]);
+    drawGridMiniBadges(r.surprises, margin + colCatW + colGroupW * 3, colGroupW, yPos, [147, 51, 234], [192, 132, 252], [255, 255, 255]);
+
+    yPos += gridRowH;
+  });
+
+  // --- 5. BANDE ORANGE DE SÉPARATION (0,70 CM) AVEC BORDURES BLANCHES NETTES ---
+  yPos += 2.5;
+  const bandeH = 6.4;
+  doc.setFillColor(245, 158, 11); // Amber-500
+  doc.rect(margin, yPos, boxWidth, bandeH, 'F');
+  doc.setDrawColor(255, 255, 255);
+  doc.setLineWidth(0.5);
+  doc.line(margin, yPos, margin + boxWidth, yPos);
+  doc.line(margin, yPos + bandeH, margin + boxWidth, yPos + bandeH);
+
+  doc.setTextColor(15, 23, 42); // Black
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8.2);
+  doc.text('—— CLASSIFICATION PAR FORME DE FORMULE ——', margin + boxWidth / 2, yPos + 4.3, { align: 'center' });
+
+  yPos += bandeH + 1.5;
+
+  // --- 6. TABLEAU DE CLASSIFICATION PAR FORME DE FORMULE (GRILLE 5 COLONNES) ---
+  const formRowsData = disciplineGrid.formRows || [];
+  const formRowH = 10.2;
+
+  formRowsData.forEach((r) => {
+    doc.setFillColor(15, 23, 42); // #0f172a
+    doc.setDrawColor(255, 255, 255);
+    doc.setLineWidth(0.35);
+
+    doc.rect(margin, yPos, colCatW, formRowH, 'FD');
+    doc.rect(margin + colCatW, yPos, colGroupW, formRowH, 'FD');
+    doc.rect(margin + colCatW + colGroupW, yPos, colGroupW, formRowH, 'FD');
+    doc.rect(margin + colCatW + colGroupW * 2, yPos, colGroupW, formRowH, 'FD');
+    doc.rect(margin + colCatW + colGroupW * 3, yPos, colGroupW, formRowH, 'FD');
+
+    // Catégorie Badge text
+    let catTitle = r.label;
+    let catSub = r.description;
+    let titleRgb: [number, number, number] = [251, 191, 36];
+
+    if (r.key === 'EN_FORME') {
+      titleRgb = [52, 211, 153];
+      catTitle = '🟢 CHEVAUX EN FORME';
+    } else if (r.key === 'FORME_MOYENNE') {
+      titleRgb = [251, 191, 36];
+      catTitle = '🟡 FORME MOYENNE';
+    } else if (r.key === 'CAPABLE_EXPLOIT') {
+      titleRgb = [34, 211, 238];
+      catTitle = "⚡ CAPABLE D'EXPLOIT";
+    } else if (r.key === 'MEFORME') {
+      titleRgb = [251, 113, 133];
+      catTitle = '🔴 MÉFORME';
+    }
+
+    doc.setTextColor(titleRgb[0], titleRgb[1], titleRgb[2]);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6.8);
+    doc.text(catTitle, margin + colCatW / 2, yPos + 4.2, { align: 'center' });
+
+    doc.setTextColor(148, 163, 184);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.8);
+    doc.text(`(${catSub})`, margin + colCatW / 2, yPos + 8.0, { align: 'center' });
+
+    // Colonne 2: FAVORIS (Vert)
+    drawGridMiniBadges(r.bases, margin + colCatW, colGroupW, yPos, [5, 150, 105], [16, 185, 129], [255, 255, 255]);
+    // Colonne 3: OUTSIDERS (Ambre/Or)
+    drawGridMiniBadges(r.chances, margin + colCatW + colGroupW, colGroupW, yPos, [217, 119, 6], [252, 211, 77], [255, 255, 255]);
+    // Colonne 4: TOCARDS (Orange)
+    drawGridMiniBadges(r.tocards, margin + colCatW + colGroupW * 2, colGroupW, yPos, [249, 115, 22], [251, 146, 60], [255, 255, 255]);
+    // Colonne 5: SURPRISES (Violet)
+    drawGridMiniBadges(r.surprises, margin + colCatW + colGroupW * 3, colGroupW, yPos, [147, 51, 234], [192, 132, 252], [255, 255, 255]);
+
+    yPos += formRowH;
+  });
+
+  // =========================================================================
+  // PAGE 2 : TABLEAU DÉTAILLÉ DU CLASSEMENT OFFICIEL DES PARTANTS
+  // =========================================================================
+  doc.addPage();
+  let page2Y = 12;
+
+  // Header Page 2
+  doc.setFillColor(11, 19, 41);
+  doc.roundedRect(margin, page2Y, pageWidth - margin * 2, 18, 3, 3, 'F');
+
+  doc.setFillColor(30, 41, 59);
+  doc.roundedRect(margin + 4, page2Y + 2.5, 13, 13, 2.5, 2.5, 'FD');
+  doc.setTextColor(245, 158, 11);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10.5);
+  doc.text('P', margin + 10.5, page2Y + 11.5, { align: 'center' });
+
+  doc.setTextColor(245, 158, 11);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('PRONOS - PMU - STUDIO 2.0', margin + 20, page2Y + 8);
+
+  doc.setTextColor(226, 232, 240);
+  doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
-  doc.text(formatCategoryText(delaisses), xRow2Col2, yPos + 24);
+  doc.text('Tableau Détaillé des Partants & Méthodologie • Page 2 / 2', margin + 20, page2Y + 13.5);
 
-  yPos += boxHeight + 6;
+  doc.setTextColor(203, 213, 225);
+  doc.setFontSize(7.5);
+  doc.text(`RÉUNION ${course.reunion || 'R1'} - COURSE ${course.course || 'C1'} | ${cleanTitle}`, pageWidth - margin - 4, page2Y + 11, { align: 'right' });
 
-  // --- TABLEAU DÉTAILLÉ DES CHEVAUX & DÉLAISSÉS (AVEC PROBABILITÉ DE SUCCÈS) ---
+  page2Y += 23;
+
   doc.setTextColor(15, 23, 42);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
-  doc.text('CLASSEMENT OFFICIEL DES 11 CHEVAUX EN 3 GROUPES & PAR COTE DU SITE GENY', margin, yPos);
+  doc.text('CLASSEMENT OFFICIEL DES PARTANTS PAR PROBABILITÉ DE SUCCÈS', margin, page2Y);
 
-  yPos += 3;
+  page2Y += 3;
 
   const tableHeaders = [
-    ['N°', isPlat ? 'Cheval (Corde)' : 'Cheval', 'Driver / Jockey', 'MUSIQUE', 'Cote', 'Score IA', 'Prob. Succès', 'Rôle V38']
+    ['N°', isPlat ? 'Cheval (Corde)' : 'Cheval', 'Driver / Jockey', 'MUSIQUE', 'Cote', 'Score IA', 'Prob. Succès']
   ];
 
-  const allOrderedTable = [...selection11, ...delaisses];
   const successProbMap = computeHorseSuccessProbabilities(course.partants, course);
+  const allOrderedTable = [...selection11, ...delaisses].sort((a, b) => {
+    const probA = successProbMap.get(Number(a.numero))?.percent || 0;
+    const probB = successProbMap.get(Number(b.numero))?.percent || 0;
+    if (probB !== probA) return probB - probA;
+    const coteA = parseFloat((a.coteProbable || a.genyOdds || '99').toString().replace(',', '.'));
+    const coteB = parseFloat((b.coteProbable || b.genyOdds || '99').toString().replace(',', '.'));
+    return coteA - coteB;
+  });
 
-  const tableRows = allOrderedTable.map((p, idx) => {
-    const position = idx + 1;
-    let roleText = 'Délaissé';
-    if (position === 1) roleText = 'Base';
-    else if (position === 2) roleText = '2nd Base';
-    else if (position <= 5) roleText = 'Chance';
-    else if (position === 6) roleText = 'Tocards';
-    else if (position <= 9) roleText = 'Tocard';
-    else if (position <= 12) roleText = 'Faible chance';
-
+  const tableRows = allOrderedTable.map((p) => {
     const rawMusique = p.musique || '';
     const musiqueMatches = rawMusique.match(/\d+[apmshd]|D[apmshd]/gi);
     const displayMusique = musiqueMatches && musiqueMatches.length > 0
@@ -767,13 +1120,12 @@ export function buildQuinteOnlyPdfDoc(course: CourseHippique): jsPDF {
       displayMusique,
       coteStr,
       scoreStr,
-      probStr,
-      roleText
+      probStr
     ];
   });
 
   autoTable(doc, {
-    startY: yPos,
+    startY: page2Y,
     margin: { left: margin, right: margin },
     head: tableHeaders,
     body: tableRows,
@@ -796,14 +1148,13 @@ export function buildQuinteOnlyPdfDoc(course: CourseHippique): jsPDF {
     tableLineColor: [203, 213, 225],
     tableLineWidth: 0.4,
     columnStyles: {
-      0: { halign: 'center', cellWidth: 12, fontStyle: 'bold', fontSize: 15, textColor: [0, 0, 0] },
-      1: { halign: 'left', fontStyle: 'bold', cellWidth: 38, textColor: [0, 0, 0] },
-      2: { halign: 'left', cellWidth: 30, fontStyle: 'bold', textColor: [0, 0, 0] },
-      3: { halign: 'left', cellWidth: 20, fontStyle: 'bold', textColor: [0, 0, 0] },
-      4: { halign: 'left', cellWidth: 18, fontStyle: 'bold', textColor: [0, 0, 0] },
-      5: { halign: 'left', cellWidth: 18, fontStyle: 'bold', textColor: [0, 0, 0] },
-      6: { halign: 'center', cellWidth: 22, fontStyle: 'bold', textColor: [0, 0, 0] },
-      7: { halign: 'left', cellWidth: 28, fontStyle: 'bold', textColor: [0, 0, 0] },
+      0: { halign: 'center', cellWidth: 12, fontStyle: 'bold', fontSize: 13, textColor: [0, 0, 0] },
+      1: { halign: 'left', fontStyle: 'bold', cellWidth: 42, textColor: [0, 0, 0] },
+      2: { halign: 'left', cellWidth: 32, fontStyle: 'bold', textColor: [0, 0, 0] },
+      3: { halign: 'left', cellWidth: 24, fontStyle: 'bold', textColor: [0, 0, 0] },
+      4: { halign: 'left', cellWidth: 20, fontStyle: 'bold', textColor: [0, 0, 0] },
+      5: { halign: 'left', cellWidth: 20, fontStyle: 'bold', textColor: [0, 0, 0] },
+      6: { halign: 'center', cellWidth: 24, fontStyle: 'bold', textColor: [0, 0, 0] },
     },
     didParseCell: (data: any) => {
       if (data.section === 'body') {
@@ -826,81 +1177,21 @@ export function buildQuinteOnlyPdfDoc(course: CourseHippique): jsPDF {
         data.cell.styles.fontStyle = 'bold';
 
         if (data.column.index === 0) {
-          // Colonne des N° (#v38-table-container) : Identité visuelle Web/PDF (Police 15px, centrée, texte noir sur fond blanc)
-          data.cell.styles.fontSize = 15;
+          data.cell.styles.fontSize = 13;
           data.cell.styles.halign = 'center';
           data.cell.styles.fontStyle = 'bold';
           data.cell.styles.textColor = [0, 0, 0];
-          data.cell.styles.fillColor = [255, 255, 255]; // Fond blanc contrasté
+          data.cell.styles.fillColor = [255, 255, 255];
         } else if (data.column.index === 6) {
           data.cell.styles.halign = 'center';
           data.cell.styles.textColor = [0, 0, 0];
         } else {
-          // Reste des colonnes : Texte aligné à gauche et en noir
           data.cell.styles.halign = 'left';
           data.cell.styles.textColor = [0, 0, 0];
         }
       }
     },
   });
-
-  // Grille V38 Discipline (colonnes FAVORIS, OUTSIDERS, TOCARDS, SURPRISES à 4 cm = 40 mm)
-  const gridY = (doc as any).lastAutoTable?.finalY ? (doc as any).lastAutoTable.finalY + 5 : 180;
-  if (gridY < 235) {
-    const disciplineGrid = computeDisciplineGrid(course);
-    
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(8);
-    doc.setTextColor(11, 19, 41);
-    doc.text(`GRILLE V38 DISCIPLINE (${disciplineGrid.title}) - COLONNES 4 CM`, margin, gridY);
-
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(6.5);
-    doc.setTextColor(100, 116, 139);
-    const ruleText = `${disciplineGrid.rows[0]?.label || 'A'}: ${disciplineGrid.rows[0]?.description} | ${disciplineGrid.rows[1]?.label || 'B'}: ${disciplineGrid.rows[1]?.description} | ${disciplineGrid.rows[2]?.label || 'C'}: ${disciplineGrid.rows[2]?.description}`;
-    doc.text(ruleText, margin, gridY + 3.8);
-
-    const gridHeaders = [['CATEGORIE', 'FAVORIS', 'OUTSIDERS', 'TOCARDS', 'SURPRISES']];
-    const gridRows = disciplineGrid.rows.map(r => [
-      r.label || r.key,
-      r.bases.length > 0 ? r.bases.join(' - ') : '—',
-      r.chances.length > 0 ? r.chances.join(' - ') : '—',
-      r.tocards.length > 0 ? r.tocards.join(' - ') : '—',
-      r.surprises.length > 0 ? r.surprises.join(' - ') : '—',
-    ]);
-
-    autoTable(doc, {
-      startY: gridY + 5.5,
-      margin: { left: margin },
-      head: gridHeaders,
-      body: gridRows,
-      theme: 'grid',
-      styles: {
-        fontSize: 7.5,
-        cellPadding: 1.5,
-        halign: 'center',
-        valign: 'middle',
-        lineColor: [203, 213, 225],
-        lineWidth: 0.25,
-        textColor: [0, 0, 0],
-        fontStyle: 'bold',
-      },
-      headStyles: {
-        fillColor: [56, 189, 248],
-        textColor: [15, 23, 42],
-        fontStyle: 'bold',
-        lineColor: [56, 189, 248],
-        lineWidth: 0.3,
-      },
-      columnStyles: {
-        0: { cellWidth: 20, halign: 'center', fontStyle: 'bold', fillColor: [241, 245, 249] },
-        1: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
-        2: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
-        3: { cellWidth: 40, halign: 'center', fontStyle: 'bold' },
-        4: { cellWidth: 40, halign: 'center', fontStyle: 'bold', fillColor: [248, 250, 252] },
-      },
-    });
-  }
 
   // --- PIED DE PAGE ---
   const totalPages = (doc as any).internal.getNumberOfPages();

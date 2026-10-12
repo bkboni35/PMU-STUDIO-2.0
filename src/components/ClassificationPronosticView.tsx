@@ -28,10 +28,12 @@ import {
 } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { computeV38Hierarchy, getHorseGenyOdds } from '../utils/v38Helper';
+import { calculerPerformance3Musiques, classerChevauxFormeEtPoints } from '../utils/turfCalculations';
 import { DisciplineGridTable } from './DisciplineGridTable';
 import { RadarPerformanceChart } from './RadarPerformanceChart';
 import { exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { exportCourseToExcel } from '../utils/excelExport';
+import { scrollToTopInstant } from '../utils/scrollHelper';
 
 interface ClassificationPronosticViewProps {
   course: CourseHippique;
@@ -48,6 +50,10 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
 }) => {
   const [copiedPronostic, setCopiedPronostic] = useState(false);
   const [activeStepFilter, setActiveStepFilter] = useState<'ALL' | 'ETAPE1' | 'ETAPE2' | 'ETAPE3' | 'TICKETS'>('ALL');
+
+  React.useEffect(() => {
+    scrollToTopInstant();
+  }, [course?.sourceUrl, activeStepFilter]);
 
   // Calcul officiel de la hiérarchie V38 (G1, G2, G3 -> 5, 3, 4 -> 12 N° par cotes croissantes -> Base, Chances, Tocards, Surprises, Délaissés)
   const v38Hierarchy = useMemo(() => {
@@ -73,6 +79,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
   } = v38Hierarchy;
 
   const activeSelection = selection12 || selection11;
+  const formClassification = useMemo(() => classerChevauxFormeEtPoints(course.partants || []), [course]);
 
   const poolG1Nums = useMemo(() => new Set(poolG1.map(p => Number(p.numero))), [poolG1]);
   const poolG2Nums = useMemo(() => new Set(poolG2.map(p => Number(p.numero))), [poolG2]);
@@ -103,7 +110,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
       `🥇 FAVORIS (3 N°) : ${favoris.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
       `🥈 OUTSIDERS (3 N°) : ${outsiders.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
       `🥉 TOCARDS (3 N°) : ${tocardsSpeculatifs.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
-      `⚡ SURPRISES (4 N° classées par cote croissante) : ${surprises.map(p => `N°${p.numero} (${p.nom})`).join(' - ')}`,
+      `⚡ SURPRISES (4 N° classées par Points de Performance) : ${surprises.map(p => `N°${p.numero} (${p.nom} - ${calculerPerformance3Musiques(p.musique || '').totalPoints} pts)`).join(' - ')}`,
       `💤 DÉLAISSÉS (classés du plus grand N° au plus petit) : ${delaisses.map(p => `N°${p.numero}`).join(', ')}`,
       ``,
       `🎯 SÉLECTION DES 12 N° CLASSÉS PAR COTE :`,
@@ -592,6 +599,315 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
             </div>
           </div>
 
+          {/* BANDEAU SYNTHÉTIQUE V38 : PETITS RECTANGLES (SÉLECTION PAR COTE & TABLEAU DE FORME) */}
+          <div className="rounded-2xl border border-slate-800 bg-[#0b1329] p-4 sm:p-5 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-amber-400 font-black text-sm uppercase tracking-wide">
+                  PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE)
+                </span>
+              </div>
+              <span className="text-[10px] text-emerald-300 font-bold bg-emerald-950 px-2.5 py-0.5 rounded border border-emerald-500/50">
+                🔒 COTES SCELLÉES SANS VARIATION
+              </span>
+            </div>
+
+            {/* Row 1 : Favoris, Outsiders, Tocards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="bg-[#052e16]/40 border border-emerald-500/30 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-emerald-400">
+                  <span>FAVORIS (3 N°)</span>
+                  <span className="text-[10px] text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
+                    {favoris.length} Ch.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {favoris.map((p, idx) => {
+                    const cote = p.coteProbable || getHorseGenyOdds(p);
+                    return (
+                      <div
+                        key={`synth-fav-${p.numero}-${idx}`}
+                        className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                        onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                        title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                      >
+                        <div className="w-10 h-7 rounded-md bg-[#059669] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-emerald-300/80">
+                          {p.numero}
+                        </div>
+                        <span className="text-[10px] sm:text-[11px] font-black text-emerald-300 tracking-tight mt-1 leading-none">
+                          {cote}/1
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-[#0c4a6e]/30 border border-sky-500/30 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-sky-400">
+                  <span>OUTSIDERS (3 N°)</span>
+                  <span className="text-[10px] text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-500/30">
+                    {outsiders.length} Ch.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {outsiders.map((p, idx) => {
+                    const cote = p.coteProbable || getHorseGenyOdds(p);
+                    return (
+                      <div
+                        key={`synth-out-${p.numero}-${idx}`}
+                        className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                        onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                        title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                      >
+                        <div className="w-10 h-7 rounded-md bg-[#0284c7] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-sky-300/80">
+                          {p.numero}
+                        </div>
+                        <span className="text-[10px] sm:text-[11px] font-black text-sky-300 tracking-tight mt-1 leading-none">
+                          {cote}/1
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-[#4c0519]/30 border border-rose-500/30 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-rose-400">
+                  <span>TOCARDS (3 N°)</span>
+                  <span className="text-[10px] text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-500/30">
+                    {tocardsSpeculatifs.length} Ch.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {tocardsSpeculatifs.map((p, idx) => {
+                    const cote = p.coteProbable || getHorseGenyOdds(p);
+                    return (
+                      <div
+                        key={`synth-toc-${p.numero}-${idx}`}
+                        className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                        onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                        title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                      >
+                        <div className="w-10 h-7 rounded-md bg-[#e11d48] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-rose-300/80">
+                          {p.numero}
+                        </div>
+                        <span className="text-[10px] sm:text-[11px] font-black text-rose-300 tracking-tight mt-1 leading-none">
+                          {cote}/1
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Row 2 : Surprises & Délaissés */}
+            <div className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="bg-[#3b0764]/30 border border-purple-500/30 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-purple-400">
+                  <span>SURPRISES ({surprises.length} N°)</span>
+                  <span className="text-[10px] text-purple-300 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-500/30">
+                    Tri points perf.
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {surprises.map((p, idx) => {
+                    const cote = p.coteProbable || getHorseGenyOdds(p);
+                    return (
+                      <div
+                        key={`synth-surp-${p.numero}-${idx}`}
+                        className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                        onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                        title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                      >
+                        <div className="w-10 h-7 rounded-md bg-[#9333ea] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-purple-300/80">
+                          {p.numero}
+                        </div>
+                        <span className="text-[10px] sm:text-[11px] font-black text-purple-300 tracking-tight mt-1 leading-none">
+                          {cote}/1
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-3 space-y-2">
+                <div className="flex items-center justify-between text-xs font-black text-slate-300">
+                  <span>DÉLAISSÉS ({delaisses.length} N°)</span>
+                  <span className="text-[10px] text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                    ↓ Ordre décroissant
+                  </span>
+                </div>
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  {delaisses.length === 0 ? (
+                    <span className="text-xs text-slate-500 italic">Aucun délaissé (lot ≤ 12 partants)</span>
+                  ) : (
+                    delaisses.map((p, idx) => {
+                      const cote = p.coteProbable || getHorseGenyOdds(p);
+                      return (
+                        <div
+                          key={`synth-del-${p.numero}-${idx}`}
+                          className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                          onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                          title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                        >
+                          <div className="w-10 h-7 rounded-md bg-[#334155] text-slate-100 font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-sm border border-slate-500/60">
+                            {p.numero}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 tracking-tight mt-1 leading-none">
+                            {cote}/1
+                          </span>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Séparateur & Tableau de Forme dans cette même présentation */}
+            <div className="pt-3 border-t border-slate-800 space-y-3">
+              <div className="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 py-1 px-3 rounded-lg flex items-center justify-between text-slate-950 font-black text-xs uppercase tracking-wider">
+                <span>CLASSIFICATION OFFICIELLE PAR FORME DE FORMULE</span>
+                <span className="text-[10px] bg-slate-950 text-amber-300 px-2 py-0.5 rounded border border-amber-300">
+                  TABLEAU DE FORME V38
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Chevaux en forme */}
+                <div className="bg-[#052e16]/40 border border-emerald-500/40 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-black text-emerald-300 uppercase">
+                    <span>🟢 CHEVAUX EN FORME (1e au 6e)</span>
+                    <span className="text-[10px] bg-emerald-950 px-2 py-0.5 rounded border border-emerald-400 font-extrabold text-emerald-300">
+                      {formClassification.chevauxEnForme.length} Ch.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {formClassification.chevauxEnForme.map((item, idx) => {
+                      const p = item.partant;
+                      const cote = p.coteProbable || getHorseGenyOdds(p);
+                      return (
+                        <div
+                          key={`synth-form-enforme-${p.numero}-${idx}`}
+                          className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                          onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                          title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                        >
+                          <div className="w-10 h-7 rounded-md bg-[#059669] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-emerald-300/80">
+                            {p.numero}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-black text-emerald-300 tracking-tight mt-1 leading-none">
+                            {cote}/1
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Forme moyenne */}
+                <div className="bg-[#451a03]/40 border border-amber-500/40 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-black text-amber-300 uppercase">
+                    <span>🟡 FORME MOYENNE (7e au 10e)</span>
+                    <span className="text-[10px] bg-amber-950 px-2 py-0.5 rounded border border-amber-400 font-extrabold text-amber-300">
+                      {formClassification.formeMoyenne.length} Ch.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {formClassification.formeMoyenne.map((item, idx) => {
+                      const p = item.partant;
+                      const cote = p.coteProbable || getHorseGenyOdds(p);
+                      return (
+                        <div
+                          key={`synth-form-moy-${p.numero}-${idx}`}
+                          className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                          onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                          title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                        >
+                          <div className="w-10 h-7 rounded-md bg-[#d97706] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-amber-300/80">
+                            {p.numero}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-black text-amber-300 tracking-tight mt-1 leading-none">
+                            {cote}/1
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Capable d'exploit */}
+                <div className="bg-[#083344]/40 border border-cyan-400/40 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-black text-cyan-300 uppercase">
+                    <span>⚡ CAPABLE D'EXPLOIT (Cote &lt; 8.0)</span>
+                    <span className="text-[10px] bg-cyan-950 px-2 py-0.5 rounded border border-cyan-400 font-extrabold text-cyan-300">
+                      {formClassification.capableExploit.length} Ch.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {formClassification.capableExploit.length > 0 ? (
+                      formClassification.capableExploit.map((item, idx) => {
+                        const p = item.partant;
+                        const cote = p.coteProbable || getHorseGenyOdds(p);
+                        return (
+                          <div
+                            key={`synth-form-exp-${p.numero}-${idx}`}
+                            className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                            onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                            title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                          >
+                            <div className="w-10 h-7 rounded-md bg-[#0891b2] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-cyan-300/80">
+                              {p.numero}
+                            </div>
+                            <span className="text-[10px] sm:text-[11px] font-black text-cyan-300 tracking-tight mt-1 leading-none">
+                              {cote}/1
+                            </span>
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <span className="text-xs text-slate-400 font-bold italic">Aucun cheval</span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Méforme */}
+                <div className="bg-[#4c0519]/40 border border-rose-500/40 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between text-xs font-black text-rose-300 uppercase">
+                    <span>🔴 MÉFORME (11e et +)</span>
+                    <span className="text-[10px] bg-rose-950 px-2 py-0.5 rounded border border-rose-400 font-extrabold text-rose-300">
+                      {formClassification.meforme.length} Ch.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {formClassification.meforme.map((item, idx) => {
+                      const p = item.partant;
+                      const cote = p.coteProbable || getHorseGenyOdds(p);
+                      return (
+                        <div
+                          key={`synth-form-mef-${p.numero}-${idx}`}
+                          className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                          onClick={() => onSelectHorseForTicket?.(Number(p.numero))}
+                          title={`N°${p.numero} - ${p.nom} • Cote: ${cote}/1`}
+                        >
+                          <div className="w-10 h-7 rounded-md bg-[#e11d48] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-rose-300/80">
+                            {p.numero}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-black text-rose-300 tracking-tight mt-1 leading-none">
+                            {cote}/1
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {/* 1. FAVORIS (3 N°) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-emerald-950/40 via-slate-900 to-slate-950 border-2 border-emerald-500 shadow-xl space-y-3">
@@ -683,12 +999,15 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
               </div>
             </div>
 
-            {/* 4. SURPRISES (4 N° classées par cote croissante) */}
+            {/* 4. SURPRISES (4 N° classées par Classification Officielle par Points de Performance) */}
             <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-purple-950/40 via-slate-900 to-slate-950 border-2 border-purple-500 shadow-xl space-y-3">
               <div className="flex items-center justify-between border-b border-purple-500/30 pb-2.5">
                 <div className="flex items-center gap-2">
                   <Sparkles className="w-5 h-5 text-purple-400" />
-                  <h3 className="text-base font-black text-purple-300">4. SURPRISES</h3>
+                  <div>
+                    <h3 className="text-base font-black text-purple-300">4. SURPRISES</h3>
+                    <p className="text-[10px] text-purple-300/80 font-medium">Classées par Points de Performance (Score 3 Musiques)</p>
+                  </div>
                 </div>
                 <span className="px-2 py-0.5 rounded-lg bg-purple-500 text-white font-black text-xs">
                   {surprises.length} N° du vivier V38
@@ -696,20 +1015,28 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
               </div>
 
               <div className="space-y-2">
-                {surprises.map((p, idx) => (
-                  <div key={`surprise-h-${p.numero}`} className="p-2.5 rounded-xl bg-slate-950 border border-purple-500/40 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5">
-                      <span className="w-7 h-7 rounded-lg bg-purple-500 text-white font-mono font-black text-xs flex items-center justify-center">
-                        {p.numero}
-                      </span>
-                      <div>
-                        <div className="font-extrabold text-white text-xs">{p.nom}</div>
-                        <div className="text-[10px] text-slate-400">{p.driver}</div>
+                {surprises.map((p, idx) => {
+                  const perf3 = calculerPerformance3Musiques(p.musique || '');
+                  return (
+                    <div key={`surprise-h-${p.numero}`} className="p-2.5 rounded-xl bg-slate-950 border border-purple-500/40 flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <span className="w-7 h-7 rounded-lg bg-purple-500 text-white font-mono font-black text-xs flex items-center justify-center">
+                          {p.numero}
+                        </span>
+                        <div>
+                          <div className="font-extrabold text-white text-xs">{p.nom}</div>
+                          <div className="text-[10px] text-slate-400">{p.driver}</div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/40 text-[10px] font-mono font-bold">
+                          {perf3.totalPoints} pts
+                        </span>
+                        <span className="text-xs font-mono font-black text-purple-300">{p.coteProbable || getHorseGenyOdds(p)}/1</span>
                       </div>
                     </div>
-                    <span className="text-xs font-mono font-black text-purple-300">{p.coteProbable || getHorseGenyOdds(p)}/1</span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -745,9 +1072,11 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
       )}
 
       {/* GRILLE V38 DISCIPLINE (TABLEAU DE RÉPARTITION OFFICIEL) */}
-      <section className="space-y-4">
-        <DisciplineGridTable course={course} variant="dark" />
-      </section>
+      {(activeStepFilter === 'ALL' || activeStepFilter === 'ETAPE3') && (
+        <section className="space-y-4">
+          <DisciplineGridTable course={course} variant="dark" />
+        </section>
+      )}
 
       {/* 5. ÉTAPE 4 : PROPOSITIONS DE JEUX PRODUITS PAR ALGORITHME */}
       {(activeStepFilter === 'ALL' || activeStepFilter === 'TICKETS') && (

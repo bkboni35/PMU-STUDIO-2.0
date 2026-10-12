@@ -28,7 +28,6 @@ import {
 import { CourseHippique, MultiAiStepDetail } from '../types/turf';
 import { exportCourseToExcel } from '../utils/excelExport';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
-import { HierarchieQuinteV38Banner } from './HierarchieQuinteV38Banner';
 import { computeQuinteOrdres, buildArchitectureMultiAi } from '../utils/geminiMultiModelEngine';
 
 interface StudioV38PipelineProps {
@@ -660,9 +659,6 @@ export const StudioV38Pipeline: React.FC<StudioV38PipelineProps> = ({
               </div>
             </div>
           )}
-
-          {/* Bandeau Officiel HIÉRARCHIE QUINTÉ+ V38 */}
-          <HierarchieQuinteV38Banner course={course} />
         </div>
       )}
     </div>

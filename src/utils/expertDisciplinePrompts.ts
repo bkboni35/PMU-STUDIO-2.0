@@ -1,5 +1,6 @@
 import { CourseHippique, Partant, ExpertDisciplineAnalysis, ExpertHorseRow } from '../types/turf';
 import { computeV38Hierarchy } from './v38Helper';
+import { getEvolutionPoids } from './turfCalculations';
 
 /**
  * PROMPT EXPERT OFFICIEL 1 : TROT ATTELÉ
@@ -239,7 +240,11 @@ export function computeDisciplineScoreForHorse(p: Partant, course: CourseHippiqu
     details = { Forme: forme, Classe: classe, Chrono: chrono, Parcours: parcours, Engagement: engagement, Ferrure: ferrure, Driver: driver, Régularité: reg, Départ: depart, Cote: cotePt };
   } else if (category === 'Trot Monté') {
     // Aptitude monté 20%, Forme 15%, Classe 15%, Chrono 12%, Parcours 10%, Jockey 10%, Régularité 6%, Engagement 5%, Ferrure 4%, Cote 3%
-    const monté = p.poids ? 18 : 14;
+    const evolInfo = getEvolutionPoids(p);
+    let monté = p.poids ? Math.min(18, Math.max(10, (70 - p.poids) * 0.5 + 10)) : 14;
+    if (evolInfo && evolInfo.diff < 0) monté = Math.min(20, monté + Math.abs(evolInfo.diff) * 1.0);
+    else if (evolInfo && evolInfo.diff > 0) monté = Math.max(8, monté - evolInfo.diff * 0.8);
+
     const forme = Math.min(15, Math.max(4, (100 - cote) * 0.15));
     const classe = Math.min(15, Math.max(3, Math.log10(gains + 1) * 3));
     const chrono = p.record ? 10 : 6;
@@ -251,14 +256,18 @@ export function computeDisciplineScoreForHorse(p: Partant, course: CourseHippiqu
     const cotePt = Math.min(3, Math.max(1, 4 - cote / 15));
 
     score = Math.round(monté + forme + classe + chrono + parcours + jockey + reg + engagement + ferrure + cotePt);
-    details = { "Aptitude Monté": monté, Forme: forme, Classe: classe, Chrono: chrono, Parcours: parcours, Jockey: jockey, Régularité: reg, Engagement: engagement, Ferrure: ferrure, Cote: cotePt };
+    details = { "Aptitude Monté & Poids": monté, Forme: forme, Classe: classe, Chrono: chrono, Parcours: parcours, Jockey: jockey, Régularité: reg, Engagement: engagement, Ferrure: ferrure, Cote: cotePt };
   } else if (category === 'Plat') {
     // Forme 18%, Valeur handicap 18%, Distance 12%, Terrain 12%, Poids 10%, Jockey 8%, Corde 7%, Classe 7%, Régularité 5%, Cote 3%
+    const evolInfo = getEvolutionPoids(p);
     const forme = Math.min(18, Math.max(4, (100 - cote) * 0.18));
     const valeur = Math.min(18, Math.max(5, (p.poids ? (70 - p.poids) * 0.6 : 10)));
     const distance = 10;
     const terrain = 10;
-    const poids = p.poids ? Math.min(10, Math.max(3, 62 - p.poids)) : 6;
+    let poids = p.poids ? Math.min(10, Math.max(3, 62 - p.poids)) : 6;
+    if (evolInfo && evolInfo.diff < 0) poids = Math.min(10, poids + Math.abs(evolInfo.diff) * 1.0);
+    else if (evolInfo && evolInfo.diff > 0) poids = Math.max(1, poids - evolInfo.diff * 0.8);
+
     const jockey = p.driver ? 7 : 3;
     const corde = p.corde ? Math.min(7, Math.max(2, 10 - p.corde)) : 5;
     const classe = Math.min(7, Math.max(2, Math.log10(gains + 1) * 1.5));
@@ -266,22 +275,26 @@ export function computeDisciplineScoreForHorse(p: Partant, course: CourseHippiqu
     const cotePt = Math.min(3, Math.max(1, 4 - cote / 15));
 
     score = Math.round(forme + valeur + distance + terrain + poids + jockey + corde + classe + reg + cotePt);
-    details = { Forme: forme, "Valeur Handicap": valeur, Distance: distance, Terrain: terrain, Poids: poids, Jockey: jockey, Corde: corde, Classe: classe, Régularité: reg, Cote: cotePt };
+    details = { Forme: forme, "Valeur Handicap": valeur, Distance: distance, Terrain: terrain, "Poids & Évol.": poids, Jockey: jockey, Corde: corde, Classe: classe, Régularité: reg, Cote: cotePt };
   } else {
     // Obstacles : Forme 18%, Aptitude obstacles 18%, Classe 14%, Terrain 12%, Distance/tenue 12%, Jockey 8%, Poids 7%, Régularité 6%, Parcours 3%, Cote 2%
+    const evolInfo = getEvolutionPoids(p);
     const forme = Math.min(18, Math.max(4, (100 - cote) * 0.18));
     const obstacles = (p.musique || '').includes('Ah') || (p.musique || '').includes('As') ? 8 : 16;
     const classe = Math.min(14, Math.max(3, Math.log10(gains + 1) * 2.8));
     const terrain = 10;
     const distance = 10;
     const jockey = p.driver ? 7 : 3;
-    const poids = p.poids ? Math.min(7, Math.max(2, 72 - p.poids)) : 5;
+    let poids = p.poids ? Math.min(7, Math.max(2, 72 - p.poids)) : 5;
+    if (evolInfo && evolInfo.diff < 0) poids = Math.min(7, poids + Math.abs(evolInfo.diff) * 0.8);
+    else if (evolInfo && evolInfo.diff > 0) poids = Math.max(1, poids - evolInfo.diff * 0.6);
+
     const reg = Math.min(6, (regularite / 100) * 6);
     const parcours = 2.5;
     const cotePt = Math.min(2, Math.max(1, 3 - cote / 20));
 
     score = Math.round(forme + obstacles + classe + terrain + distance + jockey + poids + reg + parcours + cotePt);
-    details = { Forme: forme, "Aptitude Obstacles": obstacles, Classe: classe, Terrain: terrain, Distance: distance, Jockey: jockey, Poids: poids, Régularité: reg, Parcours: parcours, Cote: cotePt };
+    details = { Forme: forme, "Aptitude Obstacles": obstacles, Classe: classe, Terrain: terrain, Distance: distance, Jockey: jockey, "Poids & Évol.": poids, Régularité: reg, Parcours: parcours, Cote: cotePt };
   }
 
   // Variation unique par course et par cheval pour garantir l'unicité des résultats

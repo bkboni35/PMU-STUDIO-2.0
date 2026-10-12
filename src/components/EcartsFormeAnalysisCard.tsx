@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Activity, Flame, ShieldAlert, Award, Clock, ArrowUpDown, Sparkles, CheckCircle2, AlertTriangle, ChevronRight, Zap } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
-import { calculerEcartEtForme, EcartFormeResult } from '../utils/turfCalculations';
+import { calculerEcartEtForme, EcartFormeResult, calculerPerformance3Musiques, classerChevauxFormeEtPoints } from '../utils/turfCalculations';
 
 interface EcartsFormeAnalysisCardProps {
   course: CourseHippique;
@@ -55,6 +55,9 @@ export const EcartsFormeAnalysisCard: React.FC<EcartsFormeAnalysisCardProps> = (
 
   const topFormeHorses = partantsAnalyse.filter((pa) => pa.analysis.ecartVictoire === minEcart);
   const maxEcartHorses = partantsAnalyse.filter((pa) => pa.analysis.ecartVictoire === maxEcart);
+
+  // Classification officielle par points de musique
+  const classification = classerChevauxFormeEtPoints(course.partants || []);
 
   return (
     <div className="w-full bg-gradient-to-br from-slate-950 via-[#0c162d] to-slate-950 border-2 border-indigo-500/40 rounded-3xl p-5 sm:p-7 shadow-2xl space-y-6 my-4 relative overflow-hidden">
@@ -200,6 +203,202 @@ export const EcartsFormeAnalysisCard: React.FC<EcartsFormeAnalysisCardProps> = (
         </div>
       </div>
 
+      {/* SECTION CLASSIFICATION PAR POINTS DE PERFORMANCE (4 CATÉGORIES) */}
+      <div className="p-5 rounded-3xl bg-slate-950/90 border-2 border-amber-500/40 space-y-4 shadow-xl">
+        <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-base sm:text-lg font-black text-white flex items-center gap-2 flex-wrap">
+                <span>Classification Officielle par Points de Performance</span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                  Addition 3 Musiques
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-black bg-indigo-500/20 text-indigo-300 border border-indigo-500/40">
+                  Surprises Triées par Points de Performance
+                </span>
+              </h4>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Règle : 1er-6e = En Forme · 7e-10e = Forme Moyenne · 11e+ = Méforme · Méforme avec Cote &lt; 8.0 = Capable d'Exploit !
+                <span className="ml-1 text-indigo-300 font-semibold">(Surprises / Capable d'exploit triées par Points de Performance)</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+          {/* 1. CHEVAUX EN FORME (1e au 6e) */}
+          <div className="p-4 rounded-2xl bg-slate-900/90 border-2 border-emerald-500/50 space-y-3 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-emerald-500/30 pb-2">
+              <span className="text-xs font-black text-emerald-300 uppercase flex items-center gap-1.5">
+                <span>🟢</span> CHEVAUX EN FORME
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 font-mono font-black text-[11px] border border-emerald-500/40">
+                1e au 6e ({classification.chevauxEnForme.length})
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              {classification.chevauxEnForme.map((item) => (
+                <div
+                  key={`forme-${item.partant.numero}`}
+                  onClick={() => onSelectHorseForTicket?.(item.partant.numero)}
+                  className={`p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500/50 flex items-center justify-between text-xs font-mono cursor-pointer transition-colors ${
+                    selectedHorseNumbers.includes(item.partant.numero) ? 'bg-amber-500/10 border-amber-500' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-md bg-emerald-500 text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0" title={`Rang points musique: #${item.rangPoints}`}>
+                      #{item.rangPoints}
+                    </span>
+                    <span className="w-6 h-6 rounded-md bg-slate-800 text-amber-400 font-black text-xs flex items-center justify-center border border-slate-700 shrink-0">
+                      {item.partant.numero}
+                    </span>
+                    <span className="font-bold text-white truncate max-w-[90px]">{item.partant.nom}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-emerald-400 font-extrabold text-[11px]">{item.pointsMusique} pts</span>
+                    {item.cote < 99 && (
+                      <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 font-bold text-[10px]">
+                        {item.cote}/1
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 2. FORME MOYENNE (7e à 10e) */}
+          <div className="p-4 rounded-2xl bg-slate-900/90 border-2 border-amber-500/50 space-y-3 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-amber-500/30 pb-2">
+              <span className="text-xs font-black text-amber-300 uppercase flex items-center gap-1.5">
+                <span>🟡</span> FORME MOYENNE
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-mono font-black text-[11px] border border-amber-500/40">
+                7e à 10e ({classification.formeMoyenne.length})
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              {classification.formeMoyenne.map((item) => (
+                <div
+                  key={`moyenne-${item.partant.numero}`}
+                  onClick={() => onSelectHorseForTicket?.(item.partant.numero)}
+                  className={`p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-amber-500/50 flex items-center justify-between text-xs font-mono cursor-pointer transition-colors ${
+                    selectedHorseNumbers.includes(item.partant.numero) ? 'bg-amber-500/10 border-amber-500' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-md bg-amber-500 text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0" title={`Rang points musique: #${item.rangPoints}`}>
+                      #{item.rangPoints}
+                    </span>
+                    <span className="w-6 h-6 rounded-md bg-slate-800 text-amber-400 font-black text-xs flex items-center justify-center border border-slate-700 shrink-0">
+                      {item.partant.numero}
+                    </span>
+                    <span className="font-bold text-white truncate max-w-[90px]">{item.partant.nom}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-amber-400 font-extrabold text-[11px]">{item.pointsMusique} pts</span>
+                    {item.cote < 99 && (
+                      <span className="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/30 font-bold text-[10px]">
+                        {item.cote}/1
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* 3. CAPABLE D'EXPLOIT (Méforme + Cote < 8.0) */}
+          <div className="p-4 rounded-2xl bg-slate-900/90 border-2 border-cyan-400/80 space-y-3 shadow-lg relative overflow-hidden ring-2 ring-cyan-500/30">
+            <div className="flex items-center justify-between border-b border-cyan-500/40 pb-2">
+              <span className="text-xs font-black text-cyan-300 uppercase flex items-center gap-1.5">
+                <span>⚡</span> CAPABLE D'EXPLOIT
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-cyan-500/30 text-cyan-200 font-mono font-black text-[11px] border border-cyan-400" title="Triés selon la Classification Officielle par Points de Performance">
+                Pts Perf. ({classification.capableExploit.length})
+              </span>
+            </div>
+
+            {classification.capableExploit.length === 0 ? (
+              <p className="text-xs text-slate-500 italic p-2 text-center">Aucun cheval en méforme avec cote &lt; 8.0 dans cette course.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {classification.capableExploit.map((item) => (
+                  <div
+                    key={`exploit-${item.partant.numero}`}
+                    onClick={() => onSelectHorseForTicket?.(item.partant.numero)}
+                    className={`p-2 rounded-xl bg-cyan-950/40 border border-cyan-500/50 hover:border-cyan-400 flex items-center justify-between text-xs font-mono cursor-pointer transition-colors ${
+                      selectedHorseNumbers.includes(item.partant.numero) ? 'bg-cyan-500/20 border-cyan-300' : ''
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="w-5 h-5 rounded-md bg-cyan-400 text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0" title={`Rang points musique: #${item.rangPoints}`}>
+                        #{item.rangPoints}
+                      </span>
+                      <span className="w-6 h-6 rounded-md bg-slate-800 text-amber-400 font-black text-xs flex items-center justify-center border border-slate-700 shrink-0">
+                        {item.partant.numero}
+                      </span>
+                      <span className="font-bold text-white truncate max-w-[90px]">{item.partant.nom}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-rose-400 font-bold text-[11px]">{item.pointsMusique} pts</span>
+                      <span className="text-cyan-300 font-black px-1.5 py-0.5 bg-cyan-900/80 rounded border border-cyan-400 text-[10px]">{item.cote}/1</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* 4. MÉFORME (11e et plus, Cote >= 8.0) */}
+          <div className="p-4 rounded-2xl bg-slate-900/90 border-2 border-rose-500/50 space-y-3 shadow-lg relative overflow-hidden">
+            <div className="flex items-center justify-between border-b border-rose-500/30 pb-2">
+              <span className="text-xs font-black text-rose-300 uppercase flex items-center gap-1.5">
+                <span>🔴</span> MÉFORME
+              </span>
+              <span className="px-2 py-0.5 rounded-md bg-rose-500/20 text-rose-300 font-mono font-black text-[11px] border border-rose-500/40">
+                11e et + ({classification.meforme.length})
+              </span>
+            </div>
+
+            <div className="space-y-1.5 max-h-60 overflow-y-auto">
+              {classification.meforme.map((item) => (
+                <div
+                  key={`meforme-${item.partant.numero}`}
+                  onClick={() => onSelectHorseForTicket?.(item.partant.numero)}
+                  className={`p-2 rounded-xl bg-slate-950 border border-slate-800 hover:border-rose-500/50 flex items-center justify-between text-xs font-mono cursor-pointer transition-colors ${
+                    selectedHorseNumbers.includes(item.partant.numero) ? 'bg-amber-500/10 border-amber-500' : ''
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-md bg-rose-500 text-slate-950 font-black text-[10px] flex items-center justify-center shrink-0" title={`Rang points musique: #${item.rangPoints}`}>
+                      #{item.rangPoints}
+                    </span>
+                    <span className="w-6 h-6 rounded-md bg-slate-800 text-amber-400 font-black text-xs flex items-center justify-center border border-slate-700 shrink-0">
+                      {item.partant.numero}
+                    </span>
+                    <span className="font-bold text-slate-300 truncate max-w-[90px]">{item.partant.nom}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-rose-400 font-bold text-[11px]">{item.pointsMusique} pts</span>
+                    {item.cote < 99 && (
+                      <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 font-bold text-[10px]">
+                        {item.cote}/1
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Tableau détaillé des partants avec leur Écart et Musique décryptée */}
       <div className="overflow-x-auto border border-slate-800 rounded-2xl shadow-xl bg-slate-900/80">
         <table className="w-full text-left border-collapse">
@@ -251,19 +450,34 @@ export const EcartsFormeAnalysisCard: React.FC<EcartsFormeAnalysisCardProps> = (
                     </div>
                   </td>
 
-                  {/* Musique avec pastilles colorées */}
+                  {/* Musique avec pastilles colorées & Score 3 Musiques */}
                   <td className="py-3.5 px-4">
                     {analysis.dernieresPerformances.length > 0 ? (
-                      <div className="flex items-center gap-1 flex-wrap">
-                        {analysis.dernieresPerformances.map((perf, idx) => (
-                          <span
-                            key={idx}
-                            title={`${perf.token} : ${perf.placeLabel}`}
-                            className={`px-2 py-1 rounded-lg text-[10px] font-mono border shadow-sm ${perf.badgeBg}`}
-                          >
-                            {perf.token}
-                          </span>
-                        ))}
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-1 flex-wrap">
+                          {analysis.dernieresPerformances.map((perf, idx) => (
+                            <span
+                              key={idx}
+                              title={`${perf.token} : ${perf.placeLabel}`}
+                              className={`px-2 py-1 rounded-lg text-[10px] font-mono border shadow-sm ${perf.badgeBg}`}
+                            >
+                              {perf.token}
+                            </span>
+                          ))}
+                        </div>
+                        {(() => {
+                          const perf3 = calculerPerformance3Musiques(partant.musique || '');
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-mono border font-black ${perf3.badgeColorClass}`}>
+                                Score 3 Musiques : {perf3.totalPoints} pts
+                              </span>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                ({perf3.formulaCalculation})
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <span className="text-slate-500 italic text-[11px]">Musique non disponible</span>

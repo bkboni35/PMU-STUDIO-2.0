@@ -33,9 +33,9 @@ export const InteractivePmuDatePicker: React.FC<InteractivePmuDatePickerProps> =
   availableDates = {},
   isLoading = false,
 }) => {
-  const todayIso = useMemo(() => getIvoryCoastDate(0) || '2026-10-01', []);
-  const yesterdayIso = useMemo(() => getIvoryCoastDate(-1) || '2026-09-30', []);
-  const tomorrowIso = useMemo(() => getIvoryCoastDate(1) || '2026-10-02', []);
+  const todayIso = useMemo(() => getIvoryCoastDate(0) || '2026-10-11', []);
+  const yesterdayIso = useMemo(() => getIvoryCoastDate(-1) || '2026-10-10', []);
+  const tomorrowIso = useMemo(() => getIvoryCoastDate(1) || '2026-10-12', []);
 
   // Déterminer le mois affiché dans le calendrier interactif
   const activeNormalized = selectedDate === 'all' ? todayIso : normalizeDateForQuery(selectedDate) || todayIso;

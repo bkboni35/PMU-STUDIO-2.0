@@ -1,4 +1,5 @@
 import { CourseHippique, Partant, PronosticSynthese } from '../types/turf';
+import { calculerPerformance3Musiques, classerChevauxFormeEtPoints } from './turfCalculations';
 
 export type SurprisesMode = 'all_3' | 'top2_odds' | 'top2_numbers' | 'custom';
 export type DelaissesSortMode = 'desc_number' | 'asc_number' | 'asc_odds';
@@ -6,6 +7,19 @@ export type DelaissesSortMode = 'desc_number' | 'asc_number' | 'asc_odds';
 export const V38_SURPRISES_MODE_STORAGE_KEY = 'hippo_v38_surprises_mode';
 export const V38_DELAISSES_SORT_STORAGE_KEY = 'hippo_v38_delaisses_sort_mode';
 export const V38_CUSTOM_SURPRISES_STORAGE_KEY = 'hippo_v38_custom_surprises_nums';
+
+/**
+ * Tri les chevaux selon la Classification Officielle par Points de Performance (Score 3 Musiques ascendant)
+ */
+export const sortAscByPerformancePoints = (a: any, b: any) => {
+  const perfA = calculerPerformance3Musiques(a.musique || '').totalPoints;
+  const perfB = calculerPerformance3Musiques(b.musique || '').totalPoints;
+  if (perfA !== perfB) return perfA - perfB;
+  const oA = getHorseGenyOdds(a);
+  const oB = getHorseGenyOdds(b);
+  if (oA !== oB) return oA - oB;
+  return Number(a.numero) - Number(b.numero);
+};
 
 export interface V38Options {
   surprisesMode?: SurprisesMode;
@@ -390,7 +404,7 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
   // Application de la sélection des SUR (SURPRISES) :
   if (effectiveSurprisesMode === 'custom' && options?.customSurprisesNums && options.customSurprisesNums.length > 0) {
     const customSet = new Set(options.customSurprisesNums.map(n => Number(n)));
-    surprises = allActiveSorted.filter(p => customSet.has(Number(p.numero))).sort(sortAscByOdds);
+    surprises = allActiveSorted.filter(p => customSet.has(Number(p.numero))).sort(sortAscByPerformancePoints);
     const assignedNums = new Set([
       ...favoris.map(p => Number(p.numero)),
       ...outsiders.map(p => Number(p.numero)),
@@ -399,8 +413,8 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     ]);
     delaisses = allActiveSorted.filter(p => !assignedNums.has(Number(p.numero)));
   } else {
-    // Mode standard conforme à la demande : 4 numéros SURPRISES classés par cote croissante
-    surprises = [...rawSurprises].sort(sortAscByOdds);
+    // Mode standard conforme à la demande : 4 numéros SURPRISES classés en fonction de la Classification Officielle par Points de Performance
+    surprises = [...rawSurprises].sort(sortAscByPerformancePoints);
     delaisses = [...remainingDelaisses];
   }
 
@@ -440,8 +454,8 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     basesSolides: [...favoris].sort(sortAscByOdds),
     chancesSerieuses: [...outsiders].sort(sortAscByOdds),
     tocardsSpeculatifs: [...tocardsSpeculatifs].sort(sortAscByOdds),
-    // Les surprises portent désormais à 4 numéros (classés par cote croissante)
-    surprises: [...surprises].sort(sortAscByOdds),
+    // Les surprises (classées selon la Classification Officielle par Points de Performance)
+    surprises: [...surprises].sort(sortAscByPerformancePoints),
     delaisses: finalDelaisses,
     selectionV38: selection12,
     remainingV38: finalDelaisses,
@@ -454,7 +468,7 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
 export type DisciplineType = 'TROT' | 'PLAT' | 'OBSTACLES';
 
 export interface DisciplineGridRow {
-  key: 'A' | 'B' | 'C';
+  key: 'A' | 'B' | 'C' | 'EN_FORME' | 'FORME_MOYENNE' | 'CAPABLE_EXPLOIT' | 'MEFORME' | string;
   label: string;
   description: string;
   bases: number[];
@@ -472,6 +486,7 @@ export interface DisciplineGridResult {
   ruleC: string;
   instruction: string;
   rows: DisciplineGridRow[];
+  formRows: DisciplineGridRow[];
 }
 
 /**
@@ -599,16 +614,25 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     C: rows[2],
   };
 
-  // Cote map pour tri strict par cote croissante
+  // Cote map et Performance map pour les tri des cases
   const horseOddsMap = new Map<number, number>();
+  const horsePerfPointsMap = new Map<number, number>();
   for (const p of allPartants) {
     horseOddsMap.set(Number(p.numero), getHorseGenyOdds(p));
+    horsePerfPointsMap.set(Number(p.numero), calculerPerformance3Musiques(p.musique || '').totalPoints);
   }
   const sortByOddsAsc = (a: number, b: number) => {
     const oA = horseOddsMap.get(a) ?? 99;
     const oB = horseOddsMap.get(b) ?? 99;
     if (oA !== oB) return oA - oB;
     return a - b;
+  };
+
+  const sortByPerfPointsAsc = (a: number, b: number) => {
+    const pA = horsePerfPointsMap.get(a) ?? 99;
+    const pB = horsePerfPointsMap.get(b) ?? 99;
+    if (pA !== pB) return pA - pB;
+    return sortByOddsAsc(a, b);
   };
 
   // Dispatcher chaque partant actif :
@@ -631,14 +655,80 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     }
   }
 
-  // Trier les numéros par cote croissante dans chaque case
+  // Trier les numéros par cote croissante (Favoris, Outsiders, Tocards, Délaissés)
+  // et par Points de Performance pour la colonne SURPRISES
   for (const r of rows) {
     r.bases.sort(sortByOddsAsc);
     r.chances.sort(sortByOddsAsc);
     r.tocards.sort(sortByOddsAsc);
-    r.surprises.sort(sortByOddsAsc);
+    r.surprises.sort(sortByPerfPointsAsc);
     r.delaisses.sort(sortByOddsAsc);
   }
+
+  // --- 4 Lignes supplémentaires de Classification par Forme ---
+  const formClassification = classerChevauxFormeEtPoints(course.partants || []);
+  
+  const formRowSpecs = [
+    {
+      key: 'EN_FORME',
+      label: 'CHEVAUX EN FORME',
+      description: '1e au 6e',
+      items: formClassification.chevauxEnForme,
+    },
+    {
+      key: 'FORME_MOYENNE',
+      label: 'FORME MOYENNE',
+      description: '7e au 10e',
+      items: formClassification.formeMoyenne,
+    },
+    {
+      key: 'CAPABLE_EXPLOIT',
+      label: "CAPABLE D'EXPLOIT",
+      description: 'Cote < 8.0',
+      items: formClassification.capableExploit,
+    },
+    {
+      key: 'MEFORME',
+      label: 'MÉFORME',
+      description: '11e et +',
+      items: formClassification.meforme,
+    },
+  ];
+
+  const formRows: DisciplineGridRow[] = formRowSpecs.map(spec => {
+    const row: DisciplineGridRow = {
+      key: spec.key,
+      label: spec.label,
+      description: spec.description,
+      bases: [],
+      chances: [],
+      tocards: [],
+      surprises: [],
+      delaisses: [],
+    };
+
+    for (const item of spec.items) {
+      const n = Number(item.partant.numero);
+      if (favorisNums.has(n)) {
+        row.bases.push(n);
+      } else if (outsiderNums.has(n)) {
+        row.chances.push(n);
+      } else if (tocardNums.has(n)) {
+        row.tocards.push(n);
+      } else if (surpriseNums.has(n)) {
+        row.surprises.push(n);
+        row.delaisses.push(n);
+      }
+    }
+
+    row.bases.sort(sortByOddsAsc);
+    row.chances.sort(sortByOddsAsc);
+    row.tocards.sort(sortByOddsAsc);
+    row.surprises.sort(sortByPerfPointsAsc);
+    row.delaisses.sort(sortByOddsAsc);
+
+    return row;
+  });
 
   return {
     disciplineType,
@@ -648,6 +738,7 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     ruleC,
     instruction,
     rows,
+    formRows,
   };
 }
 

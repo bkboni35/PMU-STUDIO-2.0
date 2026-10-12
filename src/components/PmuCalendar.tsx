@@ -23,13 +23,14 @@ import {
   FileText,
   X,
   Star,
+  Database,
 } from 'lucide-react';
 import { PmuMeeting, PmuCalendarResponse } from '../types/turf';
-import { getCuratedPmuMeetings, PLR_FRIDAY_02_MEETINGS } from '../data/pmuMeetingsData';
-import { getFriday02Meetings } from '../data/plrFriday02Data';
+import { getCuratedPmuMeetings, PMU_SUNDAY_11_MEETINGS, getSunday11Meetings, getMeetingsForDate, MULTI_DATE_MEETINGS_MAP } from '../data/pmuMeetingsData';
 import { ConcordanceAuditModal } from './ConcordanceAuditModal';
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
 import { InteractivePmuDatePicker } from './InteractivePmuDatePicker';
+import { PmuApiHubModal } from './PmuApiHubModal';
 
 import { CountdownTimer } from './CountdownTimer';
 import { getRaceParisTargetTime, getDualDepartureTimes } from '../utils/raceCountdown';
@@ -52,32 +53,27 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
         const parsed = JSON.parse(saved);
         if (parsed && Array.isArray(parsed.meetings) && parsed.meetings.length > 0) {
           const firstMeetingDate = (parsed.meetings[0]?.date || '').toLowerCase();
-          // Purge définitive de tout ancien programme passé (Samedi 26 au Jeudi 01 Octobre)
+          // Purge ciblée des anciens programmes passés obsolètes (Septembre ou début Octobre 2026 antérieur au 11)
           if (
-            firstMeetingDate.includes('samedi') ||
-            firstMeetingDate.includes('dimanche') ||
-            firstMeetingDate.includes('lundi') ||
-            firstMeetingDate.includes('mardi') ||
-            firstMeetingDate.includes('mercredi') ||
-            firstMeetingDate.includes('jeudi') ||
-            firstMeetingDate.includes('26') ||
-            firstMeetingDate.includes('27') ||
-            firstMeetingDate.includes('28') ||
-            firstMeetingDate.includes('29') ||
-            firstMeetingDate.includes('30') ||
-            firstMeetingDate.includes('01') ||
-            firstMeetingDate.includes('2026-10-01')
+            firstMeetingDate.includes('septembre') ||
+            firstMeetingDate.includes('2026-09') ||
+            firstMeetingDate.includes('2026-10-01') ||
+            firstMeetingDate.includes('2026-10-02') ||
+            firstMeetingDate.includes('vendredi 02') ||
+            firstMeetingDate.includes('vendredi 2') ||
+            firstMeetingDate.includes('cerealiste') ||
+            firstMeetingDate.includes('justicia')
           ) {
             localStorage.removeItem('hippo_calendar_data');
             localStorage.removeItem('hippo_imported_races');
             localStorage.removeItem('hippo_is_custom_import');
             return {
-              meetings: PLR_FRIDAY_02_MEETINGS,
+              meetings: PMU_SUNDAY_11_MEETINGS,
               sourceType: 'programme_officiel_pmu',
               updatedAt: new Date().toISOString(),
               groundingSources: [
-                { title: 'Programme officiel LONACI (lonacionline.ci) / PMU / Geny - Vendredi 02 Octobre 2026', url: 'https://www.geny.com/programme/2026-10-02/orga/PMU' },
-                { title: 'Portail Officiel LONACI Online', url: 'https://www.lonacionline.ci' }
+                { title: 'Programme officiel LONACI (lonacionline.ci) / PMU / Geny - Dimanche 11 Octobre 2026', url: 'https://www.geny.com/programme/2026-10-11/orga/PMU' },
+                { title: 'Portail Officiel PMU.fr - Hippodrome d\'Auteuil Prix Montgomery', url: 'https://www.pmu.fr/turf/' }
               ],
             };
           }
@@ -88,30 +84,30 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
       console.error("Erreur lecture calendrier mémorisé:", e);
     }
     return {
-      meetings: PLR_FRIDAY_02_MEETINGS,
+      meetings: PMU_SUNDAY_11_MEETINGS,
       sourceType: 'programme_officiel_pmu',
       updatedAt: new Date().toISOString(),
       groundingSources: [
-        { title: 'Programme officiel LONACI (lonacionline.ci) / PMU / Geny - Vendredi 02 Octobre 2026', url: 'https://www.geny.com/programme/2026-10-02/orga/PMU' },
-        { title: 'Portail Officiel LONACI Online', url: 'https://www.lonacionline.ci' }
+        { title: 'Programme officiel LONACI (lonacionline.ci) / PMU / Geny - Dimanche 11 Octobre 2026', url: 'https://www.geny.com/programme/2026-10-11/orga/PMU' },
+        { title: 'Portail Officiel PMU.fr - Hippodrome d\'Auteuil Prix Montgomery', url: 'https://www.pmu.fr/turf/' }
       ],
     };
   });
   const [isLoading, setIsLoading] = useState(false);
   const [dataIntegrityStatus, setDataIntegrityStatus] = useState<'valid' | 'warning' | 'error'>('valid');
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const todayIso = getIvoryCoastDate(0);
+    const todayIso = getIvoryCoastDate(0) || '2026-10-11';
     try {
       const saved = localStorage.getItem('hippo_selected_date');
       if (
         saved &&
-        !saved.includes('26') &&
-        !saved.includes('27') &&
-        !saved.includes('28') &&
-        !saved.includes('29') &&
-        !saved.includes('30') &&
-        !saved.includes('01') &&
-        saved !== '2026-10-01'
+        !saved.includes('2026-09') &&
+        !saved.includes('2026-10-01') &&
+        !saved.includes('2026-10-02') &&
+        !saved.includes('2026-10-03') &&
+        !saved.includes('2026-10-04') &&
+        !saved.includes('2026-10-05') &&
+        !saved.includes('2026-10-06')
       ) {
         return saved;
       }
@@ -175,6 +171,7 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
 
   // Modal d'extraction des arrivées en temps réel (Google Search Grounding)
   const [isGroundingArrivalsModalOpen, setIsGroundingArrivalsModalOpen] = useState<boolean>(false);
+  const [isPmuApiHubOpen, setIsPmuApiHubOpen] = useState<boolean>(false);
   const [targetedArrivalMeeting, setTargetedArrivalMeeting] = useState<PmuMeeting | null>(null);
 
   // Source de synchronisation temps réel sélectionnée : 'pmu' (PMU.fr) | 'paristurf' (Paris-Turf.com) | 'all' (Multi-sources)
@@ -302,7 +299,7 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
     }, 450);
 
     try {
-      const targetDate = selectedDate && selectedDate !== 'all' ? selectedDate : '2026-10-01';
+      const targetDate = selectedDate && selectedDate !== 'all' ? normalizeDateForQuery(selectedDate) : getIvoryCoastDate(0) || '2026-10-11';
       const res = await fetch('/api/sync-realtime-calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -320,7 +317,7 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
         const data = await res.json();
         const meetingsList = data.meetings && Array.isArray(data.meetings) && data.meetings.length > 0
           ? data.meetings
-          : PLR_FRIDAY_02_MEETINGS;
+          : getMeetingsForDate(targetDate);
 
         const effectiveSources = data.groundingSources && data.groundingSources.length > 0
           ? data.groundingSources
@@ -370,8 +367,9 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
       }
     } catch (err: any) {
       console.warn("Notice lors de la synchronisation en temps réel:", err);
+      const targetDate = selectedDate && selectedDate !== 'all' ? normalizeDateForQuery(selectedDate) : getIvoryCoastDate(0) || '2026-10-11';
       populateMeetingsProgressively(
-        PLR_FRIDAY_02_MEETINGS,
+        getMeetingsForDate(targetDate),
         `Programme Officiel ${sourceLabel}`,
         activeSource === 'paristurf'
           ? [{ title: 'Paris-Turf.com - Programme & Réunions', url: 'https://www.paris-turf.com/programme-courses' }]
@@ -512,28 +510,28 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
           `Programme Officiel : ${dateLabel}`,
           data.groundingSources || [
             { title: 'Étape 1 : Programme officiel LONACI (pmu.lonacionline.ci) - Courses Françaises', url: 'https://pmu.lonacionline.ci/' },
-            { title: `Étape 2 : Liens & Cotes Geny Courses - ${dateLabel}`, url: `https://www.geny.com/programme/${normalizedQuery || '2026-09-30'}/orga/PMU` }
+            { title: `Étape 2 : Liens & Cotes Geny Courses - ${dateLabel}`, url: `https://www.geny.com/programme/${normalizedQuery || getIvoryCoastDate(0)}/orga/PMU` }
           ]
         );
       } else {
-        const fallback = PLR_FRIDAY_02_MEETINGS;
+        const fallback = getMeetingsForDate(normalizedQuery || getIvoryCoastDate(0));
         populateMeetingsProgressively(
           fallback,
           `Programme Officiel : ${dateLabel}`,
           [
             { title: 'Étape 1 : Programme officiel LONACI (pmu.lonacionline.ci) - Courses Françaises', url: 'https://pmu.lonacionline.ci/' },
-            { title: `Étape 2 : Liens & Cotes Geny Courses - ${dateLabel}`, url: `https://www.geny.com/programme/${normalizedQuery || '2026-10-02'}/orga/PMU` }
+            { title: `Étape 2 : Liens & Cotes Geny Courses - ${dateLabel}`, url: `https://www.geny.com/programme/${normalizedQuery || getIvoryCoastDate(0)}/orga/PMU` }
           ]
         );
       }
     } catch {
-      const localMeetings = PLR_FRIDAY_02_MEETINGS;
+      const localMeetings = getMeetingsForDate(normalizedQuery || getIvoryCoastDate(0));
       populateMeetingsProgressively(
         localMeetings,
         `Programme Officiel : ${dateLabel}`,
         [
           { title: 'Étape 1 : Programme officiel LONACI (pmu.lonacionline.ci) - Courses Françaises', url: 'https://pmu.lonacionline.ci/' },
-          { title: `Étape 2 : Liens & Cotes Geny Courses - ${dateLabel}`, url: `https://www.geny.com/programme/${normalizedQuery || '2026-10-02'}/orga/PMU` }
+          { title: `Étape 2 : Liens & Cotes Geny Courses - ${dateLabel}`, url: `https://www.geny.com/programme/${normalizedQuery || getIvoryCoastDate(0)}/orga/PMU` }
         ]
       );
     } finally {
@@ -837,37 +835,37 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
   };
 
   useEffect(() => {
-    // Purge automatique de tous les programmes passés / expirés (Samedi 26, Dimanche 27, Lundi 28, Mardi 29)
-    // Synchronisation directe avec le Programme Officiel LONACI (lonacionline.ci) / PMU / Geny
+    // Purge automatique de tous les anciens programmes passés (Septembre et début Octobre)
+    // Synchronisation directe avec le Programme Officiel PMU / Geny / LONACI du jour
+    const todayIso = getIvoryCoastDate(0) || '2026-10-11';
     try {
       const saved = localStorage.getItem('hippo_calendar_data');
       if (saved) {
         const parsed = JSON.parse(saved);
         const firstMeetingDate = (parsed?.meetings?.[0]?.date || '').toLowerCase();
         if (
-          firstMeetingDate.includes('samedi') || 
-          firstMeetingDate.includes('dimanche') ||
-          firstMeetingDate.includes('lundi') ||
-          firstMeetingDate.includes('mardi') ||
-          firstMeetingDate.includes('26') ||
-          firstMeetingDate.includes('27') ||
-          firstMeetingDate.includes('28') ||
-          firstMeetingDate.includes('29') ||
-          (firstMeetingDate.includes('mercredi') && parsed?.meetings?.length < 15)
+          firstMeetingDate.includes('septembre') ||
+          firstMeetingDate.includes('2026-09') ||
+          firstMeetingDate.includes('2026-10-01') ||
+          firstMeetingDate.includes('2026-10-02') ||
+          firstMeetingDate.includes('vendredi 02') ||
+          firstMeetingDate.includes('vendredi 2') ||
+          firstMeetingDate.includes('cerealiste') ||
+          firstMeetingDate.includes('justicia')
         ) {
-          console.log("Purge automatique des anciens programmes passés (Samedi, Dimanche, Lundi, Mardi).");
+          console.log("Purge automatique des anciens programmes passés.");
           localStorage.removeItem('hippo_calendar_data');
           localStorage.removeItem('hippo_imported_races');
           localStorage.removeItem('hippo_is_custom_import');
           localStorage.removeItem('hippo_deleted_meeting_ids');
           localStorage.removeItem('hippo_calendar_cleared');
-          localStorage.setItem('hippo_selected_date', '2026-10-02');
-          setSelectedDate('2026-10-02');
+          localStorage.setItem('hippo_selected_date', todayIso);
+          setSelectedDate(todayIso);
           populateMeetingsProgressively(
-            PLR_FRIDAY_02_MEETINGS,
-            'Programme Officiel : Vendredi 02 Octobre 2026',
+            PMU_SUNDAY_11_MEETINGS,
+            'Programme Officiel : Dimanche 11 Octobre 2026',
             [
-              { title: 'Portail Officiel PMU.fr - Programme & Cotes', url: 'https://www.pmu.fr/turf/' }
+              { title: 'Portail Officiel PMU.fr - Programme & Cotes Auteuil Quinté+', url: 'https://www.pmu.fr/turf/' }
             ]
           );
         }
@@ -876,7 +874,7 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
       console.warn("Erreur de nettoyage de cache:", e);
     }
 
-    fetchCalendar(false, '2026-09-30');
+    fetchCalendar(false, todayIso);
   }, []);
 
   // Écoute dynamique du sélecteur de date global (Header Date Picker)
@@ -1865,11 +1863,21 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                 fetchCalendar(true, currentActiveDate);
               }}
               disabled={isLoading}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs sm:text-sm transition-all shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
-              title="Synchronisation et actualisation du Programme Officiel LONACI (lonacionline.ci) / PMU / Geny"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs sm:text-sm transition-all shadow-lg shadow-amber-500/20 hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+              title="Synchronisation et actualisation du Programme Officiel PMU TurfInfo en direct"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
               <span>{isLoading ? 'Actualisation...' : 'Actualiser'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsPmuApiHubOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/40 font-bold text-xs sm:text-sm transition-all shadow-md cursor-pointer hover:border-amber-400"
+              title="Centre d'Actualisation Quotidienne & Connecteur PMU API"
+            >
+              <Database className="w-4 h-4 text-amber-400" />
+              <span>Hub PMU API</span>
             </button>
           </div>
         </div>
@@ -3161,6 +3169,25 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
 
             <button
               type="button"
+              onClick={() => {
+                if (selectedDate === 'all') {
+                  handleDateSelect('today');
+                }
+                setSelectedFilter(selectedFilter === 'quinte' ? 'all' : 'quinte');
+              }}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-black text-xs transition-all shadow-md ${
+                selectedFilter === 'quinte'
+                  ? 'bg-gradient-to-r from-amber-400 to-amber-500 text-slate-950 ring-2 ring-amber-300'
+                  : 'bg-slate-950 text-amber-300 hover:text-white border-2 border-amber-500/60 hover:border-amber-400'
+              }`}
+              title="Filtre rapide : n'afficher que le Quinté+ de la date sélectionnée"
+            >
+              <Trophy className="w-4 h-4 text-amber-400 fill-current animate-pulse" />
+              <span>🏆 Quinté+ de la date sélectionnée</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => setSelectedFilter(selectedFilter === 'quinte' ? 'all' : 'quinte')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-bold text-xs transition-all ${
                 selectedFilter === 'quinte'
@@ -3911,6 +3938,16 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
             onAnalyzeMeeting(found);
             setIsGroundingArrivalsModalOpen(false);
           }
+        }}
+      />
+
+      {/* Centre d'Actualisation Quotidienne & Connecteur PMU API */}
+      <PmuApiHubModal
+        isOpen={isPmuApiHubOpen}
+        onClose={() => setIsPmuApiHubOpen(false)}
+        onSelectMeeting={(m) => {
+          onAnalyzeMeeting(m);
+          setIsPmuApiHubOpen(false);
         }}
       />
     </div>

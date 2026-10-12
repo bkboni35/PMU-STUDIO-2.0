@@ -9,6 +9,7 @@ import {
   History,
   RotateCcw,
   Sliders,
+  Terminal,
 } from 'lucide-react';
 import { CourseHippique } from '../types/turf';
 
@@ -22,6 +23,8 @@ interface AndroidMobileHeaderProps {
   isLoading?: boolean;
   isExpertMode?: boolean;
   onToggleExpertMode?: () => void;
+  hasScraperLogs?: boolean;
+  onOpenScraperLogs?: () => void;
 }
 
 export const AndroidMobileHeader: React.FC<AndroidMobileHeaderProps> = ({
@@ -34,6 +37,8 @@ export const AndroidMobileHeader: React.FC<AndroidMobileHeaderProps> = ({
   isLoading,
   isExpertMode,
   onToggleExpertMode,
+  hasScraperLogs,
+  onOpenScraperLogs,
 }) => {
   return (
     <div className="sm:hidden mb-4 p-3 bg-gradient-to-r from-slate-900 via-emerald-950/40 to-slate-900 rounded-2xl border border-emerald-500/30 shadow-lg flex items-center justify-between gap-2">
@@ -108,6 +113,18 @@ export const AndroidMobileHeader: React.FC<AndroidMobileHeaderProps> = ({
                 {historyCount}
               </span>
             )}
+          </button>
+        )}
+
+        {hasScraperLogs && onOpenScraperLogs && (
+          <button
+            type="button"
+            onClick={onOpenScraperLogs}
+            className="flex items-center gap-1 px-2 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-[10px] font-black shadow-md active:scale-95 animate-pulse"
+            title="Afficher Logs Scraper"
+          >
+            <Terminal className="w-3 h-3 text-slate-950" />
+            <span>Logs</span>
           </button>
         )}
 

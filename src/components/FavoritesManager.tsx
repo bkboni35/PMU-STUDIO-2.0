@@ -33,7 +33,13 @@ import {
   setSmartFavoritesPreference,
   toggleFavoriteRace
 } from '../utils/favoritesStorage';
+import { 
+  getFavoriteNotificationsEnabled, 
+  setFavoriteNotificationsEnabled,
+  getFavoriteArrivalAlerts
+} from '../utils/favoriteArrivalNotificationService';
 import { CountdownTimer } from './CountdownTimer';
+import { scrollToTopInstant } from '../utils/scrollHelper';
 
 interface FavoritesManagerProps {
   favorites: FavoriteCourseItem[];
@@ -72,6 +78,10 @@ export const FavoritesManager: React.FC<FavoritesManagerProps> = ({
       setHistoryItems([]);
     }
   }, []);
+
+  useEffect(() => {
+    scrollToTopInstant();
+  }, [filterDiscipline, selectedReunionFilter, isSmartModeEnabled]);
 
   const handleToggleSmartMode = () => {
     const nextState = !isSmartModeEnabled;
@@ -208,8 +218,29 @@ export const FavoritesManager: React.FC<FavoritesManagerProps> = ({
             </div>
           </div>
 
-          {/* Bouton Toggle Favoris Intelligents */}
-          <div className="flex items-center gap-2 self-start sm:self-center">
+          {/* Bouton Toggle Favoris Intelligents & Notifications Arrivée */}
+          <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
+            {/* Toggle Notifications Arrivée */}
+            <button
+              type="button"
+              onClick={() => {
+                const nextState = !getFavoriteNotificationsEnabled();
+                setFavoriteNotificationsEnabled(nextState);
+                // Force re-render via small dummy state if needed or let React handle
+                setIsSmartModeEnabled((prev) => prev); // trigger
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-black transition-all shadow-md active:scale-95 ${
+                getFavoriteNotificationsEnabled()
+                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
+                  : 'bg-slate-950 text-slate-400 border-slate-800'
+              }`}
+              title="Alerte sonore et visuelle automatique quand l'arrivée officielle d'un favori est validée"
+            >
+              <Bell className={`w-3.5 h-3.5 ${getFavoriteNotificationsEnabled() ? 'fill-emerald-400 text-emerald-400' : 'text-slate-500'}`} />
+              <span>Alertes Arrivée : {getFavoriteNotificationsEnabled() ? 'Actives' : 'Muet'}</span>
+            </button>
+
+            {/* Bouton Toggle Favoris Intelligents */}
             <button
               type="button"
               onClick={handleToggleSmartMode}
@@ -491,7 +522,37 @@ export const FavoritesManager: React.FC<FavoritesManagerProps> = ({
                         )}
                       </div>
 
-                      {!c.arriveeOfficielle && (
+                      {c.arriveeOfficielle ? (
+                        <div className="pt-1.5 pb-0.5">
+                          <div className="p-2 rounded-xl bg-gradient-to-r from-emerald-950/60 to-slate-900 border border-emerald-500/40">
+                            <div className="flex items-center justify-between text-[10px] text-emerald-300 font-black mb-1">
+                              <span className="flex items-center gap-1">
+                                <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                                Arrivée officielle certifiée
+                              </span>
+                              <span className="text-[9px] text-slate-400 font-mono">Homologué</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              {c.arriveeOfficielle.split(/[-,\s]+/).map((num, nIdx) => (
+                                <span
+                                  key={nIdx}
+                                  className={`inline-flex items-center justify-center w-5 h-5 rounded-md text-[10px] font-black ${
+                                    nIdx === 0
+                                      ? 'bg-amber-400 text-slate-950 shadow-xs'
+                                      : nIdx === 1
+                                      ? 'bg-slate-200 text-slate-900'
+                                      : nIdx === 2
+                                      ? 'bg-amber-700 text-amber-100'
+                                      : 'bg-slate-800 text-slate-200'
+                                  }`}
+                                >
+                                  {num}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
                         <div className="pt-0.5">
                           <CountdownTimer date={c.date} heure={c.heure} compact />
                         </div>

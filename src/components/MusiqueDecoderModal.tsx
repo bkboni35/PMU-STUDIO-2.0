@@ -1,6 +1,6 @@
 import React from 'react';
-import { X, HelpCircle, CheckCircle, Info } from 'lucide-react';
-import { decrypterMusique } from '../utils/turfCalculations';
+import { X, HelpCircle, CheckCircle, Info, Calculator, Award } from 'lucide-react';
+import { decrypterMusique, calculerPerformance3Musiques } from '../utils/turfCalculations';
 
 interface MusiqueDecoderModalProps {
   isOpen: boolean;
@@ -18,10 +18,11 @@ export const MusiqueDecoderModal: React.FC<MusiqueDecoderModalProps> = ({
   if (!isOpen) return null;
 
   const details = decrypterMusique(musique);
+  const perf3 = calculerPerformance3Musiques(musique);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center p-0 sm:pt-2 sm:px-2 sm:pb-2 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
-      <div className="bg-slate-900 border-2 border-amber-500/40 rounded-none sm:rounded-2xl max-w-lg w-full p-4 sm:p-6 shadow-2xl space-y-4 mt-0 sm:mt-2">
+    <div className="fixed inset-0 z-50 flex items-start justify-center p-0 sm:p-0 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-slate-900 border-b-2 border-x-2 border-amber-500/50 rounded-none sm:rounded-b-3xl max-w-lg w-full p-4 sm:p-6 shadow-2xl space-y-4 mt-0 max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-2.5">
@@ -30,7 +31,7 @@ export const MusiqueDecoderModal: React.FC<MusiqueDecoderModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-extrabold text-white">
-                Décryptage de la Musique
+                Décryptage & Performance Musique
               </h3>
               <p className="text-xs text-slate-400">
                 Cheval : <strong className="text-amber-400">{horseName}</strong>
@@ -52,6 +53,41 @@ export const MusiqueDecoderModal: React.FC<MusiqueDecoderModalProps> = ({
           <span className="font-mono text-sm font-bold text-amber-300">
             {musique}
           </span>
+        </div>
+
+        {/* Evaluation 3 Dernières Musiques (Règle des 3 courses) */}
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border-2 border-amber-500/40 space-y-2.5 shadow-lg">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-black text-white uppercase tracking-wider">
+                Score Performance (Sum 3 Musiques)
+              </span>
+            </div>
+            <span className={`px-2.5 py-1 rounded-xl text-xs font-mono border ${perf3.badgeColorClass}`}>
+              {perf3.totalPoints} Points ({perf3.appreciation})
+            </span>
+          </div>
+
+          <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 text-xs font-mono space-y-1">
+            <div className="flex items-center justify-between text-slate-300">
+              <span>Formule de calcul :</span>
+              <strong className="text-amber-300">{perf3.formulaCalculation}</strong>
+            </div>
+            <div className="text-[11px] text-slate-400 font-sans mt-1 italic">
+              ⭐ Règle : Les chevaux ayant le <strong>plus petit total</strong> sont les meilleurs ! (Ex: 1a 1a 1a = 3 pts).
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-1.5 text-center text-xs font-mono">
+            {perf3.details.map((d, i) => (
+              <div key={i} className="p-2 rounded-xl bg-slate-900 border border-slate-800">
+                <span className="text-[10px] text-slate-500 block uppercase">Course {i + 1}</span>
+                <span className="text-amber-400 font-bold text-sm block">{d.token}</span>
+                <span className="text-emerald-400 font-black text-xs block">{d.points} pt{d.points > 1 ? 's' : ''}</span>
+              </div>
+            ))}
+          </div>
         </div>
 
         {/* Step-by-step breakdown */}
@@ -76,10 +112,9 @@ export const MusiqueDecoderModal: React.FC<MusiqueDecoderModalProps> = ({
 
         {/* Legend of Turf codes */}
         <div className="p-3.5 rounded-2xl bg-slate-950/40 border border-slate-800 text-[11px] text-slate-400 space-y-1 leading-relaxed">
-          <p className="font-bold text-slate-300">Rappel du lexique PMU / Geny / Paris-Turf :</p>
-          <p><strong className="text-amber-300">a</strong> = attelé, <strong className="text-amber-300">m</strong> = monté, <strong className="text-amber-300">p</strong> = plat, <strong className="text-amber-300">h</strong> = haies, <strong className="text-amber-300">s</strong> = steeple</p>
-          <p><strong className="text-rose-400">D</strong> = Disqualifié pour allure irrégulière (au galop), <strong className="text-amber-300">0</strong> = Non placé (au-delà de la 9e place)</p>
-          <p><strong className="text-amber-300">D4</strong> = Déferré des 4 pieds, <strong className="text-amber-300">DP</strong> = Déferré des postérieurs, <strong className="text-amber-300">DA</strong> = Déferré des antérieurs</p>
+          <p className="font-bold text-slate-300">Rappel de la cotation des points de performance :</p>
+          <p>• Positions 1er à 9e = Valeur numérique (1 pt pour 1er, 5 pts pour 5e, 8 pts pour 8e, etc.)</p>
+          <p>• Disqualifiés (<strong className="text-rose-400">D</strong>, Da, Dm, Dp...), non placés (<strong className="text-amber-300">0</strong>, 0a, 0m, 0p, 0h, 0s), incidents (<strong className="text-purple-400">Th, Ah, Ts, As</strong>) et rangs &gt; 9e = <strong className="text-amber-300">10 points</strong> par course.</p>
         </div>
 
         <button
@@ -93,3 +128,4 @@ export const MusiqueDecoderModal: React.FC<MusiqueDecoderModalProps> = ({
     </div>
   );
 };
+

@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Partant, CourseHippique } from '../types/turf';
 import { HistoryCourseItem } from '../utils/favoritesStorage';
+import { ArrivalAuditCountdownWidget } from './ArrivalAuditCountdownWidget';
+import { isCourseArrivalOfficiallyConfirmed } from '../utils/raceCountdown';
 import {
   BarChart3,
   Target,
@@ -18,6 +20,8 @@ import {
   Eye,
   EyeOff,
   Layers,
+  Scale,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface DashboardVueGlobaleProps {
@@ -26,6 +30,8 @@ interface DashboardVueGlobaleProps {
   history?: HistoryCourseItem[];
   onSelectCourse?: (course: CourseHippique) => void;
   onOpenCalendar?: () => void;
+  onTriggerArrivalAudit?: () => void;
+  isAuditingArrival?: boolean;
 }
 
 export const DashboardVueGlobale: React.FC<DashboardVueGlobaleProps> = ({
@@ -34,6 +40,8 @@ export const DashboardVueGlobale: React.FC<DashboardVueGlobaleProps> = ({
   history = [],
   onSelectCourse,
   onOpenCalendar,
+  onTriggerArrivalAudit,
+  isAuditingArrival = false,
 }) => {
   const [selectedDayFilter, setSelectedDayFilter] = useState<string>('all');
   const [selectedReunionFilter, setSelectedReunionFilter] = useState<string>('all');
@@ -174,6 +182,29 @@ export const DashboardVueGlobale: React.FC<DashboardVueGlobaleProps> = ({
 
   const hasActiveFilter = selectedDayFilter !== 'all' || selectedReunionFilter !== 'all';
 
+  // Détection d'arrivée officielle confirmée pour la course active
+  const hasOfficialArrival = Boolean(
+    (currentCourse?.arriveeOfficielle && currentCourse.arriveeOfficielle.trim().length > 0) ||
+    currentCourse?.statut === 'ARRIVEE_OFFICIELLE' ||
+    (currentCourse as any)?.statutArrivee === 'officielle' ||
+    (currentCourse as any)?.statutArrivee === 'OFFICIELLE' ||
+    currentCourse?.statutCourse === 'Arrivée officielle' ||
+    isCourseArrivalOfficiallyConfirmed(currentCourse)
+  );
+
+  // Horodatage garanti pour activer le compte à rebours de 5 minutes (300 secondes) des commissaires
+  const effectiveCourseForWidget = useMemo(() => {
+    if (!currentCourse) return null;
+    const auditReferenceTime = currentCourse.arrivalAuditTimestamp || currentCourse.officialArrivalAt;
+    if (!auditReferenceTime && hasOfficialArrival) {
+      return {
+        ...currentCourse,
+        officialArrivalAt: currentCourse.derniereMiseAJour || new Date().toISOString(),
+      };
+    }
+    return currentCourse;
+  }, [currentCourse, hasOfficialArrival]);
+
   // Activer ou désactiver rapidement un filtre par code réunion (R1, R2, R3...)
   const handleToggleReunion = (reunionCode: string) => {
     if (selectedReunionFilter === reunionCode) {
@@ -186,6 +217,36 @@ export const DashboardVueGlobale: React.FC<DashboardVueGlobaleProps> = ({
 
   return (
     <div className="space-y-4 mb-6">
+      {/* COMPTE À REBOURS VISUEL DE 5 MINUTES (PÉRIODE DE CONTRÔLE DES COMMISSAIRES) */}
+      {/* Activé uniquement après la confirmation officielle d'une arrivée */}
+      {hasOfficialArrival && effectiveCourseForWidget && (
+        <div className="bg-gradient-to-r from-slate-950 via-amber-950/30 to-slate-950 border-2 border-amber-500/60 p-4 rounded-3xl shadow-2xl backdrop-blur-md space-y-3 animate-fadeIn">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-amber-500/30 pb-2.5">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-3 py-1 rounded-full bg-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-md flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 stroke-[3]" />
+                Arrivée Officielle Confirmée
+              </span>
+              <span className="text-xs font-black text-amber-200 flex items-center gap-1">
+                <Scale className="w-3.5 h-3.5 text-amber-400" />
+                {effectiveCourseForWidget.reunion} {effectiveCourseForWidget.course} • {effectiveCourseForWidget.prixNom || effectiveCourseForWidget.titre} ({effectiveCourseForWidget.hippodrome})
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono font-black text-amber-300 bg-slate-950 px-3 py-1 rounded-xl border border-amber-500/40 shadow">
+                Arrivée : {effectiveCourseForWidget.arriveeOfficielle}
+              </span>
+            </div>
+          </div>
+
+          <ArrivalAuditCountdownWidget
+            course={effectiveCourseForWidget}
+            onTriggerArrivalAudit={onTriggerArrivalAudit}
+            isAuditingArrival={isAuditingArrival}
+          />
+        </div>
+      )}
+
       {/* 1. Barre d'outils Sélecteur de date (Calendrier) & Bouton "Filtrer par réunion" */}
       <div className="bg-slate-900/90 border border-slate-800 p-3 sm:p-4 rounded-3xl shadow-xl backdrop-blur-md">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">

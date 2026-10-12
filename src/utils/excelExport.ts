@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { CourseHippique, Partant } from '../types/turf';
 import { convertToUTC } from './timeConversion';
 import { exportPlatModelToExcel } from './platQuantitativeModel';
+import { getEvolutionPoids } from './turfCalculations';
 
 /**
  * RÈGLE ABSOLUE DE FIABILITÉ :
@@ -109,10 +110,14 @@ export function exportCourseToExcel(course?: CourseHippique): void {
         'Cote Officielle / Récente': coteVal !== 'Donnée indisponible' ? `${coteVal}/1` : 'Donnée indisponible',
         'Jockey / Driver': formatVal(p.driver || (p as any).jockey),
         'Entraîneur': formatVal(p.entraineur),
+        ...(p.poids ? {
+          'Poids Porté (kg)': poidsVal,
+          'Poids Course Précédente (kg)': formatNum(p.poidsPrecedent),
+          'Évol. Poids (kg)': getEvolutionPoids(p)?.text || 'Donnée indisponible',
+        } : {}),
         ...(isPlat
           ? {
               'Corde / Stalle': cordeVal,
-              'Poids Porté (kg)': poidsVal,
               'Valeur Handicap': formatVal((p as any).valeurHandicap || (p as any).valeur),
               'Décharge / Surcharge': formatVal((p as any).decharge || (p as any).surcharge),
               'Équipement': formatVal((p as any).equipement || (p as any).oeilleres || 'Donnée indisponible'),

@@ -28,7 +28,9 @@ export interface Partant {
   age: number;
   sexe: 'M' | 'F' | 'H';
   race?: string; // Race du cheval (ex: Trotteur Français, Pur-sang, AQPS)
-  poids?: number; // pour le plat ou monté (kg)
+  poids?: number; // pour le plat, obstacle ou monté (kg)
+  poidsPrecedent?: number; // poids porté lors de la course précédente (kg)
+  evolutionPoids?: number; // variation en kg (poids - poidsPrecedent), ex: -1.5 (gain/soulagement) ou +2.0 (surcharge)
   corde?: number; // numéro de stalle à la corde pour le plat
   hippoScore?: number; // Note sur 100 calculée
   indexValeur?: number; // Index de valeur (rapport performance / cote / value bet)
@@ -301,9 +303,12 @@ export interface CourseHippique {
   allocation: number; // ex: 60000 €
   conditions: string;
   arriveeOfficielle?: string; // ex: "13 - 7 - 4 - 9 - 3"
-  statutCourse?: 'À venir' | 'Partants définitifs' | 'Arrivée officielle' | 'Arrivée provisoire' | 'En attente de l\'arrivée officielle' | 'Course terminée';
-  statutArrivee?: string; // ex: "PROVISOIRE" | "OFFICIELLE"
+  statutCourse?: 'À venir' | 'Partants définitifs' | 'Course en cours' | 'Arrivée officielle' | 'Arrivée provisoire' | 'En attente de l\'arrivée officielle' | 'Course terminée';
+  statut?: 'ATTENTE' | 'ARRIVEE_PROVISOIRE' | 'ARRIVEE_OFFICIELLE';
+  statutArrivee?: string; // ex: "PROVISOIRE" | "OFFICIELLE" | "en_attente"
   isOfficial?: boolean;
+  donneesFigees?: boolean;
+  evaluationPostCourse?: any;
   partants: Partant[];
   synthese: PronosticSynthese;
   synthesePresse?: {
@@ -326,6 +331,38 @@ export interface CourseHippique {
   expertDisciplineAnalysis?: ExpertDisciplineAnalysis;
   cotesScellees?: boolean; // Verrouille définitivement les cotes des chevaux après analyse (aucune variation ultérieure)
   delaisses?: number[]; // Numéros des chevaux délaissés classés par ordre décroissant (du plus grand au plus petit)
+  perplexityResearch?: PerplexityResearchResult;
+}
+
+export interface PerplexityHorseScout {
+  numero: number;
+  nom: string;
+  driver?: string;
+  entraineur?: string;
+  recentFormNotes: string;
+  jockeyTrainerTrend: string;
+  keyStrengths: string[];
+  riskFactors: string[];
+  perplexityConfidence: number; // 0-100
+  verdict: 'Incontournable' | 'Belle Chance' | 'Outsider Aiguisé' | 'Tocard Spéculatif' | 'Méfiance';
+  bruitEcurie?: string;
+}
+
+export interface PerplexityResearchResult {
+  query: string;
+  summary: string;
+  contextualInsights: string[];
+  trackAndWeatherCondition: {
+    trackState: string;
+    weatherForecast: string;
+    biasObservation: string;
+  };
+  horsesScouted: PerplexityHorseScout[];
+  keyTacticalFactors: string[];
+  citations: Array<{ title: string; url: string; snippet?: string }>;
+  modelUsed: string;
+  executedAt: string;
+  latencyMs: number;
 }
 
 export interface MultiAiStepDetail {
@@ -395,8 +432,10 @@ export interface PmuMeeting {
   lienGeny: string;
   nombrePartants?: number;
   partants?: Partant[];
-  statut?: 'À venir' | 'En direct' | 'Terminé';
+  statut?: 'À venir' | 'En direct' | 'Terminé' | 'À courir';
   arriveeOfficielle?: string;
+  hasEnquete?: boolean;
+  isProvisional?: boolean;
   sourceUrl?: string;
   sourceSite?: 'pmu.fr' | 'paristurf.com' | 'geny.com' | 'autre';
 }

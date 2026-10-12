@@ -261,6 +261,61 @@ export function isCourseFavorite(course: CourseHippique): boolean {
 }
 
 /**
+ * Met à jour une course dans les favoris (partants, arrivée officielle, statut)
+ */
+export function updateCourseInFavorites(
+  idOrUrl: string,
+  updatedCourse: Partial<CourseHippique>
+): { updatedFavorites: FavoriteCourseItem[]; updatedItem: FavoriteCourseItem | null } {
+  if (!idOrUrl || !idOrUrl.trim()) return { updatedFavorites: getFavoriteRaces(), updatedItem: null };
+  try {
+    const current = getFavoriteRaces();
+    let updatedItem: FavoriteCourseItem | null = null;
+
+    const rNum = String(updatedCourse.reunion || '').replace(/\D/g, '');
+    const cNum = String(updatedCourse.course || updatedCourse.courseNumero || '').replace(/\D/g, '');
+    const cHippo = String(updatedCourse.hippodrome || '').toLowerCase().trim();
+
+    const updated = current.map((item) => {
+      const itemR = String(item.course.reunion || '').replace(/\D/g, '');
+      const itemC = String(item.course.course || item.course.courseNumero || '').replace(/\D/g, '');
+      const itemHippo = String(item.course.hippodrome || '').toLowerCase().trim();
+
+      const isMatch =
+        item.id === idOrUrl ||
+        item.course.id === idOrUrl ||
+        (item.course.sourceUrl && idOrUrl && item.course.sourceUrl === idOrUrl) ||
+        (item.course.sourceUrl && updatedCourse.sourceUrl && item.course.sourceUrl === updatedCourse.sourceUrl) ||
+        (Boolean(rNum && cNum && itemR === rNum && itemC === cNum) && (!cHippo || !itemHippo || itemHippo.includes(cHippo) || cHippo.includes(itemHippo)));
+
+      if (isMatch) {
+        const arrivalToKeep = updatedCourse.arriveeOfficielle !== undefined ? updatedCourse.arriveeOfficielle : item.course.arriveeOfficielle;
+        const statusToKeep = updatedCourse.statutCourse || (arrivalToKeep ? 'Arrivée officielle' : item.course.statutCourse);
+
+        const merged: FavoriteCourseItem = {
+          ...item,
+          course: {
+            ...item.course,
+            ...updatedCourse,
+            arriveeOfficielle: arrivalToKeep,
+            statutCourse: statusToKeep,
+          },
+        };
+        updatedItem = merged;
+        return merged;
+      }
+      return item;
+    });
+
+    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
+    return { updatedFavorites: updated, updatedItem };
+  } catch (err) {
+    console.error('Erreur mise à jour favoris:', err);
+    return { updatedFavorites: getFavoriteRaces(), updatedItem: null };
+  }
+}
+
+/**
  * Supprime un favori spécifique
  */
 export function removeFavoriteRace(courseIdOrUrl: string): FavoriteCourseItem[] {

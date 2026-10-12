@@ -26,11 +26,15 @@ import {
   Server,
   Terminal,
   Zap,
+  Crown,
+  CreditCard,
 } from 'lucide-react';
 import { UserProfile } from '../types/userAuth';
 import { getAllRegisteredUsers, disconnectUser, saveRegisteredUsers } from '../utils/userAuthStorage';
+import { scrollToTopInstant } from '../utils/scrollHelper';
 import { db, ensureFirebaseAuth } from '../firebase';
 import { collection, doc, setDoc, onSnapshot } from 'firebase/firestore';
+import { exportProgramAndCodeToWord } from '../utils/wordExport';
 import {
   DEFAULT_GITHUB_REPO,
   DEFAULT_BRANCH,
@@ -57,14 +61,16 @@ interface AdminDashboardModalProps {
   isOpen: boolean;
   onClose: () => void;
   onDeploySuccess?: (info: DeploymentStatusInfo) => void;
+  onOpenSubscription?: () => void;
 }
 
-type AdminTab = 'users' | 'github' | 'tools';
+type AdminTab = 'users' | 'subscriptions' | 'github' | 'tools';
 
 export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   isOpen,
   onClose,
   onDeploySuccess,
+  onOpenSubscription,
 }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,6 +78,12 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
   const [adminPin, setAdminPin] = useState('');
   const [pinError, setPinError] = useState(false);
   const [activeAdminTab, setActiveAdminTab] = useState<AdminTab>('users');
+
+  useEffect(() => {
+    if (isOpen) {
+      scrollToTopInstant();
+    }
+  }, [isOpen, activeAdminTab]);
 
   // Configuration GitHub & Déploiement
   const [repoUrl, setRepoUrl] = useState(DEFAULT_GITHUB_REPO);
@@ -410,6 +422,7 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                   </div>
                   <h3 className="text-xl font-black text-white mt-0.5">
                     {activeAdminTab === 'users' && 'Gestion & Suivi des Utilisateurs Connectés'}
+                    {activeAdminTab === 'subscriptions' && 'Gestion & Suivi des Abonnements Mobile Money'}
                     {activeAdminTab === 'github' && 'Synchronisation & Déploiement GitHub / Render'}
                     {activeAdminTab === 'tools' && 'Outils Système & Maintenance'}
                   </h3>
@@ -433,6 +446,19 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
 
                 <button
                   type="button"
+                  onClick={() => setActiveAdminTab('subscriptions')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    activeAdminTab === 'subscriptions'
+                      ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 text-slate-950 shadow-md font-black'
+                      : 'text-amber-400 hover:text-amber-300 hover:bg-slate-800/60'
+                  }`}
+                >
+                  <Crown className="w-3.5 h-3.5 fill-current" />
+                  <span>Abonnements Mobile Money</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => setActiveAdminTab('github')}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                     activeAdminTab === 'github'
@@ -443,6 +469,19 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                   <GitBranch className="w-3.5 h-3.5" />
                   <span>🐙 Synchro GitHub</span>
                 </button>
+
+                {/* Bouton direct d'ouverture du module Abonnement Mobile Money */}
+                {onOpenSubscription && (
+                  <button
+                    type="button"
+                    onClick={onOpenSubscription}
+                    className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer border border-amber-300"
+                    title="Ouvrir le module d'Abonnement Mobile Money pour souscrire ou vérifier un paiement"
+                  >
+                    <Crown className="w-3.5 h-3.5 fill-slate-950" />
+                    <span>Abonnement Mobile Money</span>
+                  </button>
+                )}
 
                 {/* Bouton direct d'exportation vers GitHub dans la barre supérieure */}
                 <button
@@ -461,6 +500,23 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                     <Sparkles className="w-3.5 h-3.5 text-slate-950 fill-current" />
                   )}
                   <span>{isExportingSync ? 'En cours...' : '🚀 Synchroniser sur GitHub'}</span>
+                </button>
+
+                {/* Bouton d'exportation du programme en version Word */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    try {
+                      exportProgramAndCodeToWord(null, []);
+                    } catch (e) {
+                      console.error("Erreur export Word:", e);
+                    }
+                  }}
+                  className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-600 text-slate-950 text-xs font-black flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer"
+                  title="Exporter tout le programme et la programmation de l'application en version Word"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-950 stroke-[3]" />
+                  <span>📄 Exporter Programme (Word)</span>
                 </button>
 
                 <button
@@ -595,6 +651,139 @@ export const AdminDashboardModal: React.FC<AdminDashboardModalProps> = ({
                   )}
                 </div>
               </>
+            )}
+
+            {/* TAB: GESTION DES ABONNEMENTS MOBILE MONEY */}
+            {activeAdminTab === 'subscriptions' && (
+              <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pr-1">
+                {/* Hero Banner Abonnements Mobile Money */}
+                <div className="p-5 rounded-2xl bg-gradient-to-br from-amber-950/70 via-slate-950 to-orange-950/60 border-2 border-amber-500/60 shadow-xl space-y-4">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-3.5">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-slate-950 font-black shadow-lg shadow-amber-500/30 shrink-0">
+                        <Crown className="w-6 h-6 fill-slate-950" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-white text-base">Gestion des Abonnements Mobile Money</span>
+                          <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/30">
+                            Afrique de l'Ouest & Centrale
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-300 mt-0.5">
+                          Validez les abonnements des parieurs, encaissez via Wave, Orange Money, MTN MoMo et Moov Money.
+                        </p>
+                      </div>
+                    </div>
+
+                    {onOpenSubscription && (
+                      <button
+                        type="button"
+                        onClick={onOpenSubscription}
+                        className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-400 hover:to-orange-400 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-amber-500/30 transition-all active:scale-95 cursor-pointer shrink-0 border border-amber-300"
+                      >
+                        <Crown className="w-4 h-4 fill-slate-950" />
+                        <span>Ouvrir l'Espace Abonnement Mobile Money</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Grille des Formules Tarifaires Officielles */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-amber-500/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-amber-400 uppercase">VIP Quinté+ Mensuel</span>
+                      <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 text-[10px] font-bold">Populaire</span>
+                    </div>
+                    <div className="text-2xl font-black text-white">10 000 FCFA <span className="text-xs font-normal text-slate-400">/ mois</span></div>
+                    <p className="text-[11px] text-slate-400">Accès illimité aux 6 IA spécialisées, aux pronostics V38 scellés et aux alertes d'arrivées en temps réel.</p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-emerald-500/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-emerald-400 uppercase">Pass Semaine Express</span>
+                      <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-bold">7 Jours</span>
+                    </div>
+                    <div className="text-2xl font-black text-white">3 000 FCFA <span className="text-xs font-normal text-slate-400">/ 7j</span></div>
+                    <p className="text-[11px] text-slate-400">Idéal pour les grands week-ends de courses (Prix d'Amérique, Prix de Diane, Prix de l'Arc de Triomphe).</p>
+                  </div>
+
+                  <div className="p-4 rounded-2xl bg-slate-950 border border-purple-500/40 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black text-purple-400 uppercase">Pass Annuel Exclusif</span>
+                      <span className="px-2 py-0.5 rounded-md bg-purple-500/20 text-purple-300 text-[10px] font-bold">Économie 30k</span>
+                    </div>
+                    <div className="text-2xl font-black text-white">90 000 FCFA <span className="text-xs font-normal text-slate-400">/ an</span></div>
+                    <p className="text-[11px] text-slate-400">12 mois complets d'analyse certifiée, support WhatsApp direct prioritaire et export PDF V38 illimité.</p>
+                  </div>
+                </div>
+
+                {/* Opérateurs et Passerelles de Paiement */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-black text-white uppercase tracking-wider">Moyens de Paiement Mobile Money Acceptés</span>
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-bold">Support : +(225) 01 01 24 61 06</span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs">
+                    <div className="p-2.5 rounded-xl bg-orange-950/30 border border-orange-500/40 text-orange-200">
+                      <div className="font-black">🧡 Orange Money</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Côte d'Ivoire, Burkina, Mali, Sénégal</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/40 text-cyan-200">
+                      <div className="font-black">🌊 Wave</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Côte d'Ivoire & Sénégal (Zéro frais)</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/40 text-amber-200">
+                      <div className="font-black">💛 MTN MoMo</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Côte d'Ivoire, Bénin, Cameroun</div>
+                    </div>
+                    <div className="p-2.5 rounded-xl bg-blue-950/30 border border-blue-500/40 text-blue-200">
+                      <div className="font-black">💙 Moov Money</div>
+                      <div className="text-[10px] text-slate-400 mt-0.5">Côte d'Ivoire, Togo, Bénin</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Liste des Utilisateurs avec Statut d'Abonnement */}
+                <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-xs font-black text-white uppercase tracking-wider">Statuts des Comptes Utilisateurs</span>
+                    <span className="text-[11px] text-emerald-400 font-bold">Total : {users.length} comptes</span>
+                  </div>
+                  <div className="space-y-2">
+                    {users.slice(0, 10).map((u, idx) => (
+                      <div
+                        key={`sub-user-${u.id || idx}`}
+                        className="p-3 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-3 text-xs"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-slate-800 text-amber-400 font-bold flex items-center justify-center text-xs">
+                            {u.nom ? u.nom[0].toUpperCase() : 'U'}
+                          </div>
+                          <div>
+                            <div className="font-black text-white">{u.nom || u.email}</div>
+                            <div className="text-[10px] text-slate-400">{u.telephone || u.email}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
+                            idx === 0 || u.email === 'bkboni35@gmail.com'
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                          }`}>
+                            {idx === 0 || u.email === 'bkboni35@gmail.com' ? '👑 VIP Quinté+ Actif' : 'Membre Actif'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             )}
 
             {/* TAB 2: SYNCHRONISATION & DÉPLOIEMENT GITHUB / RENDER */}

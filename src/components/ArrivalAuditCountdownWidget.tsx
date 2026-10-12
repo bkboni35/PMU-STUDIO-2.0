@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Clock, ShieldCheck, CheckCircle2, AlertTriangle, RefreshCw, Sparkles, Scale, Info } from 'lucide-react';
 import { CourseHippique } from '../types/turf';
 import { checkOfficialArrivalAuditStatus, POST_OFFICIAL_AUDIT_DELAY_MS } from '../utils/raceCountdown';
+import { playArrivalModificationAlertAudio } from '../utils/audioPlayer';
 import { ArrivalAuditProgressRingBadge } from './ArrivalAuditProgressRingBadge';
 
 interface ArrivalAuditCountdownWidgetProps {
@@ -60,37 +61,45 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
     ? formatTimeStr(auditStatus.officialTimestamp + POST_OFFICIAL_AUDIT_DELAY_MS)
     : null;
 
+  // Déclenchement automatique de l'alerte sonore et visuelle en cas de modification d'arrivée (rétrogradation / disqualification)
+  useEffect(() => {
+    if (course.arrivalAuditModificationDetected) {
+      playArrivalModificationAlertAudio();
+    }
+  }, [course.arrivalAuditModificationDetected]);
+
   // 1. Cas : Modification d'arrivée constatée après enquête des commissaires
   if (course.arrivalAuditModificationDetected) {
     return (
-      <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-rose-950/90 via-rose-900/80 to-slate-950 border-2 border-rose-500 shadow-xl space-y-3 animate-pulse">
+      <div className="w-full p-4.5 rounded-2xl bg-gradient-to-r from-rose-950 via-rose-900 to-slate-950 border-2 border-rose-500 shadow-2xl space-y-3 animate-bounce shadow-rose-500/30">
         <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="flex items-start gap-3">
-            <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0">
-              <AlertTriangle className="w-5 h-5 text-rose-400" />
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 rounded-2xl bg-rose-500 text-slate-950 shadow-lg shadow-rose-500/40 shrink-0 font-black animate-pulse">
+              <AlertTriangle className="w-6 h-6 stroke-[3]" />
             </div>
-            <div>
+            <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-2.5 py-0.5 rounded-md bg-rose-500 text-slate-950 font-black text-[11px] uppercase tracking-wider">
-                  Audit Commissaires Acté
+                <span className="px-3 py-0.5 rounded-md bg-rose-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow">
+                  🚨 ALERTE COMMISSAIRES : MODIFICATION D'ARRIVÉE
                 </span>
-                <span className="text-xs font-black text-rose-200">
-                  Modification d'arrivée officielle détectée !
+                <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-500/50 text-[10px] font-bold">
+                  Rétrogradation / Disqualification après enquête
                 </span>
               </div>
-              <p className="text-xs text-rose-100 mt-1">
-                L'arrivée officielle a été rectifiée suite à réclamation/disqualification des commissaires.
+              <p className="text-xs font-bold text-rose-100">
+                Le service de certification a détecté une modification officielle de l'arrivée suite aux réclamations ou enquêtes des commissaires.
               </p>
               {course.arrivalAuditPreviousArrival && (
-                <p className="text-[11px] text-rose-300/90 mt-0.5 font-mono">
-                  Ordre initial constaté : <strong>{course.arrivalAuditPreviousArrival}</strong> ➔ Nouvel ordre officiel appliqué : <strong>{course.arriveeOfficielle}</strong>
-                </p>
+                <div className="p-2.5 rounded-xl bg-slate-950/90 border border-rose-500/40 text-xs font-mono text-rose-300 mt-1 space-y-0.5">
+                  <div>Ancien ordre provisoire : <span className="text-slate-400 font-bold">{course.arrivalAuditPreviousArrival}</span></div>
+                  <div>Nouvel ordre officiel rectifié : <strong className="text-amber-400 font-black text-sm">{course.arriveeOfficielle}</strong></div>
+                </div>
               )}
             </div>
           </div>
           {course.arrivalAuditTimestamp && (
-            <span className="text-[10px] font-mono text-rose-300 bg-rose-950/90 px-2.5 py-1 rounded-lg border border-rose-500/40">
-              Contrôlé le {new Date(course.arrivalAuditTimestamp).toLocaleTimeString('fr-FR')}
+            <span className="text-[10px] font-mono text-rose-200 bg-rose-950 px-3 py-1.5 rounded-xl border border-rose-500/50 shadow">
+              Alerte émise à {new Date(course.arrivalAuditTimestamp).toLocaleTimeString('fr-FR')}
             </span>
           )}
         </div>

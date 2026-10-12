@@ -467,7 +467,9 @@ function generateDeterministicField(meta: UrlMetadata, count: number, url: strin
   ];
 
   const isGalop = meta.discipline.includes('Plat');
-  const isObstacle = meta.discipline.includes('Haies') || meta.discipline.includes('Steeple') || meta.discipline.includes('Obstacle');
+  const isObstacle = meta.discipline.includes('Haies') || meta.discipline.includes('Steeple') || meta.discipline.includes('Obstacle') || meta.discipline.includes('Cross');
+  const isMonte = meta.discipline.includes('Monté') || meta.discipline.includes('Trot Monté');
+  const hasPoids = isGalop || isObstacle || isMonte;
   const chosenPool = isObstacle ? obstaclePool : (isGalop ? galopPool : trotPool);
 
   // Rotation déterministe basée sur la graine
@@ -490,6 +492,23 @@ function generateDeterministicField(meta: UrlMetadata, count: number, url: strin
       computedScore >= 78 ? 'Seconde chance' :
       computedScore >= 66 ? 'Outsider' : 'Tocard';
 
+    // Génération du poids et de son évolution pour Plat, Obstacle et Trot Monté
+    let poidsVal: number | undefined = undefined;
+    let poidsPrecedentVal: number | undefined = undefined;
+    let evolPoidsVal: number | undefined = undefined;
+
+    if (hasPoids) {
+      poidsVal = isGalop 
+        ? Math.round((53.5 + (numero % 9) * 0.8) * 10) / 10 
+        : isObstacle 
+        ? Math.round((64 + (numero % 8) * 1.1) * 10) / 10 
+        : Math.round((57 + (numero % 7) * 1.2) * 10) / 10;
+      
+      const deltaSteps = ((numero * 3 + seed + i) % 7) - 3; // -3 à +3 demi-kilos (-1.5 à +1.5kg)
+      evolPoidsVal = Math.round((deltaSteps * 0.5) * 10) / 10;
+      poidsPrecedentVal = Math.round((poidsVal - evolPoidsVal) * 10) / 10;
+    }
+
     result.push({
       numero,
       nom: template.nom,
@@ -499,7 +518,9 @@ function generateDeterministicField(meta: UrlMetadata, count: number, url: strin
       ferrure: template.ferrure || (isGalop ? undefined : (i % 3 === 0 ? 'D4' : i % 3 === 1 ? 'DP' : 'F')),
       distance: meta.distance,
       corde: isGalop ? ((numero - 1) % count) + 1 : undefined,
-      poids: isGalop ? 54 + (numero % 7) : isObstacle ? 65 + (numero % 7) : undefined,
+      poids: poidsVal,
+      poidsPrecedent: poidsPrecedentVal,
+      evolutionPoids: evolPoidsVal,
       age: template.age,
       sexe: template.sexe,
       gains: template.gains,

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ChevronUp, ChevronDown, Check, Info, Sparkles, Filter, ExternalLink, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, ShieldCheck, Search, Printer, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Crown, MapPin, Eye, EyeOff, Target, Layers, SlidersHorizontal, Flame } from 'lucide-react';
 import { Partant, Ferrure, CourseHippique } from '../types/turf';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -7,6 +7,7 @@ import { exportCourseToExcel } from '../utils/excelExport';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
 import { assignUniqueCordesForPlat, getHorseGenyOdds, computeV38Hierarchy, computeHorseSuccessProbabilities, HorseSuccessProbability } from '../utils/v38Helper';
+import { calculerPerformance3Musiques, classerChevauxFormeEtPoints, getEvolutionPoids } from '../utils/turfCalculations';
 import { PartantsPieChart } from './PartantsPieChart';
 
 interface PartantsTableProps {
@@ -183,8 +184,14 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
 }) => {
   const [localExpertMode, setLocalExpertMode] = useState<boolean>(true);
   const isExpertModeActive = isExpertModeProp ?? localExpertMode;
-  const [sortField, setSortField] = useState<SortField>('numero');
-  const [sortAsc, setSortAsc] = useState<boolean>(true);
+  const [sortField, setSortField] = useState<SortField>('probabiliteSucces');
+  const [sortAsc, setSortAsc] = useState<boolean>(false);
+
+  // Tri automatique par Probabilité de Succès (du plus élevé au plus faible) lors du chargement de la course
+  useEffect(() => {
+    setSortField('probabiliteSucces');
+    setSortAsc(false);
+  }, [course?.id, course?.date]);
   const [filterStatut, setFilterStatut] = useState<string>('all');
   const [filterDriver, setFilterDriver] = useState<string>('all');
   const [filterGroup, setFilterGroup] = useState<'all' | 'G1' | 'G2' | 'G3' | 'CA' | 'CB' | 'CC'>('all');
@@ -197,6 +204,13 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
   const [ecartThreshold, setEcartThreshold] = useState<number>(3);
   const [showEcartSettings, setShowEcartSettings] = useState<boolean>(false);
   const [selectedHippodrome, setSelectedHippodrome] = useState<string>('all');
+
+  const classificationMap = useMemo(() => {
+    const classification = classerChevauxFormeEtPoints(partants);
+    const map = new Map<number, typeof classification.allClassified[0]>();
+    classification.allClassified.forEach((c) => map.set(c.partant.numero, c));
+    return map;
+  }, [partants]);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [expandedHorse, setExpandedHorse] = useState<number | null>(null);
 
@@ -2495,7 +2509,19 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                           </span>
                           <span>·</span>
                           <span>{partant.distance}m</span>
-                          {partant.poids ? <span>· {partant.poids}kg</span> : null}
+                          {partant.poids ? (() => {
+                            const evolPoids = getEvolutionPoids(partant);
+                            return (
+                              <span className="inline-flex items-center gap-1">
+                                <span>· {partant.poids}kg</span>
+                                {evolPoids && evolPoids.hasChange && (
+                                  <span className={`px-1 py-0.2 rounded text-[9px] font-black border ${evolPoids.badgeBg}`} title={evolPoids.label}>
+                                    {evolPoids.text}
+                                  </span>
+                                )}
+                              </span>
+                            );
+                          })() : null}
                           
                           {/* Badge Groupe N° (G1: 1-6, G2: 7-10, G3: 11+) avec rang par cote */}
                           {(() => {
@@ -2592,18 +2618,46 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                       )}
                     </td>
 
-                    {/* Musique avec bouton interactif */}
+                    {/* Musique avec bouton interactif & Score 3 Musiques + Badge Classification */}
                     <td className="py-3 px-3 whitespace-nowrap">
                       {partant.musique && partant.musique !== '?' && partant.musique !== 'Inconnu' && partant.musique.trim() !== '' ? (
-                        <button
-                          type="button"
-                          onClick={() => onOpenMusiqueDecoder(partant.musique, partant.nom)}
-                          className="font-mono text-xs font-semibold text-amber-300 hover:text-amber-200 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 hover:border-amber-400/50 transition-colors flex items-center gap-1"
-                          title="Cliquez pour décrypter cette musique"
-                        >
-                          <span>{partant.musique}</span>
-                          <Info className="w-3 h-3 text-amber-400/70" />
-                        </button>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => onOpenMusiqueDecoder(partant.musique, partant.nom)}
+                            className="font-mono text-xs font-semibold text-amber-300 hover:text-amber-200 bg-slate-950 px-2 py-1 rounded-lg border border-slate-800 hover:border-amber-400/50 transition-colors flex items-center gap-1"
+                            title="Cliquez pour décrypter cette musique"
+                          >
+                            <span>{partant.musique}</span>
+                            <Info className="w-3 h-3 text-amber-400/70" />
+                          </button>
+                          {(() => {
+                            const perf3 = calculerPerformance3Musiques(partant.musique);
+                            const classif = classificationMap.get(partant.numero);
+
+                            return (
+                              <div className="flex items-center gap-1">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-mono border font-bold cursor-pointer hover:opacity-80 transition-opacity ${perf3.badgeColorClass}`}
+                                  onClick={() => onOpenMusiqueDecoder(partant.musique, partant.nom)}
+                                  title={`Score 3 Musiques (Sum = ${perf3.totalPoints} pts) : ${perf3.formulaCalculation}`}
+                                >
+                                  {perf3.totalPoints} pts
+                                </span>
+
+                                {classif && (
+                                  <span
+                                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono border font-black flex items-center gap-0.5 ${classif.badgeClass}`}
+                                    title={`Rang Points : #${classif.rangPoints} · ${classif.categorieLabel}`}
+                                  >
+                                    <span>{classif.badgeIcon}</span>
+                                    <span>#{classif.rangPoints}</span>
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       ) : (
                         <span className="px-2 py-0.5 rounded bg-slate-800 text-amber-400/90 text-[10px] font-bold border border-slate-700">
                           ⚠️ Musique non fournie
@@ -2932,10 +2986,22 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                               </span>
                             </div>
                             <div className="p-2 rounded-xl bg-slate-950 border border-slate-800">
-                              <span className="text-[9px] text-slate-500 uppercase font-bold block mb-0.5">Poids / Distance</span>
-                              <span className="text-[11px] text-emerald-400 font-bold">
-                                {partant.poids ? `${partant.poids} kg` : `${partant.distance} m`}
-                              </span>
+                              <span className="text-[9px] text-slate-500 uppercase font-bold block mb-0.5">Poids & Évol. / Distance</span>
+                              {partant.poids ? (() => {
+                                const evol = getEvolutionPoids(partant);
+                                return (
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[11px] text-emerald-400 font-bold">{partant.poids} kg</span>
+                                    {evol && evol.hasChange && (
+                                      <span className={`text-[10px] px-1.5 py-0.2 rounded font-black border ${evol.badgeBg}`} title={evol.label}>
+                                        {evol.text}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })() : (
+                                <span className="text-[11px] text-emerald-400 font-bold">{partant.distance} m</span>
+                              )}
                             </div>
                             <div className="p-2 rounded-xl bg-slate-950 border border-orange-500/30">
                               <span className="text-[9px] text-orange-400 uppercase font-bold block mb-0.5 flex items-center gap-1">

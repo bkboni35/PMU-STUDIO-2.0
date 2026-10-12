@@ -1,10 +1,11 @@
-import { isCourseFinished, isCourseArrivalOfficiallyConfirmed, shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus } from './utils/raceCountdown';
+import { isCourseFinished, isCourseArrivalOfficiallyConfirmed, shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus, isPastDepartureTime } from './utils/raceCountdown';
+import { computeRaceEvaluation, updateBacktestWithArrival } from './utils/raceBacktestService';
 import { DataIntegrityGuard } from './components/DataIntegrityGuard';
 import { DashboardVueGlobale } from './components/DashboardVueGlobale';
 import { exportToCSV } from './utils/exportUtils';
 import { exportCourseToPdf, exportQuinteOnlyToPdf, exportV38PortraitPdf } from './utils/pdfExport';
 import { exportUserManualToPDF } from './utils/manualExport';
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from 'react';
 import { HeaderDatePicker } from './components/HeaderDatePicker';
 import { getIvoryCoastDate } from './utils/timeConversion';
 import { UrlInputHeader } from './components/UrlInputHeader';
@@ -33,14 +34,25 @@ import {
   getRaceHistory,
   saveRaceToHistory,
   updateCourseInHistory,
+  updateCourseInFavorites,
   removeRaceFromHistory,
   clearAllRaceHistory,
   purgeRaceByKeywordsFromAllStorage,
   FavoriteCourseItem,
   HistoryCourseItem,
 } from './utils/favoritesStorage';
+import {
+  FavoriteArrivalAlert,
+  getFavoriteArrivalAlerts,
+  addFavoriteArrivalAlert,
+  getFavoriteNotificationsEnabled,
+} from './utils/favoriteArrivalNotificationService';
+import { FavoriteArrivalNotificationBanner } from './components/FavoriteArrivalNotificationBanner';
+import { FavoriteArrivalsModal } from './components/FavoriteArrivalsModal';
 import { PmuCalendar } from './components/PmuCalendar';
+import { PmuApiHubModal } from './components/PmuApiHubModal';
 import { GeminiCollegeView } from './components/GeminiCollegeView';
+import { PerplexityResearchView } from './components/PerplexityResearchView';
 import { StatsPerformanceChart } from './components/StatsPerformanceChart';
 import { D3V38HistogramChart } from './components/D3V38HistogramChart';
 import { StudioV38Pipeline } from './components/StudioV38Pipeline';
@@ -63,13 +75,15 @@ import { PronosticsDeJeuView } from './components/PronosticsDeJeuView';
 import { UserProfile } from './types/userAuth';
 import { getStoredUserSession, incrementUserAnalysesCount, saveUserSession, clearUserSession } from './utils/userAuthStorage';
 import { buildRealV38Synthese, isDummySequentialSelection } from './utils/v38Helper';
+import { calculerPerformance3Musiques } from './utils/turfCalculations';
 import { db, ensureFirebaseAuth, handleFirestoreError, OperationType, testFirestoreConnection } from './firebase';
 import { doc, onSnapshot, setDoc, getDoc, deleteDoc } from 'firebase/firestore';
 import { initThemeListener } from './utils/themeManager';
 import { playOfficialArrivalFanfare } from './utils/audioPlayer';
 import { useAppInitializer } from './components/AppInitializer';
 import { useInterval } from './hooks/useInterval';
-import { Sparkles, Trophy, Table, Calculator, MessageSquare, AlertTriangle, ShieldCheck, Star, Calendar, Brain, BarChart3, ArrowRight, Target, Smartphone, History, Clock, Layers, Bot, X, Maximize2, Monitor, Cpu, FileText, Crown, Globe, RotateCcw, Copy, Check, Download, Search, Terminal, Code, ChevronDown, ChevronUp, Wand2, RotateCw } from 'lucide-react';
+import { scrollToTopInstant } from './utils/scrollHelper';
+import { Sparkles, Trophy, Table, Calculator, MessageSquare, AlertTriangle, ShieldCheck, Star, Calendar, Brain, BarChart3, ArrowRight, Target, Smartphone, History, Clock, Layers, Bot, X, Maximize2, Monitor, Cpu, FileText, Crown, Globe, RotateCcw, Copy, Check, Download, Search, Terminal, Code, ChevronDown, ChevronUp, Wand2, RotateCw, Database } from 'lucide-react';
 import { GeminiModelId } from './types/turf';
 
 export interface DebugRaceGateData {
@@ -84,6 +98,75 @@ export interface DebugRaceGateData {
   statusHttp?: number;
   receivedAt?: string;
   rectificationsApplied?: string[];
+}
+
+function highlightJsonToJsx(jsonStr: string): React.ReactNode {
+  if (!jsonStr) return null;
+
+  const jsonTokenRegex = /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"\s*:?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?|[{}\[\]:,])/g;
+
+  const elements: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let keyIndex = 0;
+
+  while ((match = jsonTokenRegex.exec(jsonStr)) !== null) {
+    if (match.index > lastIndex) {
+      elements.push(jsonStr.substring(lastIndex, match.index));
+    }
+
+    const token = match[0];
+
+    if (token.startsWith('"')) {
+      if (token.endsWith(':')) {
+        const keyPart = token.slice(0, -1);
+        elements.push(
+          <span key={`k-${keyIndex++}`}>
+            <span className="text-amber-400 font-bold hover:text-amber-300 transition-colors">{keyPart}</span>
+            <span className="text-slate-500 font-bold">:</span>
+          </span>
+        );
+      } else {
+        elements.push(
+          <span key={`v-${keyIndex++}`} className="text-emerald-300 font-semibold">
+            {token}
+          </span>
+        );
+      }
+    } else if (token === 'true' || token === 'false') {
+      elements.push(
+        <span key={`b-${keyIndex++}`} className="text-purple-400 font-bold">
+          {token}
+        </span>
+      );
+    } else if (token === 'null') {
+      elements.push(
+        <span key={`n-${keyIndex++}`} className="text-rose-400 font-bold italic">
+          {token}
+        </span>
+      );
+    } else if (/^-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?$/.test(token)) {
+      elements.push(
+        <span key={`num-${keyIndex++}`} className="text-sky-400 font-mono font-bold">
+          {token}
+        </span>
+      );
+    } else {
+      elements.push(
+        <span key={`s-${keyIndex++}`} className="text-slate-400 font-bold">
+          {token}
+        </span>
+      );
+    }
+
+    lastIndex = jsonTokenRegex.lastIndex;
+  }
+
+  if (lastIndex < jsonStr.length) {
+    elements.push(jsonStr.substring(lastIndex));
+  }
+
+  return <>{elements}</>;
 }
 
 function DebugRaceGate({ 
@@ -105,6 +188,7 @@ function DebugRaceGate({
   const [copied, setCopied] = useState<boolean>(false);
   const [jsonFilter, setJsonFilter] = useState<string>('');
   const [isPanelCollapsed, setIsPanelCollapsed] = useState<boolean>(false);
+  const [isExpertMode, setIsExpertMode] = useState<boolean>(true);
 
   const handleClear = () => {
     if (onClear) {
@@ -181,6 +265,27 @@ function DebugRaceGate({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* BOUTON DÉDIÉ MODE EXPERT (Colorisation syntaxique des clés JSON) */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsExpertMode((prev) => !prev);
+              setActiveTab('raw-json');
+            }}
+            className={`px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1.5 transition-all cursor-pointer border shadow-xs ${
+              isExpertMode
+                ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-slate-700'
+            }`}
+            title="Activer/Désactiver le Mode Expert : Colorisation syntaxique des clés et valeurs JSON"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${isExpertMode ? 'text-slate-950' : 'text-amber-400'}`} />
+            <span>Mode Expert</span>
+            <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono font-bold ${isExpertMode ? 'bg-slate-950 text-amber-300' : 'bg-slate-800 text-slate-400'}`}>
+              {isExpertMode ? 'ON ✓' : 'OFF'}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={handleCopy}
@@ -527,20 +632,22 @@ function DebugRaceGate({
               </div>
             )}
 
-            {/* ONGLET 3 : JSON Brut Intégral avec recherche */}
+            {/* ONGLET 3 : JSON Brut Intégral avec Mode Expert & Recherche */}
             {activeTab === 'raw-json' && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
+              <div className="space-y-3">
+                {/* Barre d'outils du JSON Viewer */}
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-950 p-2.5 rounded-2xl border border-slate-800">
+                  <div className="relative flex-1 min-w-[200px]">
                     <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                     <input
                       type="text"
                       value={jsonFilter}
                       onChange={(e) => setJsonFilter(e.target.value)}
-                      placeholder="Filtrer en temps réel dans les logs JSON bruts (ex: partants, cote, reunion)..."
-                      className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
+                      placeholder="Filtrer en temps réel les clés ou valeurs (ex: partants, cote, reunion)..."
+                      className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono"
                     />
                   </div>
+
                   {jsonFilter && (
                     <button
                       type="button"
@@ -550,11 +657,46 @@ function DebugRaceGate({
                       Effacer
                     </button>
                   )}
+
+                  {/* Interrupteur Mode Expert dans la barre JSON */}
+                  <button
+                    type="button"
+                    onClick={() => setIsExpertMode((prev) => !prev)}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer border ${
+                      isExpertMode
+                        ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md shadow-amber-500/20'
+                        : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                    }`}
+                    title="Bascule du Mode Expert : Colorisation des clés JSON et données brutes"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isExpertMode ? 'text-slate-950' : 'text-amber-400'}`} />
+                    <span>Mode Expert</span>
+                    <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono ${isExpertMode ? 'bg-slate-950 text-amber-300 font-bold' : 'bg-slate-800 text-slate-400'}`}>
+                      {isExpertMode ? 'Colorisation ON' : 'Brut Standard'}
+                    </span>
+                  </button>
                 </div>
 
-                <div className="relative">
-                  <pre className="font-mono text-[11px] leading-relaxed text-emerald-300 bg-slate-950 p-4 rounded-xl border border-slate-800 max-h-96 overflow-y-auto whitespace-pre-wrap select-all">
-                    {filteredJsonString}
+                {/* Légende synthétique Mode Expert */}
+                {isExpertMode && (
+                  <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono text-slate-400 bg-slate-950 px-3.5 py-1.5 rounded-xl border border-slate-800">
+                    <span className="font-bold text-slate-300">Légende Mode Expert :</span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400"></span><strong className="text-amber-400">"Clés JSON"</strong></span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-400"></span><strong className="text-emerald-300">"Chaînes"</strong></span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sky-400"></span><strong className="text-sky-400">Nombres</strong></span>
+                    <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-400"></span><strong className="text-purple-400">Booléens</strong></span>
+                  </div>
+                )}
+
+                {/* Affichage du JSON avec Numéros de Lignes & Syntax Highlighting */}
+                <div className="relative font-mono text-[11px] leading-relaxed bg-slate-950 rounded-2xl border border-slate-800 max-h-96 overflow-y-auto flex shadow-inner">
+                  {isExpertMode && (
+                    <pre className="p-4 pr-3 text-slate-600 bg-slate-900/60 text-right select-none border-r border-slate-850 shrink-0 font-mono text-[11px] leading-relaxed">
+                      {Array.from({ length: filteredJsonString.split('\n').length }, (_, i) => i + 1).join('\n')}
+                    </pre>
+                  )}
+                  <pre className="p-4 flex-1 text-emerald-300 whitespace-pre-wrap select-all overflow-x-auto font-mono text-[11px] leading-relaxed">
+                    {isExpertMode ? highlightJsonToJsx(filteredJsonString) : filteredJsonString}
                   </pre>
                 </div>
               </div>
@@ -613,15 +755,19 @@ export default function App() {
   const [validationStatus, setValidationStatus] = useState<{ status: 'idle' | 'loading' | 'valid' | 'error'; errors?: string[] }>({ status: 'idle' });
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoNotice, setInfoNotice] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'synthese' | 'classification-prono' | 'pronostics-jeu' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs'>('synthese');
+  const [activeTab, setActiveTab] = useState<'synthese' | 'classification-prono' | 'pronostics-jeu' | 'partants' | 'propositions-ia' | 'college-gemini' | 'perplexity-research' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs'>('synthese');
   const [isD3CompactMode, setIsD3CompactMode] = useState<boolean>(false);
   const prevTabRef = useRef<string>(activeTab);
+  const foregroundContentRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     prevTabRef.current = activeTab;
   }, [activeTab]);
   const [isForegroundModalOpen, setIsForegroundModalOpen] = useState(false);
+  const [showSecondaryDetails, setShowSecondaryDetails] = useState<boolean>(false);
   const [isPartantsModalOpen, setIsPartantsModalOpen] = useState(false);
   const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+  const [isPmuApiHubModalOpen, setIsPmuApiHubModalOpen] = useState(false);
   const [calendarPredefinedUrl, setCalendarPredefinedUrl] = useState<string | null>(null);
   const [calendarModalDate, setCalendarModalDate] = useState<string>(() => {
     try {
@@ -631,15 +777,18 @@ export default function App() {
     return getIvoryCoastDate(0);
   });
   const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
+  const [isFavoriteArrivalsModalOpen, setIsFavoriteArrivalsModalOpen] = useState(false);
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [isQuinteHierarchyModalOpen, setIsQuinteHierarchyModalOpen] = useState(false);
 
-  const openTabInForeground = (tab: 'synthese' | 'classification-prono' | 'pronostics-jeu' | 'partants' | 'propositions-ia' | 'college-gemini' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs') => {
+  const openTabInForeground = (tab: 'synthese' | 'classification-prono' | 'pronostics-jeu' | 'partants' | 'propositions-ia' | 'college-gemini' | 'perplexity-research' | 'stats' | 'ticket' | 'advisor' | 'fiche-pdf-v38' | 'trace-facteurs') => {
     setActiveTab(tab);
     setIsForegroundModalOpen(true);
+    scrollToTopInstant();
   };
 
   const handleNavigateTab = (tab: any) => {
+    scrollToTopInstant();
     if (tab === 'partants') {
       openTabInForeground('partants');
     } else if (tab === 'calendrier') {
@@ -964,6 +1113,24 @@ export default function App() {
 
       // Si la course est déjà analysée, préserver intacte toute la synthèse et hiérarchie (cotes scellées)
       const enriched = isCourseAnalyzed ? updatedCourse : enrichRaceWithGeminiCollege(updatedCourse);
+
+      // Si statut = ARRIVEE_OFFICIELLE : figer les données, calculer l'évaluation et mettre à jour le backtest
+      if (isOfficialConfirmed && arrivalToKeep) {
+        enriched.cotesScellees = true;
+        (enriched as any).donneesFigees = true;
+        enriched.statut = 'ARRIVEE_OFFICIELLE';
+        const evalResult = computeRaceEvaluation(enriched, arrivalToKeep);
+        if (evalResult) {
+          enriched.evaluationPostCourse = evalResult;
+        }
+        const backtestRes = updateBacktestWithArrival(enriched, arrivalToKeep, evalResult);
+        if (backtestRes.updatedHistory) {
+          setHistory(backtestRes.updatedHistory);
+        }
+        setPollingDelay(null);
+        pendingToOfficialRef.current = false;
+      }
+
       setCourse(enriched);
 
       // Synchroniser automatiquement avec l'historique local
@@ -1397,8 +1564,28 @@ export default function App() {
     course?.arriveeOfficielle,
   ]);
 
-  // Listener useEffect gérant le délai de polling via le tracker de dépendances pendingToOfficialRef
-  const [pollingDelay, setPollingDelay] = useState<number | null>(2000);
+  // Détection continue si l'heure de départ officielle de la course est atteinte ou dépassée
+  const [isPastDeparture, setIsPastDeparture] = useState<boolean>(() => {
+    return course ? isPastDepartureTime(course) : false;
+  });
+
+  useEffect(() => {
+    const checkDeparture = () => {
+      const activeC = courseRef.current || course;
+      if (!activeC) {
+        setIsPastDeparture(false);
+        return;
+      }
+      setIsPastDeparture(isPastDepartureTime(activeC));
+    };
+
+    checkDeparture();
+    const interval = setInterval(checkDeparture, 1000);
+    return () => clearInterval(interval);
+  }, [course?.date, course?.heure]);
+
+  // Listener gérant le délai de polling (15 secondes après l'heure de départ tant que l'arrivée n'est pas officielle)
+  const [pollingDelay, setPollingDelay] = useState<number | null>(null);
 
   useEffect(() => {
     if (!course) {
@@ -1406,56 +1593,206 @@ export default function App() {
       return;
     }
 
-    const isOfficiallyConfirmed = isCourseArrivalOfficiallyConfirmed(course);
-    const isCourseAnalyzed = Boolean((course as any)?.cotesScellees || course?.synthese);
+    const isOfficiallyConfirmed =
+      isCourseArrivalOfficiallyConfirmed(course) ||
+      course.statut === 'ARRIVEE_OFFICIELLE' ||
+      course.statutCourse === 'Arrivée officielle' ||
+      (course as any)?.statutArrivee === 'officielle' ||
+      (course as any)?.statutArrivee === 'OFFICIELLE' ||
+      Boolean((course as any)?.donneesFigees) ||
+      Boolean((course as any)?.cotesScellees);
 
-    // RÈGLE UTILISATEUR :
-    // Le timer d'actualisation automatique des cotes est suspendu pour la course analysée.
-    // L'intervalle se désactive (clears) :
-    // 1) Si la course est analysée (cotesScellees: true ou synthese) -> Suspension définitive du timer de cotes
-    // 2) Quand l'arrivée est officiellement confirmée ('officielle')
-    if (isCourseAnalyzed || isOfficiallyConfirmed) {
+    const isManualCleared = Boolean((course as any)?.manualArrivalCleared || (course as any)?.verrouillageNonDisputee);
+
+    // 5. Si statut = ARRIVEE_OFFICIELLE ou arrivée supprimée manuellement : arrêter définitivement le polling (cycle 15s)
+    if (isOfficiallyConfirmed || isManualCleared) {
       pendingToOfficialRef.current = false;
       setPollingDelay(null);
       return;
     }
 
-    // Maintient un taux de polling constant de 2000ms durant toute la phase de transition ('provisoire' ou 'en_attente' ➔ 'officielle')
-    pendingToOfficialRef.current = true;
-    setPollingDelay(2000);
+    // Toutes les 15 secondes après l'heure de départ
+    if (isPastDeparture) {
+      pendingToOfficialRef.current = true;
+      setPollingDelay(15000); // 15 secondes
+    } else {
+      pendingToOfficialRef.current = false;
+      setPollingDelay(null);
+    }
   }, [
     course?.id,
     course?.statutCourse,
+    course?.statut,
     (course as any)?.statutArrivee,
-    (course as any)?.cotesScellees,
-    course?.synthese,
     course?.arriveeOfficielle,
     course?.arrivalAuditCompleted,
+    isPastDeparture,
   ]);
+
+  // Procédure officielle de polling toutes les 15 secondes après l'heure de départ :
+  // 1. Appeler l'API ou la page de résultat.
+  // 2. Vérifier le champ statut.
+  // 3. Si statut = ATTENTE : afficher « Course en cours », continuer le polling
+  // 4. Si statut = ARRIVEE_PROVISOIRE : afficher l'arrivée avec badge « provisoire », continuer le polling
+  // 5. Si statut = ARRIVEE_OFFICIELLE : figer les données, calculer l'évaluation, mettre à jour le backtest, arrêter le polling
+  const pollArrivalResultEvery15Sec = async (targetCourse: CourseHippique) => {
+    if (isRefreshingInProgressRef.current) return;
+    isRefreshingInProgressRef.current = true;
+
+    try {
+      // 1. Appeler l’API ou la page de résultat
+      const resp = await fetch('/api/verify-race-facts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course: targetCourse,
+          url: targetCourse.sourceUrl,
+        }),
+      }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+
+      if (!resp) return;
+
+      // 2. Vérifier le champ statut
+      const rawStatut = String(resp.statut || '').toUpperCase();
+      let statut: 'ATTENTE' | 'ARRIVEE_PROVISOIRE' | 'ARRIVEE_OFFICIELLE' = 'ATTENTE';
+
+      if (
+        rawStatut === 'ARRIVEE_OFFICIELLE' ||
+        resp.isOfficial ||
+        resp.statutArrivee === 'officielle' ||
+        (resp.statutCourse && resp.statutCourse.toLowerCase().includes('officiel'))
+      ) {
+        statut = 'ARRIVEE_OFFICIELLE';
+      } else if (
+        rawStatut === 'ARRIVEE_PROVISOIRE' ||
+        resp.isProvisional ||
+        resp.statutArrivee === 'provisoire' ||
+        (resp.arriveeOfficielle && !resp.isOfficial)
+      ) {
+        statut = 'ARRIVEE_PROVISOIRE';
+      } else {
+        statut = 'ATTENTE';
+      }
+
+      // 3. Si statut = ATTENTE :
+      if (statut === 'ATTENTE') {
+        // - afficher « Course en cours »
+        // - continuer le polling
+        const updatedCourse: CourseHippique = {
+          ...targetCourse,
+          statutCourse: 'Course en cours',
+          statut: 'ATTENTE',
+          statutArrivee: 'en_attente',
+          derniereMiseAJour: new Date().toISOString(),
+        };
+        setCourse(updatedCourse);
+        setInfoNotice(`🐎 Course en cours (${targetCourse.reunion} ${targetCourse.course}) — Polling des résultats toutes les 15s...`);
+        // Le polling continue (pollingDelay reste à 15000)
+      }
+
+      // 4. Si statut = ARRIVEE_PROVISOIRE :
+      else if (statut === 'ARRIVEE_PROVISOIRE') {
+        // - afficher l’arrivée avec badge « provisoire »
+        // - continuer le polling
+        const provArrival = resp.arriveeOfficielle || targetCourse.arriveeOfficielle || '';
+        const updatedCourse: CourseHippique = {
+          ...targetCourse,
+          arriveeOfficielle: provArrival,
+          statutCourse: 'Arrivée provisoire',
+          statut: 'ARRIVEE_PROVISOIRE',
+          statutArrivee: 'provisoire',
+          hasEnquete: Boolean(resp.hasEnquete || targetCourse.hasEnquete),
+          provisionalArrivalAt: resp.provisionalArrivalAt || targetCourse.provisionalArrivalAt || new Date().toISOString(),
+          derniereMiseAJour: new Date().toISOString(),
+        };
+        setCourse(updatedCourse);
+        setInfoNotice(`⚠️ ARRIVÉE PROVISOIRE : ${provArrival} [Badge Provisoire] — Polling actif toutes les 15s...`);
+        // Le polling continue (pollingDelay reste à 15000)
+      }
+
+      // 5. Si statut = ARRIVEE_OFFICIELLE :
+      else if (statut === 'ARRIVEE_OFFICIELLE') {
+        const offArrival = resp.arriveeOfficielle || targetCourse.arriveeOfficielle || '';
+
+        // - figer les données
+        const updatedCourse: CourseHippique = {
+          ...targetCourse,
+          arriveeOfficielle: offArrival,
+          statutCourse: 'Arrivée officielle',
+          statut: 'ARRIVEE_OFFICIELLE',
+          statutArrivee: 'officielle',
+          cotesScellees: true,
+          donneesFigees: true,
+          officialArrivalAt: resp.officialArrivalAt || targetCourse.officialArrivalAt || new Date().toISOString(),
+          derniereMiseAJour: new Date().toISOString(),
+        };
+
+        // - calculer l’évaluation
+        const evaluation = computeRaceEvaluation(updatedCourse, offArrival);
+        if (evaluation) {
+          updatedCourse.evaluationPostCourse = evaluation;
+        }
+
+        // - mettre à jour le backtest
+        const backtestRes = updateBacktestWithArrival(updatedCourse, offArrival, evaluation);
+        if (backtestRes.updatedHistory) {
+          setHistory(backtestRes.updatedHistory);
+        }
+
+        // Notification d'arrivée officielle pour les favoris si applicable
+        if (isCourseFavorite(updatedCourse)) {
+          addFavoriteArrivalAlert({
+            courseId: updatedCourse.id || updatedCourse.sourceUrl || '',
+            courseTitle: updatedCourse.titre || updatedCourse.prixNom || 'Course Favorite',
+            reunion: updatedCourse.reunion || 'R1',
+            courseNumero: updatedCourse.course || 'C1',
+            hippodrome: updatedCourse.hippodrome || '',
+            arriveeOfficielle: offArrival,
+            statutArrivee: 'officielle',
+            isOfficialConfirmed: true,
+            course: updatedCourse,
+          });
+        }
+
+        setCourse(updatedCourse);
+
+        // - arrêter le polling
+        setPollingDelay(null);
+        pendingToOfficialRef.current = false;
+
+        playOfficialArrivalFanfare();
+        setInfoNotice(`🏆 ARRIVÉE OFFICIELLE : ${offArrival} — Données figées, Évaluation calculée & Backtest synchronisé !`);
+        setTimeout(() => setInfoNotice(null), 8000);
+      }
+    } catch (e) {
+      console.warn("Erreur polling 15s arrivée:", e);
+    } finally {
+      isRefreshingInProgressRef.current = false;
+    }
+  };
 
   useInterval(() => {
     const currentC = courseRef.current;
     if (!currentC) return;
 
-    // Règle : Gel absolu des cotes après analyse
-    const currentAnalyzed = Boolean((currentC as any)?.cotesScellees || currentC?.synthese);
-    if (currentAnalyzed) {
-      pendingToOfficialRef.current = false;
+    const isConfirmed =
+      isCourseArrivalOfficiallyConfirmed(currentC) ||
+      currentC.statut === 'ARRIVEE_OFFICIELLE' ||
+      currentC.statutCourse === 'Arrivée officielle' ||
+      (currentC as any)?.statutArrivee === 'officielle' ||
+      (currentC as any)?.statutArrivee === 'OFFICIELLE' ||
+      Boolean((currentC as any)?.donneesFigees) ||
+      Boolean((currentC as any)?.cotesScellees);
+    const isManualCleared = Boolean((currentC as any)?.manualArrivalCleared || (currentC as any)?.verrouillageNonDisputee);
+
+    if (isConfirmed || isManualCleared) {
       setPollingDelay(null);
+      pendingToOfficialRef.current = false;
       return;
     }
 
-    const currentConfirmed = isCourseArrivalOfficiallyConfirmed(currentC);
-    const isManualCleared = Boolean((currentC as any)?.manualArrivalCleared || (currentC as any)?.verrouillageNonDisputee);
-
-    // Déclencher refreshOddsNow de manière continue tant que le statut 'officielle' n'est pas définitivement atteint
-    if (!isManualCleared && (!currentConfirmed || pendingToOfficialRef.current) && !isRefreshingInProgressRef.current) {
-      refreshOddsNow(currentC, false);
-    }
-
-    if (currentConfirmed) {
-      pendingToOfficialRef.current = false;
-    }
+    // Exécution du polling toutes les 15s après l'heure de départ
+    pollArrivalResultEvery15Sec(currentC);
 
     // Surveillance supplémentaire du déclenchement de l'audit 5 min des commissaires post-arrivée
     const currentHasArr = Boolean(currentC.arriveeOfficielle && currentC.arriveeOfficielle.trim());
@@ -1564,6 +1901,141 @@ export default function App() {
     return () => cleanupTheme();
   }, []);
 
+  // Global automatic background arrival updater for already analyzed races in history AND favorite races
+  useEffect(() => {
+    const runGlobalArrivalCheck = async () => {
+      // 1. Vérification pour les courses dans l'historique
+      const currentHist = getRaceHistory();
+      if (currentHist && currentHist.length > 0) {
+        const pendingHistItems = currentHist.filter(
+          (item) =>
+            !item.course.arriveeOfficielle ||
+            !item.course.arriveeOfficielle.trim() ||
+            item.course.statutCourse?.toLowerCase().includes('provisoire')
+        );
+
+        let updatedAnyHist = false;
+        for (const item of pendingHistItems) {
+          try {
+            const resp = await fetch('/api/verify-race-facts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ course: item.course, url: item.course.sourceUrl }),
+            });
+
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data.arriveeOfficielle && typeof data.arriveeOfficielle === 'string' && /^\d+[-,\s]+\d+/.test(data.arriveeOfficielle.trim())) {
+                const cleanArrival = data.arriveeOfficielle.trim();
+                const isOfficial = data.statutArrivee === 'officielle' || data.isOfficial;
+                const newStatus = isOfficial ? 'Arrivée officielle' : 'Arrivée provisoire';
+
+                if (cleanArrival !== item.course.arriveeOfficielle || newStatus !== item.course.statutCourse) {
+                  updateCourseInHistory(item.id, {
+                    arriveeOfficielle: cleanArrival,
+                    statutCourse: newStatus,
+                  });
+                  updatedAnyHist = true;
+                }
+              }
+            }
+          } catch {}
+        }
+
+        if (updatedAnyHist) {
+          const latest = getRaceHistory();
+          setHistory(latest);
+        }
+      }
+
+      // 2. SURVEILLANCE DES COURSES FAVORITES : Notification dès validation ou modification de l'arrivée officielle
+      const currentFavs = getFavoriteRaces();
+      if (currentFavs && currentFavs.length > 0) {
+        let updatedAnyFavs = false;
+
+        for (const fav of currentFavs) {
+          const courseFav = fav.course;
+          const oldArrival = (courseFav.arriveeOfficielle || '').trim();
+          const wasOfficiallyConfirmed =
+            Boolean(oldArrival) &&
+            (courseFav.statutCourse === 'Arrivée officielle' || (courseFav as any).statutArrivee === 'officielle');
+
+          // Vérifier si la course est en attente ou si une vérification périodique s'impose
+          try {
+            const resp = await fetch('/api/verify-race-facts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ course: courseFav, url: courseFav.sourceUrl }),
+            });
+
+            if (resp.ok) {
+              const data = await resp.json();
+              if (data.arriveeOfficielle && typeof data.arriveeOfficielle === 'string' && /^\d+[-,\s]+\d+/.test(data.arriveeOfficielle.trim())) {
+                const newArrival = data.arriveeOfficielle.trim();
+                const isOfficial = data.statutArrivee === 'officielle' || data.isOfficial;
+                const newStatus = isOfficial ? 'Arrivée officielle' : 'Arrivée provisoire';
+
+                const arrivalChanged = oldArrival !== newArrival;
+                const statusChanged = (courseFav.statutCourse !== newStatus);
+
+                if (arrivalChanged || statusChanged) {
+                  const updatedCourseObj: Partial<CourseHippique> = {
+                    arriveeOfficielle: newArrival,
+                    statutCourse: newStatus as any,
+                    statutArrivee: isOfficial ? 'officielle' : 'provisoire',
+                    isOfficial,
+                  };
+
+                  const { updatedFavorites } = updateCourseInFavorites(fav.id, updatedCourseObj);
+                  updatedAnyFavs = true;
+
+                  // Déclencher la notification d'arrivée pour la course favorite si l'arrivée est confirmée ou mise à jour
+                  if (newArrival && (isOfficial || arrivalChanged)) {
+                    const alertType = wasOfficiallyConfirmed && arrivalChanged ? 'modifiee' : 'officielle';
+                    
+                    addFavoriteArrivalAlert({
+                      courseId: courseFav.id || fav.id,
+                      courseTitle: courseFav.titre || courseFav.prixNom || 'Course Favorite',
+                      reunion: courseFav.reunion || 'R1',
+                      courseNumero: courseFav.courseNumero || courseFav.course || 'C1',
+                      hippodrome: courseFav.hippodrome || '',
+                      arriveeOfficielle: newArrival,
+                      previousArrivee: oldArrival || undefined,
+                      statutArrivee: alertType,
+                      isOfficialConfirmed: isOfficial,
+                      course: {
+                        ...courseFav,
+                        ...updatedCourseObj,
+                      } as CourseHippique,
+                    });
+
+                    // Fanfare audio si activée
+                    if (getFavoriteNotificationsEnabled()) {
+                      playOfficialArrivalFanfare();
+                    }
+                  }
+                }
+              }
+            }
+          } catch {}
+        }
+
+        if (updatedAnyFavs) {
+          setFavorites(getFavoriteRaces());
+        }
+      }
+    };
+
+    const intervalId = setInterval(runGlobalArrivalCheck, 10000);
+    // Exécuter également un premier passage après 2 secondes
+    const initTimer = setTimeout(runGlobalArrivalCheck, 2000);
+
+    return () => {
+      clearInterval(intervalId);
+      clearTimeout(initTimer);
+    };
+  }, []);
+
   // Écouteur en temps réel pour forcer la déconnexion instantanée si l'administrateur la coupe à distance
   useEffect(() => {
     if (currentUser) {
@@ -1618,13 +2090,56 @@ export default function App() {
         setCourse(customEv.detail.course);
         setCurrentUrl(customEv.detail.course.sourceUrl);
         setActiveTab('synthese');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        scrollToTopInstant();
       }
     };
 
     window.addEventListener('hippoanalyse-navigate-course', handleNavigateCourse);
     return () => window.removeEventListener('hippoanalyse-navigate-course', handleNavigateCourse);
   }, []);
+
+  // Positionnement automatique instantané tout en haut de l'écran lors d'un changement de rubrique, onglet ou vue
+  useLayoutEffect(() => {
+    scrollToTopInstant();
+  }, [
+    activeTab,
+    course?.sourceUrl,
+    isForegroundModalOpen,
+    isCalendarModalOpen,
+    isFavoritesModalOpen,
+    isHistoryModalOpen,
+    isPresentationModalOpen,
+    isAdminOpen,
+    isUserSpaceOpen,
+    isSubscriptionModalOpen,
+    isPmuApiHubModalOpen,
+    isAiQuotasModalOpen,
+    isLinksModalOpen,
+    isQuinteHierarchyModalOpen,
+    isFavoriteArrivalsModalOpen,
+    isAndroidInstallOpen,
+  ]);
+
+  useEffect(() => {
+    scrollToTopInstant();
+  }, [
+    activeTab,
+    course?.sourceUrl,
+    isForegroundModalOpen,
+    isCalendarModalOpen,
+    isFavoritesModalOpen,
+    isHistoryModalOpen,
+    isPresentationModalOpen,
+    isAdminOpen,
+    isUserSpaceOpen,
+    isSubscriptionModalOpen,
+    isPmuApiHubModalOpen,
+    isAiQuotasModalOpen,
+    isLinksModalOpen,
+    isQuinteHierarchyModalOpen,
+    isFavoriteArrivalsModalOpen,
+    isAndroidInstallOpen,
+  ]);
 
   const handleOpenUserSpace = (customPrompt?: string) => {
     setUserSpacePrompt(customPrompt || null);
@@ -2855,7 +3370,7 @@ export default function App() {
         historyCount={history.length}
         currentUser={currentUser}
         onOpenFavorites={() => setIsFavoritesModalOpen(true)}
-        onOpenNotifications={() => setIsFavoritesModalOpen(true)}
+        onOpenNotifications={() => setIsFavoriteArrivalsModalOpen(true)}
         onOpenHistory={() => setIsHistoryModalOpen(true)}
         onOpenCalendar={() => setIsCalendarModalOpen(true)}
         onOpenQuinteHierarchy={() => setIsQuinteHierarchyModalOpen(true)}
@@ -2866,9 +3381,16 @@ export default function App() {
         onOpenInstallModal={() => setIsAndroidInstallOpen(true)}
         onOpenAiQuotas={() => setIsAiQuotasModalOpen(true)}
         onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+        onOpenPmuApiHub={() => setIsPmuApiHubModalOpen(true)}
         onNavigateTab={(tab) => handleNavigateTab(tab)}
         isExpertMode={isExpertMode}
         onToggleExpertMode={handleToggleExpertMode}
+        hasScraperLogs={Boolean(lastRawScraperData)}
+        onOpenScraperLogs={() => {
+          if (lastRawScraperData) {
+            setDebugRaceGateData(lastRawScraperData);
+          }
+        }}
       />
 
       {/* Main Container */}
@@ -2882,6 +3404,18 @@ export default function App() {
           historyCount={history.length}
           isExpertMode={isExpertMode}
           onToggleExpertMode={handleToggleExpertMode}
+          hasScraperLogs={Boolean(lastRawScraperData)}
+          onOpenScraperLogs={() => {
+            if (lastRawScraperData) {
+              setDebugRaceGateData(lastRawScraperData);
+            }
+          }}
+        />
+
+        {/* 🔔 Bannière d'alerte instantanée des arrivées confirmées pour les courses favorites */}
+        <FavoriteArrivalNotificationBanner
+          onSelectCourse={handleSelectFavoriteCourse}
+          onOpenFavoritesModal={() => setIsFavoritesModalOpen(true)}
         />
 
         {/* Dynamic Real-Time Analysis Progress Bar (< 30s) / Traitement */}
@@ -2991,6 +3525,14 @@ export default function App() {
                 <Calendar className="w-4 h-4" />
                 <span>Consulter le Programme / Calendrier</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setIsPmuApiHubModalOpen(true)}
+                className="px-5 py-3 rounded-xl bg-slate-800 text-amber-300 border border-amber-500/40 font-bold text-xs sm:text-sm hover:bg-slate-700 transition-all flex items-center gap-2 active:scale-95 cursor-pointer shadow-lg"
+              >
+                <Database className="w-4 h-4 text-amber-400" />
+                <span>Hub PMU API (Programme Live)</span>
+              </button>
               {history.length > 0 && (
                 <button
                   type="button"
@@ -3023,23 +3565,38 @@ export default function App() {
 
             <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
 
-            {/* Workflow officiel PMU-STUDIO 2.0 */}
-            <StudioV38Pipeline
-              course={course}
-              activeTab={activeTab}
-              onNavigateTab={(tab) => handleNavigateTab(tab)}
-            />
+            {/* Toggle pour afficher/masquer les parties secondaires */}
+            <div className="flex items-center justify-center my-3">
+              <button
+                type="button"
+                onClick={() => setShowSecondaryDetails(!showSecondaryDetails)}
+                className="px-4 py-2 rounded-2xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-amber-400 text-xs font-bold border border-slate-800 transition-all flex items-center gap-2 cursor-pointer shadow-md"
+              >
+                <span>{showSecondaryDetails ? "▲ Masquer les parties secondaires" : "▼ + Afficher les détails & pipelines complémentaires"}</span>
+              </button>
+            </div>
 
-            <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+            {showSecondaryDetails && (
+              <div className="space-y-6 animate-fadeIn">
+                {/* Workflow officiel PMU-STUDIO 2.0 */}
+                <StudioV38Pipeline
+                  course={course}
+                  activeTab={activeTab}
+                  onNavigateTab={(tab) => handleNavigateTab(tab)}
+                />
 
-            {/* Dashboard Vue Globale */}
-            <DashboardVueGlobale
-              partants={course.partants}
-              currentCourse={course}
-              history={history}
-              onSelectCourse={handleSelectHistoryCourse}
-              onOpenCalendar={() => setIsCalendarModalOpen(true)}
-            />
+                <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+
+                {/* Dashboard Vue Globale */}
+                <DashboardVueGlobale
+                  partants={course.partants}
+                  currentCourse={course}
+                  history={history}
+                  onSelectCourse={handleSelectHistoryCourse}
+                  onOpenCalendar={() => setIsCalendarModalOpen(true)}
+                  onTriggerArrivalAudit={() => executePostOfficialArrivalAudit(course, true)}
+                  isAuditingArrival={isAuditingArrival}
+                />
 
             <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
 
@@ -3235,6 +3792,28 @@ export default function App() {
 
                 <button
                   type="button"
+                  onClick={() => openTabInForeground('perplexity-research')}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all ${
+                    activeTab === 'perplexity-research'
+                      ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20 font-black'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-cyan-400" />
+                  <span>Perplexity AI (Live Research)</span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded-md text-[10px] font-black ${
+                      activeTab === 'perplexity-research'
+                        ? 'bg-slate-950 text-cyan-300'
+                        : 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                    }`}
+                  >
+                    Sonar Live
+                  </span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => openTabInForeground('stats')}
                   className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm whitespace-nowrap transition-all ${
                     activeTab === 'stats'
@@ -3417,6 +3996,7 @@ export default function App() {
                   selectedHorseNumbers={selectedHorses}
                   onNavigateToCalendar={() => setIsCalendarModalOpen(true)}
                   onNavigateToCollege={() => setActiveTab('college-gemini')}
+                  onOpenMusiqueDecoder={handleOpenDecoder}
                 />
 
                 {/* Shortcut to Partants */}
@@ -3453,6 +4033,7 @@ export default function App() {
                   course={course}
                   selectedHorseNumbers={selectedHorses}
                   onSelectHorseForTicket={handleToggleHorse}
+                  onOpenMusiqueDecoder={handleOpenDecoder}
                 />
               </div>
             )}
@@ -3679,6 +4260,22 @@ export default function App() {
                     setSelectedAdvisorExpert(modelId);
                     setActiveTab('advisor');
                   }}
+                  onOpenPerplexityResearch={() => setActiveTab('perplexity-research')}
+                />
+              </div>
+            )}
+
+            {activeTab === 'perplexity-research' && course && (
+              <div className="bg-slate-900/90 border border-slate-700/80 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-xl w-full space-y-6">
+                <PerplexityResearchView
+                  course={course}
+                  onSelectHorseForTicket={handleToggleHorse}
+                  selectedHorseNumbers={selectedHorses}
+                  onOpenAdvisorWithModel={(modelId) => {
+                    setSelectedAdvisorExpert(modelId);
+                    setActiveTab('advisor');
+                  }}
+                  onOpenPmuApiHub={() => setIsPmuApiHubModalOpen(true)}
                 />
               </div>
             )}
@@ -3846,10 +4443,27 @@ export default function App() {
               </div>
             )}
 
-            {activeTab === 'fiche-pdf-v38' && (
+            {activeTab === 'fiche-pdf-v38' ? (
               <div className="bg-slate-900/90 border border-slate-700/80 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-xl w-full space-y-6">
                 <FicheImpressionPdfV38View course={course} />
               </div>
+            ) : (
+              <div
+                style={{
+                  position: 'absolute',
+                  top: '-9999px',
+                  left: '-9999px',
+                  width: '1250px',
+                  pointerEvents: 'none',
+                  zIndex: -9999,
+                  opacity: 1,
+                }}
+                aria-hidden="true"
+              >
+                <FicheImpressionPdfV38View course={course} />
+              </div>
+            )}
+            </div>
             )}
           </>
         )}
@@ -3961,6 +4575,23 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Favorite Arrivals Notification History Modal */}
+      <FavoriteArrivalsModal
+        isOpen={isFavoriteArrivalsModalOpen}
+        onClose={() => setIsFavoriteArrivalsModalOpen(false)}
+        onSelectCourse={handleSelectFavoriteCourse}
+      />
+
+      {/* Hub PMU API & Actualisation Quotidienne Modal */}
+      <PmuApiHubModal
+        isOpen={isPmuApiHubModalOpen}
+        onClose={() => setIsPmuApiHubModalOpen(false)}
+        onSelectMeeting={(m) => {
+          handleAnalyzeMeeting(m);
+          setIsPmuApiHubModalOpen(false);
+        }}
+      />
 
       {/* Favorites Modal */}
       {isFavoritesModalOpen && (
@@ -4088,6 +4719,10 @@ export default function App() {
         isOpen={isAdminOpen}
         onClose={() => setIsAdminOpen(false)}
         onDeploySuccess={(info) => setDeploymentStatus(info)}
+        onOpenSubscription={() => {
+          setIsAdminOpen(false);
+          setIsSubscriptionModalOpen(true);
+        }}
       />
 
       {/* User Space & Email Authentication Modal */}
@@ -4155,7 +4790,7 @@ export default function App() {
 
       {/* Premier Plan Foreground Content Overlay Modal */}
       {isForegroundModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center p-0 sm:pt-1 sm:px-2 sm:pb-1 bg-slate-950/95 backdrop-blur-xl animate-fadeIn">
+        <div className="fixed inset-0 top-0 z-50 flex items-start justify-center p-0 sm:pt-0 sm:px-2 sm:pb-1 bg-slate-950/95 backdrop-blur-xl animate-fadeIn">
           <div className={`bg-slate-900 border-2 border-amber-500/50 rounded-none sm:rounded-2xl p-2.5 sm:p-4 w-full ${activeTab === 'fiche-pdf-v38' ? 'max-w-[1920px]' : 'max-w-[1850px]'} h-screen sm:h-[calc(100vh-8px)] flex flex-col shadow-2xl relative overflow-hidden mt-0`}>
             {/* Top Header with Title and Prominent Red Fermer Button */}
             <div className="flex justify-between items-center pb-2.5 mb-2.5 border-b border-slate-800 shrink-0 gap-3">
@@ -4167,6 +4802,7 @@ export default function App() {
                   {activeTab === 'propositions-ia' && <Target className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'partants' && <Table className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'college-gemini' && <Brain className="w-5 h-5 sm:w-6 sm:h-6" />}
+                  {activeTab === 'perplexity-research' && <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-cyan-400" />}
                   {activeTab === 'stats' && <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'ticket' && <Calculator className="w-5 h-5 sm:w-6 sm:h-6" />}
                   {activeTab === 'advisor' && <Bot className="w-5 h-5 sm:w-6 sm:h-6" />}
@@ -4183,6 +4819,7 @@ export default function App() {
                       {activeTab === 'propositions-ia' && 'Proposition de Jeux des IA (Base • T5 • Q6 • Q7)'}
                       {activeTab === 'partants' && `Tableau des Partants (${course?.partants?.length || 0})`}
                       {activeTab === 'college-gemini' && 'Collège Gemini - 6 IA Spécialisées'}
+                      {activeTab === 'perplexity-research' && 'Perplexity AI - Recherche Contextuelle & Scouting'}
                       {activeTab === 'stats' && 'Stats & Graphiques Recharts'}
                       {activeTab === 'ticket' && 'Calculateur de Mises & Optimiseur PMU'}
                       {activeTab === 'advisor' && 'Consultant IA en Direct'}
@@ -4229,7 +4866,7 @@ export default function App() {
 
 
             {/* Foreground Content Area */}
-            <div className="flex-grow overflow-y-auto space-y-6 pr-1 custom-scrollbar">
+            <div ref={foregroundContentRef} className="flex-grow overflow-y-auto space-y-6 pr-1 custom-scrollbar">
               {!course ? (
                 <div className="p-8 text-center bg-slate-950 text-slate-400 rounded-3xl border border-slate-800 space-y-4">
                   <Globe className="w-10 h-10 text-amber-400 mx-auto" />
@@ -4255,6 +4892,7 @@ export default function App() {
                       selectedHorseNumbers={selectedHorses}
                       onNavigateToCalendar={() => setIsCalendarModalOpen(true)}
                       onNavigateToCollege={() => openTabInForeground('college-gemini')}
+                      onOpenMusiqueDecoder={handleOpenDecoder}
                     />
                   )}
                   {activeTab === 'classification-prono' && (
@@ -4270,6 +4908,7 @@ export default function App() {
                       course={course}
                       selectedHorseNumbers={selectedHorses}
                       onSelectHorseForTicket={handleToggleHorse}
+                      onOpenMusiqueDecoder={handleOpenDecoder}
                     />
                   )}
                   {activeTab === 'trace-facteurs' && (
@@ -4372,6 +5011,19 @@ export default function App() {
                         openTabInForeground('advisor');
                       }}
                       onOpenQuotasModal={() => setIsAiQuotasModalOpen(true)}
+                      onOpenPerplexityResearch={() => openTabInForeground('perplexity-research')}
+                    />
+                  )}
+                  {activeTab === 'perplexity-research' && (
+                    <PerplexityResearchView
+                      course={course}
+                      onSelectHorseForTicket={handleToggleHorse}
+                      selectedHorseNumbers={selectedHorses}
+                      onOpenAdvisorWithModel={(modelId) => {
+                        setSelectedAdvisorExpert(modelId);
+                        openTabInForeground('advisor');
+                      }}
+                      onOpenPmuApiHub={() => setIsPmuApiHubModalOpen(true)}
                     />
                   )}
                   {activeTab === 'stats' && (

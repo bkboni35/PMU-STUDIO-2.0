@@ -20,8 +20,8 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { CourseHippique, PmuMeeting, Partant } from '../types/turf';
-import { PLR_FRIDAY_02_MEETINGS } from '../data/plrFriday02Data';
-import { normalizeDateForQuery } from '../utils/timeConversion';
+import { MULTI_DATE_MEETINGS_MAP, PMU_SUNDAY_11_MEETINGS, getMeetingsForDate } from '../data/pmuSunday11Data';
+import { normalizeDateForQuery, getIvoryCoastDate } from '../utils/timeConversion';
 import { HeaderDatePicker } from './HeaderDatePicker';
 import { buildRealV38Synthese } from '../utils/v38Helper';
 
@@ -34,10 +34,10 @@ interface PartantsVisualCalendarProps {
 
 interface CalendarDayItem {
   dateStr: string; // YYYY-MM-DD
-  dayName: string; // "Mar."
-  dayNumber: number; // 29
-  monthName: string; // "Sept."
-  fullDateLabel: string; // "Mardi 29 Septembre 2026"
+  dayName: string; // "Dim."
+  dayNumber: number; // 11
+  monthName: string; // "Oct."
+  fullDateLabel: string; // "Dimanche 11 Octobre 2026"
   isToday: boolean;
   isPast: boolean;
   isFuture: boolean;
@@ -54,12 +54,14 @@ export const PartantsVisualCalendar: React.FC<PartantsVisualCalendarProps> = ({
   onAnalyzeMeeting,
   onOpenFullCalendar,
 }) => {
+  const todayIso = useMemo(() => getIvoryCoastDate(0) || '2026-10-11', []);
+
   const [selectedDateStr, setSelectedDateStr] = useState<string>(() => {
     try {
       const saved = localStorage.getItem('hippo_selected_date');
       if (saved && saved !== 'all') return normalizeDateForQuery(saved);
     } catch {}
-    return '2026-10-01';
+    return getIvoryCoastDate(0) || '2026-10-11';
   });
 
   const [selectedMeetingTab, setSelectedMeetingTab] = useState<string>('all');
@@ -83,66 +85,24 @@ export const PartantsVisualCalendar: React.FC<PartantsVisualCalendarProps> = ({
     };
   }, []);
 
-  // Base dates catalogue (Vendredi 02 Octobre et suivants)
+  // Base dates catalogue (Dimanche 11 Octobre et alentours)
   const baseDaysCatalog = useMemo<Record<string, { label: string; meetings: PmuMeeting[] }>>(() => {
-    return {
-      '2026-10-02': {
-        label: 'Vendredi 02 Octobre 2026',
-        meetings: PLR_FRIDAY_02_MEETINGS,
-      },
-      '2026-10-03': {
-        label: 'Samedi 03 Octobre 2026',
-        meetings: [
-          {
-            id: 'fut-sat-r1-c4',
-            date: 'Samedi 03 Octobre 2026',
-            dateRelative: 'Demain',
-            reunion: 'R1',
-            courseNumero: 'C4',
-            hippodrome: 'ParisLongchamp',
-            heure: '15h15',
-            discipline: 'Plat',
-            nomCoursePhare: 'Prix Chaudenay (Groupe II - Week-end de l\'Arc)',
-            distance: 3000,
-            allocation: '200 000 €',
-            estQuinte: true,
-            description: 'Plat - Groupe 2 - 3000 mètres - Grande Piste - 14 Partants',
-            lienGeny: 'https://www.geny.com/partants-pmu/longchamp-prix-chaudenay_c4',
-            nombrePartants: 14,
-            statut: 'À venir',
-          },
-        ],
-      },
-      '2026-10-04': {
-        label: 'Dimanche 04 Octobre 2026',
-        meetings: [
-          {
-            id: 'fut-sun-r1-c5',
-            date: 'Dimanche 04 Octobre 2026',
-            dateRelative: 'Aujourd\'hui',
-            reunion: 'R1',
-            courseNumero: 'C5',
-            hippodrome: 'ParisLongchamp',
-            heure: '16h05',
-            discipline: 'Plat',
-            nomCoursePhare: 'Qatar Prix de l\'Arc de Triomphe (Groupe I)',
-            distance: 2400,
-            allocation: '5 000 000 €',
-            estQuinte: true,
-            corde: 'Droite',
-            description: 'Plat - Groupe 1 International - 2400 mètres - Grande Piste',
-            lienGeny: 'https://www.geny.com/course/1688800-2026-10-04-parislongchamp-qatar-prix-de-l-arc-de-triomphe/partants-pronostics',
-            nombrePartants: 15,
-            statut: 'À venir',
-          },
-        ],
-      },
-    };
+    return MULTI_DATE_MEETINGS_MAP;
   }, []);
+
+  // Date de référence pour le ruban (calée dynamiquement sur aujourd'hui)
+  const todayBase = useMemo(() => {
+    try {
+      const parts = todayIso.split('-');
+      if (parts.length === 3) {
+        return new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+      }
+    } catch {}
+    return new Date();
+  }, [todayIso]);
 
   // Génération dynamique des jours affichés dans le ruban
   const calendarDays = useMemo<CalendarDayItem[]>(() => {
-    const todayBase = new Date(2026, 8, 29); // 29 Septembre 2026
     const days: CalendarDayItem[] = [];
 
     // Décaler selon activeViewOffset (-3 à +5 par rapport à aujourd'hui + offset)
@@ -166,12 +126,12 @@ export const PartantsVisualCalendar: React.FC<PartantsVisualCalendarProps> = ({
       });
       const capitalizedFull = fullLabel.charAt(0).toUpperCase() + fullLabel.slice(1);
 
-      const isToday = dateIso === '2026-09-29';
+      const isToday = dateIso === todayIso;
       const isPast = offset < 0;
       const isFuture = offset > 0;
 
       const catalogData = baseDaysCatalog[dateIso];
-      const dayMeetings = catalogData ? catalogData.meetings : [];
+      const dayMeetings = catalogData ? catalogData.meetings : getMeetingsForDate(dateIso);
       const quinteMeeting = dayMeetings.find((meet) => meet.estQuinte);
 
       days.push({
@@ -192,7 +152,7 @@ export const PartantsVisualCalendar: React.FC<PartantsVisualCalendarProps> = ({
     }
 
     return days;
-  }, [baseDaysCatalog, activeViewOffset]);
+  }, [baseDaysCatalog, activeViewOffset, todayBase, todayIso]);
 
   // Réunions et courses pour la date sélectionnée
   const activeDayData = useMemo(() => {

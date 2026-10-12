@@ -34,6 +34,7 @@ interface GeminiCollegeViewProps {
   onOpenAdvisorWithModel?: (modelId: GeminiModelId) => void;
   onOpenQuinteHierarchy?: () => void;
   onOpenQuotasModal?: () => void;
+  onOpenPerplexityResearch?: () => void;
 }
 
 export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
@@ -43,6 +44,7 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
   onOpenAdvisorWithModel,
   onOpenQuinteHierarchy,
   onOpenQuotasModal,
+  onOpenPerplexityResearch,
 }) => {
   if (!course) return null;
 
@@ -568,6 +570,24 @@ export const GeminiCollegeView: React.FC<GeminiCollegeViewProps> = ({
                       <Sliders className="w-3.5 h-3.5 text-amber-400" />
                       <span>Logique d'analyse & pondérations</span>
                     </button>
+
+                    {expert.id === 'perplexity-ai' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (onOpenPerplexityResearch) {
+                            onOpenPerplexityResearch();
+                          } else if (onOpenAdvisorWithModel) {
+                            onOpenAdvisorWithModel(expert.id);
+                          }
+                        }}
+                        className="w-full py-2 px-3 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/50 flex items-center justify-center gap-2 text-xs font-black text-cyan-300 transition-all shadow-md shadow-cyan-500/10"
+                        title="Ouvrir le panneau de recherche contextuelle Perplexity AI"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Recherche Contextuelle Perplexity AI Live</span>
+                      </button>
+                    )}
 
                     {onOpenAdvisorWithModel && (
                       <button

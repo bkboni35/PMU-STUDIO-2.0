@@ -3,7 +3,6 @@ import { Trophy, Calendar, Clock, MapPin, Gauge, ShieldAlert, Award, ExternalLin
 import { isCourseFinished, shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus } from '../utils/raceCountdown';
 import { CourseHippique, Partant } from '../types/turf';
 import { CountdownTimer } from './CountdownTimer';
-import { HierarchieQuinteV38Banner } from './HierarchieQuinteV38Banner';
 import { 
   computeV38Hierarchy, 
   getOfficialHippodromeCorde, 
@@ -16,6 +15,7 @@ import {
 } from '../utils/v38Helper';
 import { convertToUTC } from '../utils/timeConversion';
 import { DisciplineExpertAnalysisModal } from './DisciplineExpertAnalysisModal';
+import { DisciplineGridTable } from './DisciplineGridTable';
 import { toggleFavoriteRace, isCourseFavorite } from '../utils/favoritesStorage';
 import { ArrivalAuditCountdownWidget } from './ArrivalAuditCountdownWidget';
 import { ArrivalAuditProgressRingBadge } from './ArrivalAuditProgressRingBadge';
@@ -421,15 +421,34 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
         </div>
       </div>
 
-      {/* Règle de sécurité : Pas d'invention d'arrivée si non vérifiée */}
+      {/* Règle de sécurité : Pas d'invention d'arrivée si non vérifiée & Statut Course en cours */}
       {!course.arriveeOfficielle && (
-        <div className="mb-4 p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-2 text-xs">
+        <div className={`mb-4 p-3 rounded-2xl border flex items-center justify-between gap-3 text-xs ${
+          course.statutCourse === 'Course en cours'
+            ? 'bg-gradient-to-r from-rose-950/70 via-slate-900 to-rose-950/60 border-rose-500/50 shadow-md'
+            : 'bg-slate-950/80 border-slate-800'
+        }`}>
           <span className="text-slate-300 font-bold flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span>Contrôle d'Arrivée : Aucune arrivée inventée sans vérification certifiée auprès des flux officiels.</span>
+            {course.statutCourse === 'Course en cours' ? (
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+              </span>
+            ) : (
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            )}
+            <span>
+              {course.statutCourse === 'Course en cours'
+                ? 'Course en cours — Polling des résultats actif toutes les 15 secondes'
+                : 'Contrôle d\'Arrivée : Aucune arrivée inventée sans vérification certifiée auprès des flux officiels.'}
+            </span>
           </span>
-          <span className="text-[10px] text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20 font-extrabold shrink-0">
-            ⏳ Épreuve à venir / En attente
+          <span className={`px-2.5 py-1 rounded-lg text-xs font-black shrink-0 ${
+            course.statutCourse === 'Course en cours'
+              ? 'bg-rose-500 text-white animate-pulse border border-rose-400'
+              : 'text-amber-300 bg-amber-500/10 border border-amber-500/20'
+          }`}>
+            {course.statutCourse === 'Course en cours' ? '🐎 Course en cours' : '⏳ Épreuve à venir / En attente'}
           </span>
         </div>
       )}
@@ -639,9 +658,6 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
           {course.conditions}
         </div>
       )}
-
-      {/* Bandeau Officiel HIÉRARCHIE QUINTÉ+ V38 sur la course analysée */}
-      <HierarchieQuinteV38Banner course={course} />
 
       {/* PRONOSTICS APRÈS ANALYSE : BASE, CHANCES SÉRIEUSES, TOCARDS, SURPRISES, LES DÉLAISSÉS */}
       {course.partants && course.partants.length > 0 && (() => {
@@ -873,9 +889,16 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Tableau des Critères d'attribution des lignes (Grille V38 Discipline) */}
+            <div className="mt-4 pt-3 border-t border-slate-800/80">
+              <DisciplineGridTable course={course} variant="dark" />
+            </div>
           </div>
         );
       })()}
+
+
 
       {/* Modale d'Audit et Vérification Officielle Geny.com */}
       {isGenyModalOpen && (
@@ -1076,8 +1099,8 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
         };
 
         return (
-          <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-5 bg-slate-950/90 backdrop-blur-md animate-fadeIn overflow-y-auto">
-            <div className="bg-slate-900 border-2 border-purple-500/70 rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-xl w-full shadow-2xl space-y-4 my-auto max-h-[95vh] overflow-y-auto">
+          <div className="fixed inset-0 z-[9999] flex items-start justify-center p-1 sm:p-3 sm:pt-2 bg-slate-950/90 backdrop-blur-md animate-fadeIn overflow-y-auto">
+            <div className="bg-slate-900 border-2 border-purple-500/70 rounded-2xl sm:rounded-3xl p-4 sm:p-6 max-w-xl w-full shadow-2xl space-y-4 mt-0 sm:mt-1 max-h-[96vh] overflow-y-auto">
               {/* Header */}
               <div className="flex items-center justify-between pb-3 border-b border-slate-800">
                 <div className="flex items-center gap-2.5">

@@ -22,6 +22,11 @@ import {
   Target,
   Check,
   Percent,
+  Clock,
+  Scale,
+  AlertTriangle,
+  RefreshCw,
+  Info,
 } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { getHorseGenyOdds } from '../utils/v38Helper';
@@ -554,6 +559,124 @@ export const TrackWeatherAnalysisCard: React.FC<TrackWeatherAnalysisCardProps> =
             </>
           )}
         </p>
+      </div>
+
+      {/* Section : Mécanisme de l'Audit 5 min post-arrivée & Certification Officielle */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-slate-950 via-[#0a1527] to-slate-950 border border-teal-500/40 space-y-4 shadow-xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
+
+        <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-teal-500/20 text-teal-400 border border-teal-500/30">
+              <ShieldCheck className="w-5 h-5 text-teal-400" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="px-2.5 py-0.5 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30 text-[10px] font-black uppercase tracking-wider">
+                  Certification PMU / Geny.com
+                </span>
+                <span className="text-xs font-black text-white">
+                  Audit 5 Min Post-Arrivée (300 Secondes)
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Mécanisme officiel de contrôle des commissaires et sécurisation de l'arrivée définitive.
+              </p>
+            </div>
+          </div>
+          <span className="px-3 py-1 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-teal-300 font-bold">
+            {course.arriveeOfficielle ? 'Arrivée publiée' : 'En attente d\'arrivée'}
+          </span>
+        </div>
+
+        {/* Explication détaillée du mécanisme */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+          <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5">
+            <div className="flex items-center gap-2 font-bold text-amber-300">
+              <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>1. Fenêtre de 300s (5 Min)</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Dès la publication de l'ordre provisoire, un délai réglementaire de 5 minutes s'ouvre pour permettre aux commissaires d'examiner d'éventuelles réclamations, enquêtes sur la régularité des allures ou incidents de course.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5">
+            <div className="flex items-center gap-2 font-bold text-teal-300">
+              <Scale className="w-4 h-4 text-teal-400 shrink-0" />
+              <span>2. Statut Provisoire ➔ Définitif</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Si aucune réclamation ni enquête n'aboutit à une sanction à l'issue des 5 minutes, le statut bascule automatiquement de <strong>provisoire</strong> à <strong>définitif / officiel</strong> certifié par le service.
+            </p>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5">
+            <div className="flex items-center gap-2 font-bold text-emerald-300">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>3. Certification & Modifications</span>
+            </div>
+            <p className="text-slate-300 text-[11px] leading-relaxed">
+              Le service de certification vérifie l'intégrité des rapports et signale immédiatement toute modification (rétrogradation, disqualification tardive) pour protéger les parieurs.
+            </p>
+          </div>
+        </div>
+
+        {/* État de certification pour cette course spécifique */}
+        <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-xl shrink-0 ${
+              course.arrivalAuditModificationDetected
+                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
+                : course.arrivalAuditCompleted
+                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+            }`}>
+              {course.arrivalAuditModificationDetected ? (
+                <AlertTriangle className="w-5 h-5 text-rose-400" />
+              ) : course.arrivalAuditCompleted ? (
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+              ) : (
+                <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
+              )}
+            </div>
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-black text-white">
+                  {course.arrivalAuditModificationDetected
+                    ? '⚠️ Modification détectée par le service de certification'
+                    : course.arrivalAuditCompleted
+                    ? '✓ Statut officiel : Transité de Provisoire à Définitif (Certifié)'
+                    : course.arriveeOfficielle
+                    ? '⏳ Audit 5 min en cours de surveillance (Provisoire ➔ Définitif)'
+                    : 'ℹ️ En attente de l\'arrivée pour déclencher l\'audit 5 min'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                {course.arrivalAuditModificationDetected
+                  ? `Ordre initial rectifié suite à enquête commissaires : ${course.arrivalAuditPreviousArrival || 'N/A'} ➔ ${course.arriveeOfficielle}`
+                  : course.arrivalAuditCompleted
+                  ? 'Le délai de 300 secondes est écoulé. Les commissaires ont validé l\'ordre officiel sans modification.'
+                  : course.arriveeOfficielle
+                  ? 'Surveillance active des cotes et rapports officiels en temps réel.'
+                  : 'L\'audit s\'activera dès l\'enregistrement officiel des premiers arrivants.'}
+              </p>
+            </div>
+          </div>
+
+          <div className="text-right shrink-0">
+            <span className="text-[10px] uppercase font-bold text-slate-400 block">Statut Actuel</span>
+            <span className={`font-mono text-xs font-black px-2.5 py-1 rounded-lg border inline-block mt-0.5 ${
+              course.arrivalAuditModificationDetected
+                ? 'bg-rose-950 text-rose-300 border-rose-500/40'
+                : course.arrivalAuditCompleted
+                ? 'bg-emerald-950 text-emerald-300 border-emerald-500/30'
+                : 'bg-amber-950 text-amber-300 border-amber-500/30'
+            }`}>
+              {course.arrivalAuditModificationDetected ? 'Modifié / Rectifié' : course.arrivalAuditCompleted ? 'Définitif (Homologué)' : 'Provisoire / En cours'}
+            </span>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -25,7 +25,7 @@ import {
 import { CourseHippique, Partant } from '../types/turf';
 import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
 import { computeV38Hierarchy, getHorseGenyOdds } from '../utils/v38Helper';
-import { calculerEcartEtForme } from '../utils/turfCalculations';
+import { calculerEcartEtForme, calculerPerformance3Musiques } from '../utils/turfCalculations';
 
 interface RadarPerformanceChartProps {
   course: CourseHippique;
@@ -50,42 +50,22 @@ const HORSE_COLORS = [
 ];
 
 /**
- * Calcule le score sur 100 de la musique (forme récente et victoires)
+ * Calcule le score de Forme (0 à 100) basé sur l'algorithme des 3 dernières musiques
  */
-function computeMusiqueScore(p: Partant): number {
+function computeFormeScore(p: Partant): number {
+  const perf3 = calculerPerformance3Musiques(p.musique || '');
+  // perf3.totalPoints varie de 3 (3 victoires = score max 100) à 30 (score min 15)
+  const baseForme = Math.round(100 - ((perf3.totalPoints - 3) / 27) * 85);
+
   const musique = (p.musique || '').trim();
   if (!musique || musique === '?' || musique === 'Inconnu') return 50;
 
   const ecart = calculerEcartEtForme(musique);
-  const places = musique.replace(/[^0-9]/g, '').split('').map(Number);
-  
-  if (places.length === 0) {
-    if (musique.includes('D') || musique.includes('T')) return 30;
-    return 50;
+  if (ecart.ecartVictoire === 0) {
+    return Math.min(100, baseForme + 10);
   }
 
-  // Bonus première place récente
-  let score = 50;
-  const first = places[0];
-  if (first === 1) score = 95;
-  else if (first === 2) score = 85;
-  else if (first === 3) score = 75;
-  else if (first === 4) score = 65;
-  else if (first === 5) score = 55;
-  else score = Math.max(20, 50 - (first - 5) * 6);
-
-  // Prise en compte du taux de victoire globale
-  if (ecart.totalRacesRecorded > 0) {
-    const winRate = Math.round((ecart.victoiresCount / ecart.totalRacesRecorded) * 100);
-    score = Math.round((score * 0.6) + (winRate * 0.4));
-  }
-
-  // Bonus si cote basse confirmant la musique
-  if (p.coteProbable && Number(p.coteProbable) <= 4.0) {
-    score = Math.min(100, score + 5);
-  }
-
-  return Math.min(100, Math.max(15, Math.round(score)));
+  return Math.min(100, Math.max(15, baseForme));
 }
 
 /**
@@ -210,6 +190,7 @@ export const RadarPerformanceChart: React.FC<RadarPerformanceChartProps> = ({
   const horsesMap = useMemo(() => {
     const map = new Map<number, {
       partant: Partant;
+      formeScore: number;
       musiqueScore: number;
       gainsScore: number;
       recordScore: number;
@@ -221,17 +202,18 @@ export const RadarPerformanceChart: React.FC<RadarPerformanceChartProps> = ({
 
     for (const p of activePartants) {
       const num = Number(p.numero);
-      const mScore = computeMusiqueScore(p);
+      const fScore = computeFormeScore(p);
       const gScore = computeGainsScore(p, maxGainsInField);
       const rScore = computeRecordScore(p, course.discipline || 'Trot');
       const regScore = computeRegulariteScore(p);
       const vScore = computeValeurV38Score(p, v38Hierarchy);
-      const avg = Math.round((mScore + gScore + rScore + regScore + vScore) / 5);
+      const avg = Math.round((fScore + gScore + rScore + regScore + vScore) / 5);
       const hScore = computePartantHippoScore(p, course);
 
       map.set(num, {
         partant: p,
-        musiqueScore: mScore,
+        formeScore: fScore,
+        musiqueScore: fScore,
         gainsScore: gScore,
         recordScore: rScore,
         regulariteScore: regScore,
@@ -295,12 +277,12 @@ export const RadarPerformanceChart: React.FC<RadarPerformanceChartProps> = ({
     }
   };
 
-  // Construction des données pour le radarRecharts sur les 5 dimensions
+  // Construction des données pour le radar Recharts sur les 4 dimensions principales (Forme, Record, Gains, Régularité) + Valeur V38
   const radarData: RadarCriterionScore[] = useMemo(() => {
     const dimensions = [
-      { key: 'musiqueScore', label: 'Musique', shortLabel: 'Musique' },
-      { key: 'gainsScore', label: 'Gains', shortLabel: 'Gains' },
+      { key: 'formeScore', label: 'Forme', shortLabel: 'Forme' },
       { key: 'recordScore', label: 'Record', shortLabel: 'Record' },
+      { key: 'gainsScore', label: 'Gains', shortLabel: 'Gains' },
       { key: 'regulariteScore', label: 'Régularité', shortLabel: 'Régularité' },
       { key: 'valeurV38Score', label: 'Valeur V38', shortLabel: 'Valeur V38' },
     ];
@@ -331,15 +313,15 @@ export const RadarPerformanceChart: React.FC<RadarPerformanceChartProps> = ({
             <div className="p-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400">
               <Crown className="w-5 h-5" />
             </div>
-            <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-              <span>Radar de Performance Multi-Critères V38</span>
+            <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2 flex-wrap">
+              <span>Graphique Radar Comparative : Forme, Record, Gains & Régularité</span>
               <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono font-black uppercase tracking-wider">
-                5 Critères Clés
+                Comparaison Recharts
               </span>
             </h3>
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Confrontation géométrique des partants sur : <strong className="text-slate-200">Musique</strong>, <strong className="text-slate-200">Gains</strong>, <strong className="text-slate-200">Record</strong>, <strong className="text-slate-200">Régularité</strong> et <strong className="text-amber-300">Valeur V38</strong>.
+            Analyse radar géométrique comparant la <strong className="text-emerald-400">Forme</strong>, le <strong className="text-cyan-400">Record</strong>, les <strong className="text-amber-400">Gains</strong> et la <strong className="text-purple-400">Régularité</strong> des chevaux sélectionnés.
           </p>
         </div>
 
@@ -535,9 +517,9 @@ export const RadarPerformanceChart: React.FC<RadarPerformanceChartProps> = ({
 
                 {/* 5 Critères détaillés en mini barres */}
                 <div className="grid grid-cols-5 gap-1 pt-1 border-t border-slate-900 pl-1.5 text-[9px]">
-                  <div className="bg-slate-900/90 p-1 rounded border border-slate-800/80 text-center">
-                    <div className="text-slate-400 font-bold">Musique</div>
-                    <div className="font-mono font-black text-slate-100">{metrics.musiqueScore}</div>
+                  <div className="bg-emerald-950/30 p-1 rounded border border-emerald-500/30 text-center">
+                    <div className="text-emerald-400 font-bold">Forme</div>
+                    <div className="font-mono font-black text-emerald-300">{metrics.formeScore}</div>
                   </div>
                   <div className="bg-slate-900/90 p-1 rounded border border-slate-800/80 text-center">
                     <div className="text-slate-400 font-bold">Gains</div>

@@ -1,11 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { CourseHippique } from '../types/turf';
 import { exportToCSV } from '../utils/exportUtils';
+import { exportProgramAndCodeToWord } from '../utils/wordExport';
 import { exportQuinteOnlyToPdf, printQuinteOnlyPdf } from '../utils/pdfExport';
 import { generateFicheV38PdfFromDom } from '../utils/ficheV38PdfGenerator';
 import { computeV38Hierarchy, computeDisciplineGrid, computeHorseSuccessProbabilities } from '../utils/v38Helper';
+import { classerChevauxFormeEtPoints } from '../utils/turfCalculations';
 import { DisciplineGridTable } from './DisciplineGridTable';
-import { Printer, Download, Trophy, CheckCircle2, Loader2 } from 'lucide-react';
+import { Printer, Download, Trophy, CheckCircle2, Loader2, FileText } from 'lucide-react';
+import { scrollToTopInstant } from '../utils/scrollHelper';
 
 interface FicheImpressionPdfV38ViewProps {
   course?: CourseHippique | null;
@@ -31,7 +34,23 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
     delaisses,
   } = v38Hierarchy;
 
+  const formClassification = useMemo(() => classerChevauxFormeEtPoints(course.partants || []), [course]);
+
+  React.useEffect(() => {
+    scrollToTopInstant();
+  }, [course?.sourceUrl]);
   const allOrdered = [...selection11, ...delaisses];
+  const allOrderedSortedByProb = useMemo(() => {
+    const list = [...selection11, ...delaisses];
+    return list.sort((a, b) => {
+      const probA = successProbMap.get(Number(a.numero))?.percent || 0;
+      const probB = successProbMap.get(Number(b.numero))?.percent || 0;
+      if (probB !== probA) return probB - probA;
+      const coteA = parseFloat((a.coteProbable || a.genyOdds || '99').toString().replace(',', '.'));
+      const coteB = parseFloat((b.coteProbable || b.genyOdds || '99').toString().replace(',', '.'));
+      return coteA - coteB;
+    });
+  }, [selection11, delaisses, successProbMap]);
 
   const triggerExportPDF = async () => {
     try {
@@ -75,6 +94,18 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
       setTimeout(() => setNotice(null), 4000);
     } catch (e) {
       console.error(e);
+    }
+  };
+
+  const triggerExportWord = () => {
+    try {
+      setNotice("📝 Génération du rapport Word complet (Programme & Programmation de l'application)...");
+      exportProgramAndCodeToWord(course);
+      setNotice("✅ Rapport Word téléchargé avec succès !");
+      setTimeout(() => setNotice(null), 4000);
+    } catch (e) {
+      console.error(e);
+      setNotice("⚠️ Erreur lors de l'export Word.");
     }
   };
 
@@ -140,6 +171,14 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
           >
             <span>Exporter CSV</span>
           </button>
+          <button
+            onClick={triggerExportWord}
+            className="flex items-center gap-2 px-3.5 py-2 bg-blue-700 hover:bg-blue-600 text-white rounded-xl text-xs font-black shadow-lg transition-all active:scale-95"
+            title="Exporter tout le programme hippique et la programmation technique au format Word (.doc)"
+          >
+            <FileText className="w-4 h-4 text-amber-300" />
+            <span>Exporter Word (Programme & Code)</span>
+          </button>
         </div>
       </div>
 
@@ -186,7 +225,7 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
           {/* 3. PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE) */}
           <div className="rounded-xl border border-slate-800 overflow-hidden shadow-lg bg-[#0b1329] text-white">
             <div className="bg-[#0b1329] border-b border-slate-800 text-white p-3 px-4 font-black text-xs sm:text-sm uppercase tracking-wider flex items-center justify-between">
-              <span className="text-amber-400 font-extrabold">PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE)</span>
+              <span className="text-white font-black tracking-tight">PRONOSTIC OFFICIEL QUINTÉ+ V38 (SÉLECTION PAR COTE)</span>
               <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950/90 px-2.5 py-0.5 rounded border border-emerald-500/50">
                 🔒 COTES SCELLÉES SANS VARIATION
               </span>
@@ -194,109 +233,178 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
 
             <div className="p-4 bg-[#0b1329] space-y-3.5">
               {/* Row 1 : FAVORIS, OUTSIDERS, TOCARDS */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {/* FAVORIS */}
-                <div className="space-y-1.5">
-                  <div className="text-xs font-black text-emerald-400 uppercase tracking-wider">
-                    FAVORIS (3 N°) :
+                <div className="bg-[#052e16]/40 border border-emerald-500/30 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+                      FAVORIS (3 N°) :
+                    </span>
+                    <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/40">
+                      {favoris.length} Ch.
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {favoris.map((p, idx) => (
-                      <div key={`pdf-base-${p.numero}-${idx}`} className="flex flex-col items-center">
-                        <div className="w-12 h-10 rounded-lg bg-[#059669] text-white font-black text-lg flex items-center justify-center shadow-md border border-emerald-400/30">
-                          {p.numero}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {favoris.map((p, idx) => {
+                      const cote = p.coteProbable || p.genyOdds || '—';
+                      return (
+                        <div
+                          key={`pdf-base-${p.numero}-${idx}`}
+                          className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                          title={`N°${p.numero} - ${p.nom || ''} • Driver: ${p.driver || '—'} • Cote: ${cote}/1`}
+                        >
+                          <div className="w-10 h-7 rounded-md bg-[#059669] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-emerald-300/80">
+                            {p.numero}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-black text-emerald-300 tracking-tight mt-1 leading-none">
+                            {cote}/1
+                          </span>
                         </div>
-                        <span className="text-[11px] font-extrabold text-emerald-300 mt-1">
-                          {p.coteProbable || p.genyOdds}/1
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* OUTSIDERS */}
-                <div className="space-y-1.5">
-                  <div className="text-xs font-black text-sky-400 uppercase tracking-wider">
-                    OUTSIDERS (3 N°) :
+                <div className="bg-[#0c4a6e]/30 border border-sky-500/30 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-sky-400"></span>
+                      OUTSIDERS (3 N°) :
+                    </span>
+                    <span className="text-[10px] font-bold text-sky-300 bg-sky-950/80 px-2 py-0.5 rounded border border-sky-500/40">
+                      {outsiders.length} Ch.
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {outsiders.map((p, idx) => (
-                      <div key={`pdf-chance-${p.numero}-${idx}`} className="flex flex-col items-center">
-                        <div className="w-12 h-10 rounded-lg bg-[#0284c7] text-white font-black text-lg flex items-center justify-center shadow-md border border-sky-400/30">
-                          {p.numero}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {outsiders.map((p, idx) => {
+                      const cote = p.coteProbable || p.genyOdds || '—';
+                      return (
+                        <div
+                          key={`pdf-chance-${p.numero}-${idx}`}
+                          className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                          title={`N°${p.numero} - ${p.nom || ''} • Driver: ${p.driver || '—'} • Cote: ${cote}/1`}
+                        >
+                          <div className="w-10 h-7 rounded-md bg-[#0284c7] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-sky-300/80">
+                            {p.numero}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-black text-sky-300 tracking-tight mt-1 leading-none">
+                            {cote}/1
+                          </span>
                         </div>
-                        <span className="text-[11px] font-extrabold text-sky-300 mt-1">
-                          {p.coteProbable || p.genyOdds}/1
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* TOCARDS */}
-                <div className="space-y-1.5">
-                  <div className="text-xs font-black text-rose-400 uppercase tracking-wider">
-                    TOCARDS (3 N°) :
+                <div className="bg-[#4c0519]/30 border border-rose-500/30 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-rose-400"></span>
+                      TOCARDS (3 N°) :
+                    </span>
+                    <span className="text-[10px] font-bold text-rose-300 bg-rose-950/80 px-2 py-0.5 rounded border border-rose-500/40">
+                      {tocardsSpeculatifs.length} Ch.
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {tocardsSpeculatifs.map((p, idx) => (
-                      <div key={`pdf-tocard-${p.numero}-${idx}`} className="flex flex-col items-center">
-                        <div className="w-12 h-10 rounded-lg bg-[#e11d48] text-white font-black text-lg flex items-center justify-center shadow-md border border-rose-400/30">
-                          {p.numero}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {tocardsSpeculatifs.map((p, idx) => {
+                      const cote = p.coteProbable || p.genyOdds || '—';
+                      return (
+                        <div
+                          key={`pdf-tocard-${p.numero}-${idx}`}
+                          className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                          title={`N°${p.numero} - ${p.nom || ''} • Driver: ${p.driver || '—'} • Cote: ${cote}/1`}
+                        >
+                          <div className="w-10 h-7 rounded-md bg-[#e11d48] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-rose-300/80">
+                            {p.numero}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-black text-rose-300 tracking-tight mt-1 leading-none">
+                            {cote}/1
+                          </span>
                         </div>
-                        <span className="text-[11px] font-extrabold text-rose-300 mt-1">
-                          {p.coteProbable || p.genyOdds}/1
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               </div>
 
               {/* Row 2 : SURPRISES & DÉLAISSÉS */}
-              <div className="pt-3 border-t border-slate-800 grid grid-cols-2 gap-4">
+              <div className="pt-2 border-t border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* SURPRISES */}
-                <div className="space-y-1.5">
-                  <div className="text-xs font-black text-purple-400 uppercase tracking-wider">
-                    SURPRISES ({surprises.length} N°) :
+                <div className="bg-[#3b0764]/30 border border-purple-500/30 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-purple-400"></span>
+                      SURPRISES ({surprises.length} N°) :
+                    </span>
+                    <span className="text-[10px] font-bold text-purple-300 bg-purple-950/80 px-2 py-0.5 rounded border border-purple-500/40">
+                      Tri points perf.
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {surprises.map((p, idx) => (
-                      <div key={`pdf-surprise-${p.numero}-${idx}`} className="flex flex-col items-center">
-                        <div className="w-12 h-10 rounded-lg bg-[#be123c] text-white font-black text-lg flex items-center justify-center shadow-md border border-purple-400/30">
-                          {p.numero}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {surprises.map((p, idx) => {
+                      const cote = p.coteProbable || p.genyOdds || '—';
+                      return (
+                        <div
+                          key={`pdf-surprise-${p.numero}-${idx}`}
+                          className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                          title={`N°${p.numero} - ${p.nom || ''} • Driver: ${p.driver || '—'} • Cote: ${cote}/1`}
+                        >
+                          <div className="w-10 h-7 rounded-md bg-[#9333ea] text-white font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-md border border-purple-300/80">
+                            {p.numero}
+                          </div>
+                          <span className="text-[10px] sm:text-[11px] font-black text-purple-300 tracking-tight mt-1 leading-none">
+                            {cote}/1
+                          </span>
                         </div>
-                        <span className="text-[11px] font-extrabold text-purple-300 mt-1">
-                          {p.coteProbable || p.genyOdds}/1
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
 
                 {/* DÉLAISSÉS */}
-                <div className="space-y-1.5">
-                  <div className="text-xs font-black text-slate-400 uppercase tracking-wider">
-                    DÉLAISSÉS (↓ N°) :
+                <div className="bg-slate-900/60 border border-slate-700/50 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-slate-400"></span>
+                      DÉLAISSÉS ({delaisses.length} N°) :
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">
+                      ↓ Ordre décroissant
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {delaisses.map((p, idx) => (
-                      <div key={`pdf-delaisse-${p.numero}-${idx}`} className="flex flex-col items-center">
-                        <div className="w-12 h-10 rounded-lg bg-[#334155] text-white font-black text-lg flex items-center justify-center shadow-sm border border-slate-600/40">
-                          {p.numero}
-                        </div>
-                        <span className="text-[11px] font-bold text-slate-300 mt-1">
-                          {p.coteProbable || p.genyOdds}/1
-                        </span>
-                      </div>
-                    ))}
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    {delaisses.length === 0 ? (
+                      <span className="text-xs text-slate-500 italic">Aucun cheval délaissé (lot ≤ 12 partants)</span>
+                    ) : (
+                      delaisses.map((p, idx) => {
+                        const cote = p.coteProbable || p.genyOdds || '—';
+                        return (
+                          <div
+                            key={`pdf-delaisse-${p.numero}-${idx}`}
+                            className="group flex flex-col items-center cursor-pointer transition-transform hover:-translate-y-0.5"
+                            title={`N°${p.numero} - ${p.nom || ''} • Driver: ${p.driver || '—'} • Cote: ${cote}/1`}
+                          >
+                            <div className="w-10 h-7 rounded-md bg-[#334155] text-slate-100 font-mono font-black text-xs sm:text-sm flex items-center justify-center shadow-sm border border-slate-500/60">
+                              {p.numero}
+                            </div>
+                            <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 tracking-tight mt-1 leading-none">
+                              {cote}/1
+                            </span>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* 4. GRILLE V38 DISCIPLINE (TABLEAU DE RÉPARTITION) */}
+          {/* 4. GRILLE V38 DISCIPLINE (TABLEAU DE RÉPARTITION) & CLASSIFICATION PAR FORME DE FORMULE */}
           <div className="w-full">
             <DisciplineGridTable course={course} variant="dark" />
           </div>
@@ -317,7 +425,7 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
           <div className="bg-[#0b1329] text-white rounded-xl p-3 px-4 flex items-center justify-between shadow-md border border-slate-800">
             <div className="flex items-center gap-2 text-amber-400 font-black text-xs uppercase">
               <Trophy className="w-4 h-4 text-amber-400" />
-              <span>PRONOS - PMU - STUDIO 2.0 • TABLEAU DÉTAILLÉ DE TOUS LES PARTANTS & CLASSEMENT PAR COTE V38</span>
+              <span>PRONOS - PMU - STUDIO 2.0 • TABLEAU DÉTAILLÉ CLASSÉ PAR PROBABILITÉ DE SUCCÈS</span>
             </div>
             <span className="text-[10px] text-emerald-300 font-bold bg-emerald-950 px-3 py-1 rounded-full border border-emerald-500/50">
               EXTRACTION OFFICIELLE
@@ -337,11 +445,10 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
                     <th className="py-2.5 px-3 text-center text-sky-300">Cote</th>
                     <th className="py-2.5 px-3 text-center text-sky-300">Score IA</th>
                     <th className="py-2.5 px-3 text-center text-amber-400">Prob. Succès</th>
-                    <th className="py-2.5 px-3 text-center text-sky-300">Rôle V38</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/80 font-bold">
-                  {allOrdered.map((p, idx) => {
+                  {allOrderedSortedByProb.map((p, idx) => {
                     const rank = idx + 1;
                     const probInfo = successProbMap.get(Number(p.numero));
                     let roleText = 'Délaissé';
@@ -446,11 +553,6 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
                           ) : (
                             <span className="text-slate-500">—</span>
                           )}
-                        </td>
-                        <td className="py-2 px-3 text-center whitespace-nowrap">
-                          <span className={`px-3 py-1 rounded-md text-[10px] uppercase inline-block whitespace-nowrap shadow-xs ${rolePillBg}`}>
-                            {roleText}
-                          </span>
                         </td>
                       </tr>
                     );

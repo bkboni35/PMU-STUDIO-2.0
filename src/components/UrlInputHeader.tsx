@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Globe, AlertTriangle, CheckCircle2, Sparkles, Star, Calendar, ClipboardPaste, History, Lock, X, ShieldAlert, Smartphone, Clock, Zap, ChevronLeft, ChevronRight, RotateCcw, Tv, Monitor, Laptop, Cpu, Sliders, Bell, Volume2, Trophy, Crown } from 'lucide-react';
+import { Search, Globe, AlertTriangle, CheckCircle2, Sparkles, Star, Calendar, ClipboardPaste, History, Lock, X, ShieldAlert, Smartphone, Clock, Zap, ChevronLeft, ChevronRight, RotateCcw, Tv, Monitor, Laptop, Cpu, Sliders, Bell, Volume2, Trophy, Crown, Terminal, CheckSquare } from 'lucide-react';
 import { validateTurfUrl } from '../utils/turfUrlValidator';
 import { CourseHippique, PmuMeeting, TurfSource } from '../types/turf';
 import { UserProfile } from '../types/userAuth';
@@ -7,11 +7,13 @@ import { ThemeToggleWidget } from './ThemeToggleWidget';
 import { CountdownTimer } from './CountdownTimer';
 import { getRaceParisTargetTime } from '../utils/raceCountdown';
 import { normalizeDateForQuery, getIvoryCoastDate } from '../utils/timeConversion';
+import { PMU_SUNDAY_11_MEETINGS, getCuratedPmuMeetings } from '../data/pmuMeetingsData';
 import { PLR_FRIDAY_02_MEETINGS } from '../data/plrFriday02Data';
 import { HeaderDatePicker } from './HeaderDatePicker';
 import { BandePassanteArrivees } from './BandePassanteArrivees';
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
 import { PWAInstallButton } from './PWAInstallButton';
+import { RaceDelayModal } from './RaceDelayModal';
 import { buildRealV38Synthese } from '../utils/v38Helper';
 
 interface UrlInputHeaderProps {
@@ -43,6 +45,9 @@ interface UrlInputHeaderProps {
   onOpenAiQuotas?: () => void;
   onOpenNotifications?: () => void;
   onOpenSubscription?: () => void;
+  onOpenPmuApiHub?: () => void;
+  hasScraperLogs?: boolean;
+  onOpenScraperLogs?: () => void;
 }
 
 interface UpcomingRaceRef {
@@ -57,6 +62,7 @@ interface UpcomingRaceRef {
   estQuinte?: boolean;
   sourceUrl: string;
   fullCourseObject?: CourseHippique;
+  nombrePartants: number;
 }
 
 function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
@@ -67,9 +73,8 @@ function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
   const hippoSlug = m.hippodrome.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '-');
   const courseSlug = m.nomCoursePhare.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '-');
   const numericId = m.id.replace(/\D/g, '') || '1482910';
-  const is29 = Boolean(m.date && m.date.includes('29'));
-  const dateSlug = is29 ? '2026-09-29' : '2026-09-28';
-  const defaultDateStr = is29 ? 'Mardi 29 Septembre 2026' : 'Lundi 28 Septembre 2026';
+  const defaultDateStr = m.date || 'Dimanche 11 Octobre 2026';
+  const dateSlug = normalizeDateForQuery(defaultDateStr) || '2026-10-11';
   const constructedGenyUrl = `https://www.geny.com/partants-pmu/${dateSlug}-${hippoSlug}-pmu-${courseSlug}_c${numericId}`;
 
   const basePartants = (m.partants && m.partants.length >= 10)
@@ -170,8 +175,11 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   onOpenAiQuotas,
   onOpenNotifications,
   onOpenSubscription,
+  onOpenPmuApiHub,
   isExpertMode,
   onToggleExpertMode,
+  hasScraperLogs,
+  onOpenScraperLogs,
 }) => {
   const [inputUrl, setInputUrl] = useState(currentUrl);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -208,6 +216,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
 
   // Extraction en Temps Réel des Arrivées via Grounding Google Search (paristurf.com & pmu.fr)
   const [showParisTurfModal, setShowParisTurfModal] = useState(false);
+  const [isDelayModalOpen, setIsDelayModalOpen] = useState(false);
   const [isFetchingParisTurf, setIsFetchingParisTurf] = useState(false);
   const [parisTurfArrivals, setParisTurfArrivals] = useState<any[]>(() => {
     try {
@@ -223,10 +232,11 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
       setShowParisTurfModal(true);
     }
     try {
+      const todayIso = new Date().toISOString().split('T')[0];
       const resp = await fetch('/api/extract-arrivals-grounding', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ source: 'all', date: selectedFilterDate || '2026-10-01' })
+        body: JSON.stringify({ source: 'all', date: selectedFilterDate && selectedFilterDate !== 'all' ? selectedFilterDate : todayIso })
       });
       if (resp.ok) {
         const data = await resp.json();
@@ -355,7 +365,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     } catch {}
 
     if (meetingsToLoad.length === 0) {
-      meetingsToLoad = PLR_FRIDAY_02_MEETINGS;
+      meetingsToLoad = PMU_SUNDAY_11_MEETINGS;
     }
 
     if (selectedFilterDate && selectedFilterDate !== 'all') {
@@ -366,22 +376,30 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
       });
     }
 
-    // Charger l'intégralité des courses officielles du programme
+    // Charger l'intégralité des courses officielles du programme (EXCLUSIVEMENT 9 PARTANTS ET PLUS)
     meetingsToLoad.forEach((m: any) => {
       const fullCourse = convertMeetingToCourseHippique(m);
-      list.push({
-        id: m.id,
-        reunionCourse: `${m.reunion} ${m.courseNumero}`,
-        nomCourse: m.nomCoursePhare,
-        hippodrome: m.hippodrome,
-        heure: m.heure,
-        date: m.date || 'Mardi 29 Septembre 2026',
-        discipline: m.discipline,
-        distance: m.distance,
-        estQuinte: m.estQuinte,
-        sourceUrl: fullCourse.sourceUrl,
-        fullCourseObject: fullCourse,
-      });
+      const partantsCount = m.partants && m.partants.length > 0
+        ? m.partants.length
+        : (m.nombrePartants || (fullCourse.partants ? fullCourse.partants.length : 12));
+
+      // Filtre impératif : Affiche SEULEMENT les courses de 9 partants et plus
+      if (partantsCount >= 9) {
+        list.push({
+          id: m.id,
+          reunionCourse: `${m.reunion} ${m.courseNumero}`,
+          nomCourse: m.nomCoursePhare,
+          hippodrome: m.hippodrome,
+          heure: m.heure,
+          date: m.date || 'Mardi 29 Septembre 2026',
+          discipline: m.discipline,
+          distance: m.distance,
+          estQuinte: m.estQuinte,
+          sourceUrl: fullCourse.sourceUrl,
+          fullCourseObject: fullCourse,
+          nombrePartants: partantsCount,
+        });
+      }
     });
 
     // Tri chronologique rigoureux des courses du programme par heure de départ
@@ -393,6 +411,47 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
 
     return list;
   }, [calendarVersion, selectedFilterDate]);
+
+  // Choix des courses (≥ 9 partants) à positionner sous l'espace de collage de lien
+  const [selectedRaceIds, setSelectedRaceIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('hippo_selected_next_race_ids');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(selectedRaceIds));
+    } catch {}
+  }, [selectedRaceIds]);
+
+  // Si aucune course n'est cochée par l'utilisateur, cocher par défaut la 1ère course disponible de 9+ partants
+  useEffect(() => {
+    if (upcomingRacesList.length > 0 && selectedRaceIds.length === 0) {
+      setSelectedRaceIds([upcomingRacesList[0].id]);
+    }
+  }, [upcomingRacesList]);
+
+  const toggleRaceSelection = (id: string) => {
+    setSelectedRaceIds((prev) =>
+      prev.includes(id) ? prev.filter((rId) => rId !== id) : [...prev, id]
+    );
+  };
+
+  // Liste des courses positionnées/sélectionnées sous l'espace de collage de lien
+  const pinnedUpcomingRaces = useMemo(() => {
+    if (upcomingRacesList.length === 0) return [];
+    if (selectedRaceIds.length === 0) {
+      return upcomingRacesList.slice(0, 1);
+    }
+    const filtered = upcomingRacesList.filter((r) => selectedRaceIds.includes(r.id));
+    return filtered.length > 0 ? filtered : upcomingRacesList.slice(0, 1);
+  }, [upcomingRacesList, selectedRaceIds]);
 
   // Sélectionner et actualiser automatiquement la prochaine course non démarrée du programme
   useEffect(() => {
@@ -597,7 +656,8 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     setIsResyncing(true);
     try {
       const activeSrc = (typeof window !== 'undefined' && localStorage.getItem('hippo_sync_source')) || 'pmu';
-      const targetDate = selectedFilterDate && selectedFilterDate !== 'all' ? selectedFilterDate : '2026-10-01';
+      const todayIso = new Date().toISOString().split('T')[0];
+      const targetDate = selectedFilterDate && selectedFilterDate !== 'all' ? selectedFilterDate : todayIso;
       const res = await fetch('/api/sync-realtime-calendar', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -730,21 +790,8 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
         <div className="flex flex-col gap-3.5 mb-4 w-full">
           {/* LIGNE 1 : Programme des Courses, Date & Espace Session / Réglages */}
           <div className="flex flex-wrap items-center justify-between gap-3 w-full pb-3 border-b border-slate-800/80">
-            {/* Côté Gauche : Profil, Abonnement Mobile Money & Sélecteur de Date */}
+            {/* Côté Gauche : Profil, Sélecteur de Date & Hub PMU API */}
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-              {/* Bouton Espace Abonnement Mobile Money VIP */}
-              {onOpenSubscription && (
-                <button
-                  type="button"
-                  onClick={onOpenSubscription}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-400 hover:to-orange-400 text-slate-950 border-2 border-amber-300 text-xs font-black transition-all shadow-lg shadow-amber-500/25 active:scale-95 shrink-0"
-                  title="Ouvrir l'Espace Abonnement & Paiement Mobile Money (Orange Money, Wave, MTN, Moov)"
-                >
-                  <Crown className="w-4 h-4 text-slate-950 fill-current" />
-                  <span>Abonnement Mobile Money</span>
-                </button>
-              )}
-
               {/* User Space Connection / Profile Button */}
               {onOpenUserSpace && (
                 <button
@@ -784,13 +831,14 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 </button>
               )}
 
-              {/* Sélecteur de Date (Date Picker) & Archives */}
+              {/* Sélecteur de Date (Date Picker), Archives & Hub PMU API */}
               <HeaderDatePicker
                 selectedDate={selectedFilterDate}
                 onDateChange={(newDate) => {
                   setSelectedFilterDate(newDate);
                 }}
                 onOpenCalendar={onOpenCalendar}
+                onOpenPmuApiHub={onOpenPmuApiHub}
               />
             </div>
 
@@ -832,6 +880,30 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 </button>
               )}
 
+              {/* 2bis. Bouton Notifications Arrivées Favoris */}
+              {onOpenNotifications && (
+                <button
+                  type="button"
+                  onClick={onOpenNotifications}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
+                  title="Voir les alertes d'arrivées officielles pour mes courses favorites"
+                >
+                  <Bell className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+                  <span className="hidden sm:inline">Alertes Arrivées</span>
+                </button>
+              )}
+
+              {/* 2ter. Bouton Gestion des Retards de Course en temps réel */}
+              <button
+                type="button"
+                onClick={() => setIsDelayModalOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-500/60 text-xs font-black transition-all shadow-md active:scale-95 shrink-0 cursor-pointer"
+                title="Actualiser les heures de départ en temps réel en cas de retard de course"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
+                <span>Retards de Course</span>
+              </button>
+
               {/* 3. Onglet Quotas AI */}
               {onOpenAiQuotas && (
                 <button
@@ -842,6 +914,19 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 >
                   <Cpu className="w-3.5 h-3.5 text-amber-400" />
                   <span>Quotas AI</span>
+                </button>
+              )}
+
+              {/* Bouton Afficher Logs Scraper si disponibles */}
+              {hasScraperLogs && onOpenScraperLogs && (
+                <button
+                  type="button"
+                  onClick={onOpenScraperLogs}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-600 text-slate-950 border border-amber-300 text-xs font-black transition-all shadow-md active:scale-95 shrink-0 cursor-pointer animate-pulse"
+                  title="Réouvrir le dernier composant DebugRaceGate si des logs de scraping sont disponibles"
+                >
+                  <Terminal className="w-3.5 h-3.5 text-slate-950" />
+                  <span>Afficher Logs Scraper</span>
                 </button>
               )}
 
@@ -1053,97 +1138,173 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
             </div>
           )}
 
-          {/* Rubrique PROCHAINE COURSE: Références de la course, Compte à rebours et Bouton "Analyser la course" */}
-          {currentUpcomingRace && (
-            <div className="mt-3 pt-3 border-t border-slate-800/80 bg-gradient-to-r from-slate-950 via-[#0a1120] to-slate-950 p-3 sm:p-3.5 rounded-2xl border border-amber-500/40 shadow-lg">
-              <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-                {/* Références de la course */}
-                <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1">
-                  {/* Label PROCHAINE COURSE */}
-                  <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                    </span>
-                    <span className="font-black text-amber-400 uppercase text-[11px] sm:text-xs tracking-wider flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5 text-amber-400" />
-                      PROCHAINE COURSE :
-                    </span>
+          {/* Section : Choix des courses (≥ 9 partants) à positionner sous l'espace de collage de lien */}
+          {upcomingRacesList.length > 0 && (
+            <div className="mt-3.5 p-3 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
+                    <CheckSquare className="w-4 h-4" />
                   </div>
-
-                  {/* Badges Références */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {/* Badge R1 C4 */}
-                    <span className="px-2 py-0.5 rounded-lg font-black bg-amber-400 text-slate-950 text-xs shadow-xs border border-amber-300">
-                      {currentUpcomingRace.reunionCourse}
-                    </span>
-
-                    {/* Nom de la course */}
-                    <span className="font-black text-white text-xs sm:text-sm">
-                      {currentUpcomingRace.nomCourse}
-                    </span>
-
-                    <span className="text-slate-600 font-bold">•</span>
-
-                    {/* Hippodrome */}
-                    <span className="text-slate-300 font-bold text-xs">
-                      {currentUpcomingRace.hippodrome}
-                    </span>
-
-                    {/* Quinté+ Badge */}
-                    {currentUpcomingRace.estQuinte && (
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wide">
-                        Quinté+ PMU
-                      </span>
-                    )}
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                      SÉLECTION DES COURSES (≥ 9 PARTANTS)
+                    </h4>
+                    <p className="text-[11px] text-slate-400">
+                      Cochez les cases pour choisir les courses à positionner sous l'espace de collage de lien
+                    </p>
                   </div>
                 </div>
-
-                {/* Compte à rebours & Boutons (Précédente / Suivante / Analyser la course) */}
-                <div className="flex flex-wrap items-center gap-2 justify-between lg:justify-end shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800/80">
-                  {/* Compte à rebours en temps réel */}
-                  <div className="shrink-0">
-                    <CountdownTimer date={currentUpcomingRace.date} heure={currentUpcomingRace.heure} compact />
-                  </div>
-
-                  {/* Navigation entre prochaines courses */}
-                  {upcomingRacesList.length > 1 && (
-                    <div className="flex items-center gap-1 bg-slate-900 px-1 py-1 rounded-xl border border-slate-800">
-                      <button
-                        type="button"
-                        onClick={handlePrevUpcoming}
-                        className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
-                        title="Course précédente au programme"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" />
-                      </button>
-                      <span className="text-[10px] font-mono text-slate-400 px-1">
-                        {upcomingIndex + 1}/{upcomingRacesList.length}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={handleNextUpcoming}
-                        className="p-1 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
-                        title="Course suivante au programme"
-                      >
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Onglet / Bouton Analyser la course */}
-                  <button
-                    type="button"
-                    onClick={() => handleAnalyzeUpcomingRace(currentUpcomingRace)}
-                    disabled={isLoading}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs sm:text-sm shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition-all active:scale-95 shrink-0 border border-emerald-400/50"
-                    title="Analyser directement cette prochaine course au programme PMU"
-                  >
-                    <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
-                    <span>Analyser la course</span>
-                  </button>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 text-[11px] font-mono font-bold border border-amber-500/30">
+                    {pinnedUpcomingRaces.length} / {upcomingRacesList.length} course(s) positionnée(s)
+                  </span>
                 </div>
               </div>
+
+              {/* Grille de sélection des courses avec cases à cocher & Compte à rebours devant chaque course */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
+                {upcomingRacesList.map((race) => {
+                  const isChecked = selectedRaceIds.includes(race.id);
+                  return (
+                    <div
+                      key={race.id}
+                      className={`p-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 text-xs ${
+                        isChecked
+                          ? 'bg-amber-950/30 border-amber-500/60 ring-1 ring-amber-500/30 shadow-sm'
+                          : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        {/* Case à cocher pour choisir les courses à positionner */}
+                        <input
+                          type="checkbox"
+                          id={`select-race-${race.id}`}
+                          checked={isChecked}
+                          onChange={() => toggleRaceSelection(race.id)}
+                          className="w-4 h-4 rounded text-amber-500 bg-slate-900 border-slate-700 focus:ring-amber-400 accent-amber-500 cursor-pointer shrink-0"
+                          title="Cocher pour positionner cette course sous l'espace de collage"
+                        />
+
+                        {/* Compte à rebours placé devant chaque course */}
+                        <div className="shrink-0 font-mono">
+                          <CountdownTimer date={race.date} heure={race.heure} compact />
+                        </div>
+
+                        {/* Infos de la course */}
+                        <div className="min-w-0 flex-1 truncate">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="px-1.5 py-0.5 rounded font-black bg-amber-400 text-slate-950 text-[10px] shrink-0">
+                              {race.reunionCourse}
+                            </span>
+                            <span className="font-bold text-white text-xs truncate" title={race.nomCourse}>
+                              {race.nomCourse}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5 truncate">
+                            <span className="truncate">📍 {race.hippodrome}</span>
+                            <span>•</span>
+                            <span className="font-semibold text-amber-300/90">{race.nombrePartants} partants</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Bouton Analyser rapide */}
+                      <button
+                        type="button"
+                        onClick={() => handleAnalyzeUpcomingRace(race)}
+                        className="px-2 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold text-[10px] border border-emerald-500/40 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                        title="Placer le lien et analyser immédiatement"
+                      >
+                        <Zap className="w-3 h-3 text-emerald-400" />
+                        <span className="hidden sm:inline">Analyser</span>
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Rubrique PROCHAINE COURSE: Affichage des courses sélectionnées/positionnées sous l'espace de collage */}
+          {pinnedUpcomingRaces.length > 0 && (
+            <div className="mt-3 space-y-2.5">
+              {pinnedUpcomingRaces.map((race, idx) => (
+                <div
+                  key={race.id || idx}
+                  className="pt-3 border-t border-slate-800/80 bg-gradient-to-r from-slate-950 via-[#0a1120] to-slate-950 p-3 sm:p-3.5 rounded-2xl border border-amber-500/50 shadow-lg animate-fadeIn"
+                >
+                  <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+                    {/* Références de la course */}
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1">
+                      {/* Label PROCHAINE COURSE */}
+                      <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                        <span className="relative flex h-2 w-2">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                        </span>
+                        <span className="font-black text-amber-400 uppercase text-[11px] sm:text-xs tracking-wider flex items-center gap-1">
+                          <Clock className="w-3.5 h-3.5 text-amber-400" />
+                          PROCHAINE COURSE :
+                        </span>
+                      </div>
+
+                      {/* Compte à rebours placé devant chaque course */}
+                      <div className="shrink-0">
+                        <CountdownTimer date={race.date} heure={race.heure} compact />
+                      </div>
+
+                      {/* Badges Références */}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {/* Badge R1 C4 */}
+                        <span className="px-2 py-0.5 rounded-lg font-black bg-amber-400 text-slate-950 text-xs shadow-xs border border-amber-300">
+                          {race.reunionCourse}
+                        </span>
+
+                        {/* Nom de la course */}
+                        <span className="font-black text-white text-xs sm:text-sm">
+                          {race.nomCourse}
+                        </span>
+
+                        <span className="text-slate-600 font-bold">•</span>
+
+                        {/* Hippodrome */}
+                        <span className="text-slate-300 font-bold text-xs">
+                          {race.hippodrome}
+                        </span>
+
+                        <span className="text-slate-600 font-bold">•</span>
+
+                        {/* Nombre de partants (≥ 9) */}
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-800 text-amber-300 border border-slate-700">
+                          {race.nombrePartants} partants
+                        </span>
+
+                        {/* Quinté+ Badge */}
+                        {race.estQuinte && (
+                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wide">
+                            Quinté+ PMU
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Bouton Analyser la course */}
+                    <div className="flex items-center gap-2 justify-end shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800/80">
+                      <button
+                        type="button"
+                        onClick={() => handleAnalyzeUpcomingRace(race)}
+                        disabled={isLoading}
+                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs sm:text-sm shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition-all active:scale-95 shrink-0 border border-emerald-400/50 cursor-pointer"
+                        title="Analyser directement cette prochaine course au programme PMU"
+                      >
+                        <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
+                        <span>Analyser la course</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
@@ -1163,6 +1324,13 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
             onSelectCourse(convertMeetingToCourseHippique(matched));
           }
         }}
+      />
+
+      {/* Modale de Gestion des Retards de Course en Temps Réel */}
+      <RaceDelayModal
+        isOpen={isDelayModalOpen}
+        onClose={() => setIsDelayModalOpen(false)}
+        races={upcomingRacesList}
       />
     </header>
   );

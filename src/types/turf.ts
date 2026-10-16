@@ -1,3 +1,5 @@
+import type { HorseJockeySynergyMetrics } from '../utils/horseJockeySynergyEngine';
+
 export type TurfSource = 'geny.com' | 'paristurf.com' | 'pmu.lonacionline.ci' | 'autre';
 
 export type Discipline = 
@@ -18,6 +20,7 @@ export interface Partant {
   proprietaire?: string;
   musique: string;
   musiqueDecryptee?: string[];
+  horseJockeySynergy?: HorseJockeySynergyMetrics;
   coteProbable?: number;
   cotePrecedente?: number;
   evolutionCote?: 'hausse' | 'baisse' | 'stable';
@@ -38,6 +41,13 @@ export interface Partant {
   regularitePourcent?: number; // % dans les 3 premiers
   victoiresTotal?: number;
   placesTotal?: number;
+  // Statistiques officielles Geny du Driver / Jockey
+  driverCourses?: number;
+  driverVictoires?: number;
+  driverPlaces?: number;
+  driverEcart?: number;
+  driverReussite?: number; // % de réussite (ex: 16%)
+  driverMusique?: string; // Musique propre du driver sur Geny
   statut?: 'Favori' | 'Seconde chance' | 'Outsider' | 'Tocard' | 'Non-partant' | 'Partant';
   estNonPartant?: boolean; // Signalé Non-Partant (NP)
   rangArrivee?: number; // Position à l'arrivée officielle (1er, 2e, etc.)
@@ -133,7 +143,13 @@ export type GeminiModelId =
   | 'gemma'
   | 'vertex-ai'
   | 'perplexity-ai'
-  | 'claude-4.6-sonnet';
+  | 'claude-4.6-sonnet'
+  | 'chatgpt'
+  | 'deepseek-v3'
+  | 'deepseek-r1'
+  | 'qwen-2.5'
+  | 'kimi-k1.5'
+  | 'glm-4';
 
 export interface GeminiExpertTask {
   id: GeminiModelId;
@@ -330,8 +346,195 @@ export interface CourseHippique {
   arrivalAuditPreviousArrival?: string;
   expertDisciplineAnalysis?: ExpertDisciplineAnalysis;
   cotesScellees?: boolean; // Verrouille définitivement les cotes des chevaux après analyse (aucune variation ultérieure)
+  rectificationsApplied?: string[]; // Journal chronologique des rectifications appliquées par le middleware
   delaisses?: number[]; // Numéros des chevaux délaissés classés par ordre décroissant (du plus grand au plus petit)
   perplexityResearch?: PerplexityResearchResult;
+  tabularEnsemble?: TabularEnsembleResult;
+}
+
+export interface ShapFeatureContribution {
+  featureName: string;
+  category: 'Performance' | 'Entourage' | 'Discipline & Piste' | 'Physique & Corde';
+  impactValue: number; // Impact numérique (ex: +12.4 ou -6.2)
+  impactFormatted: string; // Ex: "+12.4%"
+  description: string;
+}
+
+export interface TabularEntourageMetrics {
+  driverOrJockeyName: string;
+  trainerName: string;
+  jockeyWinRate365jBayes: number; // Taux de victoire bayésien lissé 365j (%)
+  jockeyPlaceRate365jBayes: number; // Taux de podium bayésien lissé 365j (%)
+  jockeyForme14j: number; // Forme récente 14j (%)
+  contextualDriverScore: number; // Score S_driver ou S_jockey sur 100
+  trainerWinRate30jBayes: number; // Victoires entraîneur 30j lissées (%)
+  pairHorseDriverRate: number; // Réussite du couple cheval-driver (%)
+  pairJockeyTrainerRate: number; // Réussite du duo jockey-entraîneur (%)
+  bayesianSmoothingFactorM: number; // Paramètre m de lissage bayésien
+}
+
+export interface TabularRunnerPrediction {
+  numero: number;
+  nom: string;
+  driver: string;
+  entraineur: string;
+  coteProbable?: number;
+  estNonPartant?: boolean;
+  
+  // Modèle 1: LightGBM LambdaRank
+  lambdaRankRank: number; // Rang prédictif de 1 à N
+  lambdaRankScore: number; // Score de pertinence LambdaRank (0-100)
+  targetRelevance: number; // Relevance cible (4 si 1er, 3 si 2e, 2 si 3e, 1 si 4e/5e, 0 sinon)
+
+  // Modèle 2: CatBoost Classifier Victoire
+  pCatBoost: number; // Probabilité CatBoost %
+  pCatBoostFormatted: string; // Ex: "29.4%"
+
+  // Modèle 3: LightGBM Softmax
+  pLightGBM: number; // Probabilité LightGBM Softmax %
+  pLightGBMFormatted: string; // Ex: "26.8%"
+
+  // Metrics de Variance Inter-Modèles (CatBoost vs LightGBM)
+  modelVariance: number; // Variance / Écart de probabilité |CatBoost - LightGBM|
+  modelVarianceFormatted: string; // Ex: "2.6%"
+  confidenceLevel: 'HAUTE' | 'MODEREE' | 'DIVERGENTE'; // Niveau de confiance du blending
+
+  // Probabilité de victoire combinée P_blend
+  pVictoire: number; // Probabilité de victoire calibrée % (0 - 100)
+  pVictoireFormatted: string; // Ex: "28.5%"
+
+  // Modèle 4: CatBoost Classifier Top 3 (Podium)
+  pTop3: number; // Probabilité de podium calibrée % (0 - 100)
+  pTop3Formatted: string; // Ex: "64.2%"
+
+  // Variables Entourage & Lissage Bayésien
+  entourageMetrics: TabularEntourageMetrics;
+  horseJockeySynergy?: HorseJockeySynergyMetrics;
+
+  // Modèle d'explicabilité SHAP
+  shapPositiveFactors: ShapFeatureContribution[];
+  shapNegativeFactors: ShapFeatureContribution[];
+  shapGlobalScore: number; // Score SHAP net aggregé
+
+  // Couche de Décision Algorithmique Final
+  category: 'BASE INCONTOURNABLE' | 'OUTSIDER SÉDUISANT' | "CAPABLES D'EXPLOITS" | 'TOCARD SPÉCULATIF' | 'DÉLAISSÉ' | 'NON-PARTANT';
+  decisionJustification: string;
+}
+
+export interface TabularEnsembleResult {
+  generatedAt: string;
+  discipline: Discipline;
+  disciplineModelPipeline: 'Trot Attelé Model' | 'Trot Monté Model' | 'Plat Speed & Draw Model' | 'Obstacle Jumping & Weight Model';
+  modelVersions: {
+    lightgbmLambdaRank: string;
+    catboostWinClassifier: string;
+    catboostTop3Classifier: string;
+    shapExplainer: string;
+  };
+  totalRunnersAnalyzed: number;
+  runnersPredictions: TabularRunnerPrediction[];
+  
+  // Synthèse par catégories découlant des probabilités calibrées
+  baseIncontournable: TabularRunnerPrediction | null;
+  secondeBase: TabularRunnerPrediction | null;
+  topOutsiders: TabularRunnerPrediction[];
+  topTocards: TabularRunnerPrediction[];
+  delaisses: TabularRunnerPrediction[];
+
+  // Métriques globales du modèle pour la course
+  calibrationReliabilityIndex: number; // Indice de fiabilité globale (ex: 94.8/100)
+  featureImportanceDistribution: { feature: string; importance: number }[];
+  calibrationEngineReport?: CalibrationEngineReport;
+}
+
+export type CalibrationMethod = 'softmax_temperature' | 'isotonic_regression' | 'platt_scaling';
+
+export interface CalibrationReliabilityBin {
+  binMin: number; // ex: 0.0 (0%)
+  binMax: number; // ex: 0.1 (10%)
+  binLabel: string; // "0-10%"
+  sampleCount: number;
+  predictedProbabilityAvg: number; // Probabilité moyenne prédite (%)
+  actualObservedFrequency: number; // Fréquence réelle observée de victoire/podium (%)
+  calibrationGap: number; // Écart absolu |Prédit - Observé| (%)
+}
+
+export interface ChronologicalSplitValidationMetrics {
+  periodLabel: string; // ex: "2022-2024", "Jan-Juin 2025", "Juil-Déc 2025", "2026"
+  usage: 'Entraînement' | 'Calibration' | 'Validation Test' | 'Conditions Réelles (Live)';
+  dateRange: string;
+  totalRacesAnalyzed: number;
+  totalRunners: number;
+  brierScore: number; // Brier Score (0.00 à 0.25, le plus bas est le meilleur)
+  expectedCalibrationErrorECE: number; // ECE en % (ex: 1.8%)
+  logLoss: number; // Log Loss / Cross-Entropy
+  top1WinAccuracy: number; // Taux de réussite simple gagnant sur la base (%)
+  top3PodiumAccuracy: number; // Taux de réussite dans le Tiercé / Top 3 (%)
+  reliabilityCurveBins: CalibrationReliabilityBin[];
+}
+
+export interface CalibrationEngineReport {
+  currentMethod: CalibrationMethod;
+  temperature: number; // T ∈ [0.2, 3.0]
+  overallBrierScore: number;
+  overallECE: number; // % e.g. 1.8%
+  overallLogLoss: number;
+  reliabilityCurveBinsWin: CalibrationReliabilityBin[];
+  reliabilityCurveBinsTop3: CalibrationReliabilityBin[];
+  chronologicalSplits: ChronologicalSplitValidationMetrics[];
+  pythonTrainingCodeSnippet: string;
+}
+
+export type GenyImportSourceMode = 'copier_coller' | 'image_ocr' | 'api_licenciee' | 'saisie_manuelle';
+
+export interface GenyParsedRunner {
+  numero: number;
+  cheval: string;
+  corde?: number | null;
+  sexe?: string | null;
+  age?: number | null;
+  poids?: number | null;
+  decharge?: number | null;
+  jockey: string;
+  entraineur: string;
+  musique?: string | null;
+  valeur?: number | null;
+  cote?: number | null;
+  // Statistiques du driver Geny.com
+  driverCourses?: number | null;
+  driverVictoires?: number | null;
+  driverPlaces?: number | null;
+  driverEcart?: number | null;
+  driverReussite?: number | null;
+  driverMusique?: string | null;
+  statut: 'PARTANT' | 'NON_PARTANT';
+  equipement?: {
+    oeilleres?: boolean;
+    type_oeilleres?: string;
+  };
+}
+
+export interface GenyStandardizedRaceJSON {
+  source: {
+    nom: string;
+    url?: string;
+    mode_import: GenyImportSourceMode;
+    date_import: string;
+  };
+  course: {
+    course_id: string;
+    date: string;
+    reunion: string;
+    numero_course: string;
+    hippodrome: string;
+    discipline: Discipline;
+    distance_m: number;
+    surface: string;
+    corde: 'GAUCHE' | 'DROITE';
+    terrain: string;
+    nombre_partants: number;
+  };
+  partants: GenyParsedRunner[];
 }
 
 export interface PerplexityHorseScout {
@@ -348,6 +551,22 @@ export interface PerplexityHorseScout {
   bruitEcurie?: string;
 }
 
+export interface PerplexityDriverFormScout {
+  rank: number; // Rang au classement (1, 2, 3...)
+  driverName: string;
+  horseNumero: number;
+  horseNom: string;
+  driverMusique?: string; // Musique extraite en direct (ex: "1a 2a 2a 6a 1a 4a 3a 7a")
+  musiqueSource?: string; // Source d'extraction : "API PMU Officielle (turfinfo)" | "geny.com" | "pmu.fr" | "Perplexity AI Live Web"
+  tandemPoints?: number; // Score de points calculé sur la musique du driver
+  winRateRecent: string; // ex: "78% dans le Top 4 (20 dernières courses)"
+  top4Percentage: number; // Valeur numérique pour le tri (ex: 78)
+  careerWins: number; // Nombre de victoires (1er) obtenues pendant sa carrière
+  formTrend: 'En Haute Forme 🔥' | 'Synergie Révélée ⭐' | 'Spécialiste du Tracé 🏆' | 'Chaud Paddock ⚡' | 'Forme Régulière 👍' | 'En Recherche 📈';
+  perplexityComment: string; // Commentaire Perplexity AI sur la forme récente et les victoires
+  extractedAt?: string; // Horodatage temps réel
+}
+
 export interface PerplexityResearchResult {
   query: string;
   summary: string;
@@ -358,6 +577,8 @@ export interface PerplexityResearchResult {
     biasObservation: string;
   };
   horsesScouted: PerplexityHorseScout[];
+  topDriversToFollow?: PerplexityDriverFormScout[]; // Les 6 drivers/jockeys incontournables
+  fullDriverRanking?: PerplexityDriverFormScout[]; // Le classement complet de tous les drivers/jockeys de la course
   keyTacticalFactors: string[];
   citations: Array<{ title: string; url: string; snippet?: string }>;
   modelUsed: string;
@@ -431,6 +652,7 @@ export interface PmuMeeting {
   description: string;
   lienGeny: string;
   nombrePartants?: number;
+  exactPartantsCount?: number;
   partants?: Partant[];
   statut?: 'À venir' | 'En direct' | 'Terminé' | 'À courir';
   arriveeOfficielle?: string;

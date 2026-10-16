@@ -33,6 +33,12 @@
   --success: #15803D;
   --warning: #A16207;
   --danger: #B91C1C;
+
+  /* Couleurs de groupe pour badges (format RGB pour rgba() opacity) */
+  --group-favoris: 5, 150, 105;    /* #059669 */
+  --group-outsiders: 245, 158, 11; /* #f59e0b */
+  --group-tocards: 234, 88, 12;    /* #ea580c */
+  --group-surprises: 220, 38, 38;  /* #dc2626 */
 }
 
 /* =========================================================
@@ -569,7 +575,7 @@ tr:hover td {
 .animate-ticker {
   display: flex;
   width: max-content;
-  animation: ticker-scroll 35s linear infinite;
+  animation: ticker-scroll 120s linear infinite;
 }
 
 .animate-ticker:hover {
@@ -685,6 +691,19 @@ button, a {
   display: none !important;
   width: 0 !important;
   height: 0 !important;
+}
+
+/* =========================================================
+   PRONOSTICS JEU CONTAINER - CSS GRID RESPONSIVE ALIGNMENT
+   ========================================================= */
+.pronostics-jeu-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  margin-left: auto;
+  margin-right: auto;
+  gap: 1.5rem;
 }
 
 

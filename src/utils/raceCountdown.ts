@@ -132,79 +132,68 @@ export function getRaceParisTargetTime(dateStr?: string, heureStr?: string): Dat
  */
 export function isCourseArrivalOfficiallyConfirmed(course: Partial<CourseHippique> | null | undefined): boolean {
   if (!course) return false;
-  const hasArrival = Boolean(course.arriveeOfficielle && course.arriveeOfficielle.trim());
+  const hasArrival = Boolean(course.arriveeOfficielle && typeof course.arriveeOfficielle === 'string' && course.arriveeOfficielle.trim());
   if (!hasArrival) return false;
-
-  const isOfficialStatus = 
-    course.statutCourse === 'Arrivée officielle' || 
-    (course as any).statutArrivee === 'officielle';
 
   const isProvisional = 
     course.statutCourse?.toLowerCase()?.includes('provisoire') ||
-    (course as any).statutArrivee === 'provisoire';
+    (course as any).statutArrivee === 'provisoire' ||
+    (course as any).statut === 'ARRIVEE_PROVISOIRE';
 
-  const isAuditDone = Boolean((course as any).arrivalAuditCompleted);
+  if (isProvisional) return false;
 
-  return isOfficialStatus && !isProvisional && isAuditDone;
+  const isOfficialStatus = 
+    course.statutCourse === 'Arrivée officielle' || 
+    course.statutCourse === 'Course terminée' ||
+    (course as any).statutArrivee === 'officielle' ||
+    (course as any).statut === 'ARRIVEE_OFFICIELLE' ||
+    Boolean((course as any).donneesFigees);
+
+  return isOfficialStatus;
 }
 
 /**
- * Vérifie si une course hippique est terminée ou passée ("après la course").
- * RÈGLE COMMISSAIRES : Après la course, plus de variation des cotes !
- * Une course est considérée terminée/scellée si une arrivée officielle est publiée,
- * si le statut est officiel/terminé, si la date est passée, ou si l'heure de départ est dépassée.
+ * Vérifie si l'arrivée d'une course est actuellement au stade PROVISOIRE
+ * (dès que l'arrivée est disponible mais pas encore homologuée/confirmée).
+ */
+export function isCourseArrivalProvisional(course: Partial<CourseHippique> | null | undefined): boolean {
+  if (!course) return false;
+  const hasArrival = Boolean(course.arriveeOfficielle && typeof course.arriveeOfficielle === 'string' && course.arriveeOfficielle.trim());
+  if (!hasArrival) return false;
+
+  if (isCourseArrivalOfficiallyConfirmed(course)) return false;
+
+  return (
+    course.statutCourse?.toLowerCase()?.includes('provisoire') ||
+    (course as any).statutArrivee === 'provisoire' ||
+    (course as any).statut === 'ARRIVEE_PROVISOIRE' ||
+    true // Toute arrivée présente non encore officiellement confirmée est provisoire
+  );
+}
+
+/**
+ * Vérifie si une course hippique est actuellement en cours :
+ * dès que le compte à rebours est terminé (0 min 0 s) et qu'aucune arrivée n'est encore disponible.
+ */
+export function isCourseRunning(course: Partial<CourseHippique> | null | undefined): boolean {
+  if (!course) return false;
+  const hasArrival = Boolean(course.arriveeOfficielle && typeof course.arriveeOfficielle === 'string' && course.arriveeOfficielle.trim());
+  if (hasArrival) return false;
+
+  return (
+    course.statutCourse === 'Course en cours' ||
+    (course as any).statut === 'ATTENTE' ||
+    isPastDepartureTime(course)
+  );
+}
+
+/**
+ * Vérifie si une course hippique est terminée avec une arrivée officielle validée.
+ * RÈGLE PMU : Une course ne peut être considérée terminée/officielle QUE si une arrivée officielle
+ * est effectivement présente et homologuée. Si le départ est dépassé sans arrivée, la course est "COURSE EN COURS".
  */
 export function isCourseFinished(course: Partial<CourseHippique> | null | undefined): boolean {
-  if (!course) return false;
-
-  // 1. Statut explicite ou présence d'une arrivée officielle publiée
-  if (
-    course.statutCourse === 'Arrivée officielle' ||
-    course.statutCourse === 'Course terminée' ||
-    (typeof course.statutCourse === 'string' && (course.statutCourse.toLowerCase()?.includes('officielle') || course.statutCourse.toLowerCase()?.includes('termin'))) ||
-    Boolean(course.arriveeOfficielle && course.arriveeOfficielle.trim()) ||
-    Boolean((course as any).statutArrivee === 'officielle')
-  ) {
-    return true;
-  }
-
-  // 2. Date antérieure (hier ou date passée)
-  if (course.date) {
-    const lowerDate = course.date.toLowerCase().trim();
-    if (lowerDate.includes('hier')) {
-      return true;
-    }
-    // Vérification dynamique du jour
-    const matchSlash = lowerDate.match(/(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
-    if (matchSlash) {
-      const d = parseInt(matchSlash[1], 10);
-      const m = parseInt(matchSlash[2], 10) - 1;
-      const parsedY = parseInt(matchSlash[3], 10);
-      const y = parsedY < 100 ? 2000 + parsedY : parsedY;
-      const cDate = new Date(Date.UTC(y, m, d));
-      const now = new Date();
-      const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-      if (cDate.getTime() < today.getTime()) {
-        return true;
-      }
-    }
-  }
-
-  // 3. Vérification temporelle : après l'heure de départ de la course
-  if (course.heure) {
-    try {
-      const targetTime = getRaceParisTargetTime(course.date, course.heure);
-      const now = new Date();
-      // Si l'heure de départ est dépassée de plus de 5 minutes, la course est en cours ou terminée
-      if (now.getTime() >= (targetTime.getTime() + 5 * 60 * 1000)) {
-        return true;
-      }
-    } catch (e) {
-      console.warn("Erreur calcul isCourseFinished:", e);
-    }
-  }
-
-  return false;
+  return isCourseArrivalOfficiallyConfirmed(course);
 }
 
 /**

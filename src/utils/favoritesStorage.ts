@@ -213,6 +213,119 @@ export function getFavoriteRaces(): FavoriteCourseItem[] {
 }
 
 /**
+ * Élague un objet CourseHippique de ses grosses données secondaires de debug/logs
+ * pour éviter les QuotaExceededError lors du stockage dans le localStorage.
+ */
+export function pruneCourseForStorage(course: CourseHippique): CourseHippique {
+  if (!course) return course;
+
+  const {
+    collegeGemini,
+    pipeline5Stages,
+    architectureMultiAi,
+    ...restCourse
+  } = course;
+
+  let prunedPerplexity = course.perplexityResearch;
+  if (prunedPerplexity) {
+    const { rawOutput, promptUsed, ...restPerplexity } = prunedPerplexity as any;
+    prunedPerplexity = restPerplexity;
+  }
+
+  const prunedPartants = Array.isArray(course.partants)
+    ? course.partants.map((p) => {
+        if (!p) return p;
+        const pAny = p as any;
+        if (pAny.avisEntraineur && typeof pAny.avisEntraineur === 'string' && pAny.avisEntraineur.length > 500) {
+          return {
+            ...p,
+            avisEntraineur: pAny.avisEntraineur.slice(0, 500) + '...',
+          };
+        }
+        return p;
+      })
+    : course.partants;
+
+  return {
+    ...restCourse,
+    perplexityResearch: prunedPerplexity,
+    partants: prunedPartants,
+  };
+}
+
+/**
+ * Tente de sauvegarder un tableau dans localStorage en gérant gracieusement les QuotaExceededError.
+ */
+export function safeSetItemWithQuotaHandling<T>(
+  key: string,
+  items: T[],
+  maxInitialCount: number = 30
+): boolean {
+  if (!items) items = [];
+  const list = items.slice(0, maxInitialCount);
+
+  // 1. Élagement préalable des données de course volumineuses
+  const prunedList = list.map((item: any) => {
+    if (item && typeof item === 'object' && item.course) {
+      return {
+        ...item,
+        course: pruneCourseForStorage(item.course),
+      };
+    }
+    return item;
+  });
+
+  // 2. Premier essai
+  try {
+    localStorage.setItem(key, JSON.stringify(prunedList));
+    return true;
+  } catch (err: any) {
+    if (err?.name !== 'QuotaExceededError' && !String(err).includes('quota')) {
+      console.warn(`[localStorage] Notice écriture (${key}):`, err);
+    }
+  }
+
+  // 3. Purge des clés de cache temporaires secondaires
+  try {
+    const keysToPurge = [
+      'hippo_live_arrivals_cache',
+      'hippo_race_delays',
+      'hippo_selected_next_race_ids',
+      'hippo_last_sync_meta',
+      'hippo_imported_races',
+      'hippo_calendar_data',
+    ];
+    for (const k of keysToPurge) {
+      localStorage.removeItem(k);
+    }
+  } catch {}
+
+  // 4. Essais avec capacité réduite
+  const fallbackCapacities = [20, 15, 10, 5, 3, 1];
+  for (const count of fallbackCapacities) {
+    if (prunedList.length > count) {
+      const truncated = prunedList.slice(0, count);
+      try {
+        localStorage.setItem(key, JSON.stringify(truncated));
+        console.warn(`[localStorage] Quota libéré : sauvegardé ${truncated.length} éléments pour ${key}.`);
+        return true;
+      } catch (e) {}
+    }
+  }
+
+  // 5. Dernier recours : tenter d'écrire uniquement le premier élément
+  if (prunedList.length > 0) {
+    try {
+      localStorage.setItem(key, JSON.stringify(prunedList.slice(0, 1)));
+      return true;
+    } catch (e) {}
+  }
+
+  console.error(`[localStorage] Échec ultime de sauvegarde pour la clé ${key} malgré le prunage et le nettoyage.`);
+  return false;
+}
+
+/**
  * Sauvegarde ou retire une course des favoris
  */
 export function toggleFavoriteRace(course: CourseHippique): {
@@ -234,17 +347,13 @@ export function toggleFavoriteRace(course: CourseHippique): {
     const newItem: FavoriteCourseItem = {
       id: course.id || `fav-${Date.now()}`,
       savedAt: Date.now(),
-      course,
+      course: pruneCourseForStorage(course),
     };
     updated = [newItem, ...current];
     isFavorite = true;
   }
 
-  try {
-    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
-  } catch (err) {
-    console.error('Erreur sauvegarde favoris localStorage:', err);
-  }
+  safeSetItemWithQuotaHandling(FAVORITES_STORAGE_KEY, updated, 30);
 
   return { isFavorite, favorites: updated };
 }
@@ -294,12 +403,12 @@ export function updateCourseInFavorites(
 
         const merged: FavoriteCourseItem = {
           ...item,
-          course: {
+          course: pruneCourseForStorage({
             ...item.course,
             ...updatedCourse,
             arriveeOfficielle: arrivalToKeep,
             statutCourse: statusToKeep,
-          },
+          }),
         };
         updatedItem = merged;
         return merged;
@@ -307,7 +416,7 @@ export function updateCourseInFavorites(
       return item;
     });
 
-    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
+    safeSetItemWithQuotaHandling(FAVORITES_STORAGE_KEY, updated, 30);
     return { updatedFavorites: updated, updatedItem };
   } catch (err) {
     console.error('Erreur mise à jour favoris:', err);
@@ -323,11 +432,7 @@ export function removeFavoriteRace(courseIdOrUrl: string): FavoriteCourseItem[] 
   const updated = current.filter(
     (item) => item && item.course && item.id !== courseIdOrUrl && item.course.id !== courseIdOrUrl && item.course.sourceUrl !== courseIdOrUrl
   );
-  try {
-    localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify(updated));
-  } catch (err) {
-    console.error('Erreur suppression favori:', err);
-  }
+  safeSetItemWithQuotaHandling(FAVORITES_STORAGE_KEY, updated, 30);
   return updated;
 }
 
@@ -336,26 +441,25 @@ export function removeFavoriteRace(courseIdOrUrl: string): FavoriteCourseItem[] 
  */
 export function saveRaceToHistory(course: CourseHippique): HistoryCourseItem[] {
   try {
-    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
-    let history: HistoryCourseItem[] = raw ? JSON.parse(raw) : [];
+    const current = getRaceHistory();
     
     // Dédupliquer par URL ou id
-    history = history.filter(
+    const filtered = current.filter(
       (item) => item.course.id !== course.id && item.course.sourceUrl !== course.sourceUrl
     );
 
     const newItem: HistoryCourseItem = {
       id: course.id || `hist-${Date.now()}`,
       analyzedAt: Date.now(),
-      course,
+      course: pruneCourseForStorage(course),
     };
 
-    const updated = [newItem, ...history].slice(0, 50); // Garder jusqu'à 50 courses
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+    const updated = [newItem, ...filtered];
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
     return updated;
   } catch (err) {
     console.error('Erreur sauvegarde historique localStorage:', err);
-    return [];
+    return getRaceHistory();
   }
 }
 
@@ -372,11 +476,9 @@ export function getRaceHistory(): HistoryCourseItem[] {
       items = SAMPLE_RACES.map((race, idx) => ({
         id: race.id,
         analyzedAt: Date.now() - (idx + 1) * 3600000,
-        course: race,
+        course: pruneCourseForStorage(race),
       }));
-      try {
-        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(items));
-      } catch {}
+      safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, items, 30);
     } else {
       const parsed = JSON.parse(raw);
       items = Array.isArray(parsed) ? parsed : [];
@@ -402,7 +504,7 @@ export function removeRaceFromHistory(idOrUrl: string): HistoryCourseItem[] {
     const updated = current.filter(
       (item) => item.id !== idOrUrl && item.course.id !== idOrUrl && item.course.sourceUrl !== idOrUrl
     );
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
     return updated;
   } catch (err) {
     console.error('Erreur suppression course historique:', err);
@@ -415,7 +517,7 @@ export function removeRaceFromHistory(idOrUrl: string): HistoryCourseItem[] {
  */
 export function clearAllRaceHistory(): HistoryCourseItem[] {
   try {
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify([]));
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, [], 30);
   } catch (err) {
     console.error('Erreur vidage historique:', err);
   }
@@ -440,16 +542,16 @@ export function updateRaceArrivalInHistory(
       ) {
         return {
           ...item,
-          course: {
+          course: pruneCourseForStorage({
             ...item.course,
             arriveeOfficielle,
             statutCourse: arriveeOfficielle ? ('Arrivée officielle' as const) : item.course.statutCourse,
-          },
+          }),
         };
       }
       return item;
     });
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
     return updated;
   } catch (err) {
     console.error('Erreur mise à jour arrivée dans l\'historique:', err);
@@ -479,17 +581,17 @@ export function updateCourseInHistory(
 
         return {
           ...item,
-          course: {
+          course: pruneCourseForStorage({
             ...item.course,
             ...updatedCourse,
             arriveeOfficielle: arrivalToKeep,
             statutCourse: statusToKeep,
-          },
+          }),
         };
       }
       return item;
     });
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
     return updated;
   } catch (err) {
     console.error('Erreur mise à jour globale de la course dans l\'historique:', err);
@@ -524,7 +626,7 @@ export function purgePastRacesFromHistory(): { updated: HistoryCourseItem[]; pur
     });
 
     const purgedCount = current.length - updated.length;
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(updated));
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
     return { updated, purgedCount };
   } catch (err) {
     console.error('Erreur purge automatique historique:', err);

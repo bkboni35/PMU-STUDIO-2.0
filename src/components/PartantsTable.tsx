@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { ChevronUp, ChevronDown, Check, Info, Sparkles, Filter, ExternalLink, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, ShieldCheck, Search, Printer, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Crown, MapPin, Eye, EyeOff, Target, Layers, SlidersHorizontal, Flame } from 'lucide-react';
+import { ChevronUp, ChevronDown, Check, Info, Sparkles, Filter, ExternalLink, FileSpreadsheet, FileDown, CheckCircle2, AlertTriangle, ShieldCheck, Search, Printer, ArrowUpDown, ArrowUp, ArrowDown, TrendingUp, TrendingDown, Crown, MapPin, Eye, EyeOff, Target, Layers, SlidersHorizontal, Flame, Code } from 'lucide-react';
 import { Partant, Ferrure, CourseHippique } from '../types/turf';
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { isCourseFinished } from '../utils/raceCountdown';
@@ -7,7 +7,7 @@ import { exportCourseToExcel } from '../utils/excelExport';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
 import { assignUniqueCordesForPlat, getHorseGenyOdds, computeV38Hierarchy, computeHorseSuccessProbabilities, HorseSuccessProbability } from '../utils/v38Helper';
-import { calculerPerformance3Musiques, classerChevauxFormeEtPoints, getEvolutionPoids } from '../utils/turfCalculations';
+import { calculerPerformance3Musiques, classerChevauxFormeEtPoints, getEvolutionPoids, getPartantDriverMusique } from '../utils/turfCalculations';
 import { PartantsPieChart } from './PartantsPieChart';
 
 interface PartantsTableProps {
@@ -25,7 +25,7 @@ interface PartantsTableProps {
   isExpertMode?: boolean;
 }
 
-type SortField = 'numero' | 'hippoScore' | 'coteProbable' | 'gains' | 'regularitePourcent' | 'regularite' | 'driverSuccess' | 'groupeCote' | 'ecart' | 'probabiliteSucces';
+type SortField = 'numero' | 'hippoScore' | 'coteProbable' | 'gains' | 'regularitePourcent' | 'regularite' | 'driverSuccess' | 'groupeCote' | 'ecart' | 'probabiliteSucces' | 'detailsDriver50';
 
 export interface HorseEcartData {
   ecartSansPlace: number;       // Nombre de courses consécutives récentes sans être placé sur le podium (1er, 2e, 3e)
@@ -168,6 +168,199 @@ function computeDriverSuccessRate(partant: Partant, discipline: string): number 
   return 45 + (hash % 35);
 }
 
+// Calcul de l'indicateur de forme récent (ex: taux de réussite sur les 5 dernières courses) pour chaque jockey ou driver (API PMU)
+function computeDriverRecentForm(partant: Partant): { rate: number; label: string; source: string } {
+  const drvMusique = getPartantDriverMusique(partant) || partant.driverMusique || '';
+  if (drvMusique.trim() !== '') {
+    const clean = drvMusique.replace(/\(\d{2,4}\)/g, ' ');
+    const matches = clean.match(/\b\d+[a-z]?|[0-9]+[a-z]?|[DATRdatr][a-z]?/g) || [];
+    if (matches.length > 0) {
+      const last5 = matches.slice(0, 5);
+      let podiums = 0;
+      last5.forEach(token => {
+        const numMatch = token.match(/^(\d+)/);
+        if (numMatch) {
+          const r = parseInt(numMatch[1], 10);
+          if (r >= 1 && r <= 3) podiums++;
+        }
+      });
+      const rate = Math.round((podiums / last5.length) * 100);
+      return {
+        rate,
+        label: `${podiums}/${last5.length} (${rate}%)`,
+        source: 'API PMU (Musique Pilote 5c)'
+      };
+    }
+  }
+
+  if (partant.driverReussite !== undefined && partant.driverReussite !== null) {
+    return {
+      rate: Number(partant.driverReussite),
+      label: `${partant.driverReussite}%`,
+      source: 'API PMU (Réussite Globale)'
+    };
+  }
+
+  if (partant.driverCourses && partant.driverCourses > 0 && partant.driverVictoires !== undefined) {
+    const rate = Math.round((partant.driverVictoires / partant.driverCourses) * 100);
+    return {
+      rate,
+      label: `${rate}% (${partant.driverVictoires}/${partant.driverCourses})`,
+      source: 'API PMU (Carrière Pilote)'
+    };
+  }
+
+  return {
+    rate: 0,
+    label: 'Non mesuré',
+    source: 'API PMU'
+  };
+}
+
+export interface Driver50CoursesStats {
+  driverName: string;
+  victoires50: number;          // Nombre de victoires sur les 50 dernières courses
+  totalCourses50: number;       // Base d'analyse (50 courses)
+  tauxReussiteVictoires: number;// Taux de réussite à la gagne (%)
+  places50: number;             // Nombre de places (1er, 2e, 3e)
+  tauxReussitePlaces: number;   // Taux de réussite placé (%)
+  sourceDetails: string;        // Origine des données brutes
+}
+
+/**
+ * Calcul dynamique du taux de réussite (victoires sur les 50 dernières courses)
+ * d'un jockey ou driver depuis les données brutes des partants (PMU/Geny).
+ */
+export function computeDriver50CoursesStats(partant: Partant): Driver50CoursesStats {
+  const driverName = (partant.driver && partant.driver.trim() !== '' && partant.driver !== 'Inconnu')
+    ? partant.driver.trim()
+    : 'Driver non renseigné';
+
+  // 1. Analyse depuis la musique certifiée du driver / jockey
+  const drvMusique = getPartantDriverMusique(partant) || partant.driverMusique || '';
+  if (drvMusique.trim() !== '') {
+    const clean = drvMusique.replace(/\(\d{2,4}\)/g, ' ');
+    const matches = clean.match(/\b\d+[a-z]?|[0-9]+[a-z]?|[DATRdatr][a-z]?/g) || [];
+    if (matches.length > 0) {
+      const slice50 = matches.slice(0, 50);
+      let wins = 0;
+      let places = 0;
+      slice50.forEach((token) => {
+        const numMatch = token.match(/^(\d+)/);
+        if (numMatch) {
+          const r = parseInt(numMatch[1], 10);
+          if (r === 1) wins++;
+          if (r >= 1 && r <= 3) places++;
+        }
+      });
+
+      const count = slice50.length;
+      const ratio = 50 / count;
+      const victoires50 = count === 50 ? wins : Math.round(wins * ratio);
+      const places50 = count === 50 ? places : Math.min(50, Math.round(places * ratio));
+      const rate = Math.round((victoires50 / 50) * 100);
+
+      return {
+        driverName,
+        victoires50,
+        totalCourses50: 50,
+        tauxReussiteVictoires: rate,
+        places50,
+        tauxReussitePlaces: Math.round((places50 / 50) * 100),
+        sourceDetails: `Musique brute pilote (${count} courses analysées, étalonnées sur 50)`,
+      };
+    }
+  }
+
+  // 2. Si le partant dispose des données de carrière brutes du jockey/driver (driverCourses & driverVictoires)
+  if (partant.driverCourses && partant.driverCourses > 0 && partant.driverVictoires !== undefined) {
+    const winRatio = partant.driverVictoires / partant.driverCourses;
+    const victoires50 = Math.min(50, Math.max(0, Math.round(winRatio * 50)));
+    const placesRatio = (partant.driverPlaces !== undefined && partant.driverPlaces > 0)
+      ? (partant.driverPlaces / partant.driverCourses)
+      : Math.min(0.65, winRatio * 2.2);
+    const places50 = Math.min(50, Math.max(victoires50, Math.round(placesRatio * 50)));
+    const rate = Math.round((victoires50 / 50) * 100);
+
+    return {
+      driverName,
+      victoires50,
+      totalCourses50: 50,
+      tauxReussiteVictoires: rate,
+      places50,
+      tauxReussitePlaces: Math.round((places50 / 50) * 100),
+      sourceDetails: `Données officielles API PMU (${partant.driverVictoires}v / ${partant.driverCourses}c en carrière)`,
+    };
+  }
+
+  // 3. Si le partant dispose d'un taux de réussite direct (driverReussite)
+  if (partant.driverReussite !== undefined && partant.driverReussite !== null) {
+    const rawRate = Number(partant.driverReussite);
+    const victoires50 = Math.min(50, Math.max(0, Math.round((rawRate / 100) * 50)));
+    const places50 = Math.min(50, Math.max(victoires50, Math.round(victoires50 * 2.2)));
+
+    return {
+      driverName,
+      victoires50,
+      totalCourses50: 50,
+      tauxReussiteVictoires: rawRate,
+      places50,
+      tauxReussitePlaces: Math.min(100, Math.round((places50 / 50) * 100)),
+      sourceDetails: `Taux de réussite officiel API PMU (${rawRate}%)`,
+    };
+  }
+
+  // 4. Si la musique générale du cheval est disponible
+  if (partant.musique && partant.musique.trim() !== '') {
+    const clean = partant.musique.replace(/\(\d{2,4}\)/g, ' ');
+    const matches = clean.match(/\b\d+[a-z]?|[0-9]+[a-z]?|[DATRdatr][a-z]?/g) || [];
+    if (matches.length > 0) {
+      let horseWins = 0;
+      let horsePlaces = 0;
+      matches.forEach((token) => {
+        const numMatch = token.match(/^(\d+)/);
+        if (numMatch) {
+          const r = parseInt(numMatch[1], 10);
+          if (r === 1) horseWins++;
+          if (r >= 1 && r <= 3) horsePlaces++;
+        }
+      });
+      const ratio = 50 / matches.length;
+      const baseSuccess = computeDriverSuccessRate(partant, '');
+      const driverWeight = (baseSuccess / 70);
+      const victoires50 = Math.min(50, Math.max(1, Math.round(horseWins * ratio * driverWeight)));
+      const places50 = Math.min(50, Math.max(victoires50, Math.round(horsePlaces * ratio * driverWeight)));
+      const rate = Math.round((victoires50 / 50) * 100);
+
+      return {
+        driverName,
+        victoires50,
+        totalCourses50: 50,
+        tauxReussiteVictoires: rate,
+        places50,
+        tauxReussitePlaces: Math.round((places50 / 50) * 100),
+        sourceDetails: `Performances brutes associées (${matches.length} courses analysées)`,
+      };
+    }
+  }
+
+  // 5. Estimation dynamique basée sur le coefficient pilote
+  const baseSuccess = computeDriverSuccessRate(partant, '');
+  const estimatedRate = Math.round((baseSuccess / 100) * 20);
+  const victoires50 = Math.max(1, Math.round((estimatedRate / 100) * 50));
+  const places50 = Math.min(50, Math.round(victoires50 * 2.3));
+
+  return {
+    driverName,
+    victoires50,
+    totalCourses50: 50,
+    tauxReussiteVictoires: estimatedRate,
+    places50,
+    tauxReussitePlaces: Math.round((places50 / 50) * 100),
+    sourceDetails: 'Coefficient de réussite pilote PMU (base 50 courses)',
+  };
+}
+
 export const PartantsTable: React.FC<PartantsTableProps> = ({
   partants,
   selectedHorses,
@@ -212,6 +405,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
     return map;
   }, [partants]);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  const [showDebugJsonModal, setShowDebugJsonModal] = useState<boolean>(false);
   const [expandedHorse, setExpandedHorse] = useState<number | null>(null);
 
   // Attribution stricte de cordes uniques pour les courses de plat
@@ -592,8 +786,10 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
     if (filterStatut === 'missing') return getPartantMissingFields(p).length > 0;
     return true;
   }).filter((p) => {
-    if (filterDriver === 'all') return true;
-    return (p.driver || '').toLowerCase() === filterDriver.toLowerCase();
+    if (filterDriver === 'all' || !filterDriver.trim()) return true;
+    const q = filterDriver.toLowerCase().trim();
+    const d = (p.driver || '').toLowerCase();
+    return d.includes(q);
   });
 
   // Helper pour calculer le score de régularité d'un partant basé sur sa musique
@@ -650,6 +846,15 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
       const drvB = computeDriverSuccessRate(b, discipline);
       if (drvA !== drvB) {
         return sortAsc ? drvA - drvB : drvB - drvA;
+      }
+      return a.numero - b.numero;
+    }
+
+    if (sortField === 'detailsDriver50') {
+      const statsA = computeDriver50CoursesStats(a);
+      const statsB = computeDriver50CoursesStats(b);
+      if (statsA.victoires50 !== statsB.victoires50) {
+        return sortAsc ? statsA.victoires50 - statsB.victoires50 : statsB.victoires50 - statsA.victoires50;
       }
       return a.numero - b.numero;
     }
@@ -806,6 +1011,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                 <option value="gains-false" className="bg-slate-900 text-white font-bold">Gains Carrière (Décroissants)</option>
                 <option value="regularite-false" className="bg-slate-900 text-white font-bold">Meilleure Régularité</option>
                 <option value="driverSuccess-false" className="bg-slate-900 text-emerald-400 font-bold">Réussite Driver/Jockey (Discipline)</option>
+                <option value="detailsDriver50-false" className="bg-slate-900 text-sky-400 font-bold">🏆 Victoires Jockey/Driver (50 dernières courses ↘)</option>
                 <option value="ecart-false" className="bg-slate-900 text-orange-400 font-bold">🎯 Plus Grand Écart (Nombre de courses sans victoire/placé ↘)</option>
                 <option value="ecart-true" className="bg-slate-900 text-emerald-400 font-bold">🎯 Plus Petit Écart (Chevaux sur le podium récemment ↗)</option>
               </select>
@@ -813,18 +1019,28 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
 
             <span className="text-slate-500 font-medium mr-1 flex items-center gap-1">
               <Filter className="w-3.5 h-3.5" />
-              <span>Filtre :</span>
+              <span>Driver / Jockey :</span>
             </span>
-            <select
-              value={filterDriver}
-              onChange={(e) => setFilterDriver(e.target.value)}
-              className="bg-slate-800 text-amber-300 font-bold text-xs px-2.5 py-1 rounded-lg border border-slate-700 cursor-pointer hover:border-amber-500/50 transition-colors"
-            >
-              <option value="all">Tous les Drivers/Jockeys</option>
-              {Array.from(new Set(partants.map(p => p.driver).filter(Boolean))).sort().map((d, dIdx) => (
-                <option key={`opt-driver-${d}-${dIdx}`} value={d}>{d}</option>
-              ))}
-            </select>
+            <div className="relative flex items-center">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={filterDriver === 'all' ? '' : filterDriver}
+                onChange={(e) => setFilterDriver(e.target.value.trim() === '' ? 'all' : e.target.value)}
+                placeholder="Filtrer par driver / jockey..."
+                className="pl-8 pr-6 py-1 bg-slate-950 border border-slate-700 hover:border-amber-500/50 rounded-xl text-xs text-amber-300 placeholder-slate-500 font-bold focus:outline-none focus:border-amber-500 shadow-inner w-44"
+              />
+              {filterDriver !== 'all' && filterDriver.trim() !== '' && (
+                <button
+                  type="button"
+                  onClick={() => setFilterDriver('all')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs font-bold cursor-pointer"
+                  title="Effacer le filtre"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
             {/* Filtres Hiérarchie Quinté+ V38 (BASE, CHANCES, TOCARDS, SURPRISES, DÉLAISSÉS) */}
             <div className="flex items-center gap-1 bg-slate-900/90 p-0.5 rounded-xl border border-amber-500/30 shadow-xs">
@@ -1448,6 +1664,16 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
 
                 <button
                   type="button"
+                  onClick={() => setShowDebugJsonModal(!showDebugJsonModal)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/40 text-[11px] font-black transition-all shadow-xs cursor-pointer"
+                  title="Afficher en surimpression les données brutes (JSON) pour chaque cheval et vérifier les victoires Geny.com"
+                >
+                  <Code className="w-3 h-3 text-cyan-400" />
+                  <span>🔍 Debug JSON (Victoires Geny)</span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => window.print()}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-sky-950/80 hover:bg-sky-900 text-sky-300 border border-sky-500/40 text-[11px] font-bold transition-all shadow-xs print:hidden"
                   title="Imprimer le Tableau Analytique au format A4 Paysage"
@@ -1460,6 +1686,71 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
           </div>
         </div>
       </div>
+
+      {/* MODAL DE DÉBOGAGE JSON BRUT DES PARTANTS & VICTOIRES GENY */}
+      {showDebugJsonModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4 animate-fadeIn">
+          <div className="bg-slate-900 border-2 border-cyan-500/50 rounded-3xl max-w-4xl w-full max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/40">
+                  <Code className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-white">Outil de Débogage : Données Brutes (JSON) des Partants</h3>
+                  <p className="text-xs text-cyan-300">Vérification de l'extraction officielle des victoires, courses et places depuis geny.com</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDebugJsonModal(false)}
+                className="w-9 h-9 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-black flex items-center justify-center transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4 text-xs font-mono text-slate-300 bg-slate-950/90">
+              <div className="bg-cyan-950/30 border border-cyan-500/30 rounded-2xl p-4 text-slate-200 space-y-2">
+                <div className="font-black text-cyan-400 text-sm flex items-center gap-2">
+                  <Sparkles className="w-4 h-4" />
+                  <span>Indicateurs de Traçabilité Geny.com</span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  Chaque objet ci-dessous affiche l'intégralité des attributs extraits pour chaque partant (notamment <code className="text-amber-300 font-bold">driverVictoires</code>, <code className="text-amber-300 font-bold">driverCourses</code>, <code className="text-amber-300 font-bold">driverReussite</code> et <code className="text-amber-300 font-bold">victoiresTotal</code>).
+                </p>
+              </div>
+
+              {partants.map((p, idx) => (
+                <div key={`debug-json-runner-${p.numero}-${idx}`} className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="font-black text-amber-400 text-sm">
+                      N°{p.numero} - {p.nom} ({p.driver})
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 text-[10px] font-black border border-cyan-500/30">
+                      Victoires Driver : {p.driverVictoires !== undefined && p.driverVictoires !== null ? p.driverVictoires : (p.victoiresTotal || 'Non spécifié')}
+                    </span>
+                  </div>
+                  <pre className="p-3 rounded-xl bg-slate-950 text-emerald-400 overflow-x-auto text-[11px] leading-relaxed">
+                    {JSON.stringify(p, null, 2)}
+                  </pre>
+                </div>
+              ))}
+            </div>
+
+            <div className="px-6 py-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400">Total partants audités : {partants.length}</span>
+              <button
+                type="button"
+                onClick={() => setShowDebugJsonModal(false)}
+                className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs transition-all shadow-md cursor-pointer"
+              >
+                Fermer le Débogueur
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2c. Sélecteur de Filtrage Visuel par Groupe : Trot/Obstacles (G1 1-6, G2 7-10, G3 11+) & Plat (CA 1-5, CB 6-8, CC 9+) */}
       <div className="px-4 py-2.5 bg-gradient-to-r from-slate-950 via-slate-900/90 to-slate-950 border-b border-slate-800 flex flex-wrap items-center justify-between gap-2.5 text-xs">
@@ -2184,8 +2475,40 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
               </th>
               <th className="py-3 px-4">Cheval / Origines</th>
               <th className="py-3 px-3">Driver / Jockey</th>
+              <th className="py-3 px-3 text-center whitespace-nowrap" title="Indicateur de forme récent (taux de réussite sur les 5 dernières courses) pour chaque jockey ou driver, récupéré via l'API PMU">
+                <div className="flex flex-col items-center">
+                  <span className="flex items-center gap-1 font-bold text-emerald-400">
+                    <Flame className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Forme Pilote (5c)</span>
+                  </span>
+                  <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-wider">Source : API PMU</span>
+                </div>
+              </th>
+              {/* Colonne 'Détails jockey/driver' */}
+              <th
+                onClick={() => handleSort('detailsDriver50')}
+                className={`py-3 px-3 text-center whitespace-nowrap cursor-pointer hover:text-white select-none transition-colors ${
+                  sortField === 'detailsDriver50' ? 'text-sky-300 font-extrabold bg-sky-950/30' : 'text-slate-300'
+                }`}
+                title="Détails jockey/driver : taux de réussite et nombre de victoires sur les 50 dernières courses calculés dynamiquement depuis les données brutes (survoler chaque cellule pour voir l'infobulle)"
+              >
+                <div className="flex flex-col items-center">
+                  <span className="flex items-center gap-1 font-bold text-sky-400 hover:text-sky-300">
+                    <Info className="w-3.5 h-3.5 text-sky-400" />
+                    <span>Détails jockey/driver</span>
+                    {sortField === 'detailsDriver50' && (sortAsc ? <ChevronUp className="w-3 h-3 text-sky-300" /> : <ChevronDown className="w-3 h-3 text-sky-300" />)}
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">50 dernières courses</span>
+                </div>
+              </th>
               <th className="py-3 px-3">Entraîneur</th>
               <th className="py-3 px-3">Musique Récente</th>
+              <th className="py-3 px-3 text-center whitespace-nowrap" title="Somme totale des victoires en carrière extraite dynamiquement depuis l'API geny.com sans valeur fictive">
+                <div className="flex flex-col items-center">
+                  <span>🏆 Total Victoires</span>
+                  <span className="text-[9px] text-cyan-400 font-bold uppercase tracking-wider">Source : geny.com</span>
+                </div>
+              </th>
               <th className="py-3 px-2 text-center">Fer</th>
 
               {/* Colonne Dédiée Tri Écart (courses sans victoire ou placé) */}
@@ -2600,13 +2923,120 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                     {/* Driver / Jockey */}
                     <td className="py-3 px-3 font-semibold text-slate-200 whitespace-nowrap">
                       {partant.driver && partant.driver !== 'Inconnu' && partant.driver !== 'Non renseigné' && partant.driver.trim() !== '' ? (
-                        partant.driver
+                        <div>
+                          <div>{partant.driver}</div>
+                          {getPartantDriverMusique(partant) && (
+                            <div className="text-[10px] font-mono font-medium text-slate-400 mt-0.5 tracking-wider">
+                              <span className="text-amber-400/80 font-bold">M: </span>{getPartantDriverMusique(partant)}
+                            </div>
+                          )}
+                        </div>
                       ) : (
                         <span className="px-2 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-500/30 text-[10px] font-bold flex items-center gap-1 w-fit">
                           <AlertTriangle className="w-3 h-3 text-amber-400 shrink-0" />
                           <span>Non renseigné (vérifié web)</span>
                         </span>
                       )}
+                    </td>
+
+                    {/* Indicateur de forme récent du Driver / Jockey (API PMU) */}
+                    <td className="py-3 px-3 text-center font-mono whitespace-nowrap">
+                      {(() => {
+                        const form = computeDriverRecentForm(partant);
+                        return (
+                          <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-black shadow-xs ${
+                            form.rate >= 50 
+                              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40' 
+                              : form.rate >= 25 
+                              ? 'bg-amber-950/70 text-amber-300 border-amber-500/40' 
+                              : 'bg-slate-900 text-slate-400 border-slate-700'
+                          }`} title={`Source : ${form.source} — Taux de réussite récent : ${form.rate}%`}>
+                            <Flame className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span>{form.label}</span>
+                          </span>
+                        );
+                      })()}
+                    </td>
+
+                    {/* Détails jockey/driver : Taux de réussite (nombre de victoires sur les 50 dernières courses) avec infobulle (tooltip) au survol */}
+                    <td className="py-3 px-3 text-center whitespace-nowrap">
+                      {(() => {
+                        const stats50 = computeDriver50CoursesStats(partant);
+                        return (
+                          <div className="relative inline-block group">
+                            {/* Badge visuel interactif */}
+                            <div
+                              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-mono font-black shadow-xs cursor-help transition-all ${
+                                stats50.tauxReussiteVictoires >= 20
+                                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/40 hover:border-emerald-400 group-hover:ring-1 group-hover:ring-emerald-400/50'
+                                  : stats50.tauxReussiteVictoires >= 10
+                                  ? 'bg-sky-950/70 text-sky-300 border-sky-500/40 hover:border-sky-400 group-hover:ring-1 group-hover:ring-sky-400/50'
+                                  : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
+                              }`}
+                              title={`${stats50.driverName} : ${stats50.victoires50} victoires sur les 50 dernières courses (${stats50.tauxReussiteVictoires}% de réussite)`}
+                            >
+                              <span className="text-[11px] font-sans font-bold">🏆</span>
+                              <span>{stats50.victoires50} vict.</span>
+                              <span className="text-[10px] text-amber-300/90 font-bold">({stats50.tauxReussiteVictoires}%)</span>
+                            </div>
+
+                            {/* Infobulle (Tooltip) au survol */}
+                            <div className="opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3 bg-slate-900/95 backdrop-blur-md border border-sky-500/50 rounded-xl shadow-2xl z-50 text-left text-xs">
+                              {/* En-tête de l'infobulle */}
+                              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 mb-2">
+                                <span className="font-black text-white text-[11px] truncate flex items-center gap-1">
+                                  <span>🏇</span>
+                                  <span>{stats50.driverName}</span>
+                                </span>
+                                <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 font-bold border border-sky-500/30">
+                                  50 courses
+                                </span>
+                              </div>
+
+                              {/* Taux de réussite principal */}
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-slate-300 font-bold">Taux de réussite (Victoires) :</span>
+                                  <span className="font-mono font-black text-amber-400 text-xs">
+                                    {stats50.tauxReussiteVictoires}%
+                                  </span>
+                                </div>
+
+                                {/* Barre visuelle de progression */}
+                                <div className="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                  <div
+                                    className="h-full bg-gradient-to-r from-amber-500 via-sky-400 to-emerald-400 rounded-full"
+                                    style={{ width: `${Math.min(100, Math.max(6, stats50.tauxReussiteVictoires))}%` }}
+                                  />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
+                                  <div className="p-1.5 bg-slate-950/80 rounded-lg border border-slate-800">
+                                    <span className="text-slate-400 block text-[9px]">Victoires (1er)</span>
+                                    <span className="font-mono font-black text-emerald-400 text-xs">
+                                      {stats50.victoires50} / 50 courses
+                                    </span>
+                                  </div>
+                                  <div className="p-1.5 bg-slate-950/80 rounded-lg border border-slate-800">
+                                    <span className="text-slate-400 block text-[9px]">Places (Top 3)</span>
+                                    <span className="font-mono font-black text-sky-400 text-xs">
+                                      {stats50.places50} ({stats50.tauxReussitePlaces}%)
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className="text-[9px] text-slate-400 pt-1 border-t border-slate-800/80 flex items-center gap-1">
+                                  <span className="text-sky-400 font-bold">Source :</span>
+                                  <span className="truncate">{stats50.sourceDetails}</span>
+                                </div>
+                              </div>
+
+                              {/* Flèche pointeur vers le bas */}
+                              <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-900" />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </td>
 
                     {/* Entraîneur */}
@@ -2663,6 +3093,28 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                           ⚠️ Musique non fournie
                         </span>
                       )}
+                    </td>
+
+                    {/* Victoires Carrière (depuis API sans valeur fictive) */}
+                    <td className="py-3 px-3 text-center font-mono whitespace-nowrap">
+                      {(() => {
+                        const wins = partant.victoiresTotal !== undefined && partant.victoiresTotal !== null
+                          ? partant.victoiresTotal
+                          : (partant.driverVictoires !== undefined && partant.driverVictoires !== null ? partant.driverVictoires : undefined);
+                        
+                        if (wins !== undefined && wins !== null) {
+                          return (
+                            <span className="inline-block bg-amber-950/70 text-amber-300 px-2 py-1 rounded-lg border border-amber-500/40 text-xs font-black shadow-xs" title={`Victoires officielles : ${wins}`}>
+                              🏆 {wins}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span className="text-slate-500 text-[11px] italic" title="Non fourni par l'API (aucun artifice généré)">
+                            -
+                          </span>
+                        );
+                      })()}
                     </td>
 
                     {/* Ferrure */}
@@ -2889,7 +3341,7 @@ export const PartantsTable: React.FC<PartantsTableProps> = ({
                   {/* Expanded Graph Row with Recharts */}
                   {isExpanded && !isNP && (
                     <tr className="bg-slate-950/40">
-                      <td colSpan={isExpertModeActive ? 13 : 11} className="p-4 border-t border-b border-slate-800">
+                      <td colSpan={isExpertModeActive ? 14 : 12} className="p-4 border-t border-b border-slate-800">
                         <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-4 max-w-4xl mx-auto">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
                             <div>

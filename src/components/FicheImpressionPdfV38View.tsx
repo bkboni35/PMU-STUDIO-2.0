@@ -188,7 +188,7 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
         {/* ================= PAGE 1 : HIÉRARCHIE OFFICIELLE V38 & GRILLE DISCIPLINE ================= */}
         <div
           id="fiche-v38-page-1"
-          className="w-[800px] min-w-[800px] bg-white text-slate-900 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-4 border border-slate-300 font-sans relative"
+          className="w-[800px] min-w-[800px] bg-white text-slate-900 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-4 border-4 border-[#0b1329] font-sans relative"
         >
           {/* 1. Header Box (Model: PRONOS - PMU - STUDIO 2.0) */}
           <div className="bg-[#0b1329] text-white rounded-2xl p-4 sm:p-5 flex items-center justify-between gap-4 shadow-md border border-slate-800">
@@ -404,7 +404,7 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
             </div>
           </div>
 
-          {/* 4. GRILLE V38 DISCIPLINE (TABLEAU DE RÉPARTITION) & CLASSIFICATION PAR FORME DE FORMULE */}
+          {/* 4. GRILLE V38 DISCIPLINE (TABLEAU DE RÉPARTITION) & ETAT DE FORME DU CHEVAL */}
           <div className="w-full">
             <DisciplineGridTable course={course} variant="dark" />
           </div>
@@ -419,7 +419,7 @@ export const FicheImpressionPdfV38View: React.FC<FicheImpressionPdfV38ViewProps>
         {/* ================= PAGE 2 : TABLEAU DÉTAILLÉ & MÉTHODOLOGIE ================= */}
         <div
           id="fiche-v38-page-2"
-          className="w-[800px] min-w-[800px] bg-white text-slate-900 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-4 border border-slate-300 font-sans relative"
+          className="w-[800px] min-w-[800px] bg-white text-slate-900 rounded-2xl shadow-2xl p-6 sm:p-7 space-y-4 border-4 border-[#0b1329] font-sans relative"
         >
           {/* Header Bar Page 2 */}
           <div className="bg-[#0b1329] text-white rounded-xl p-3 px-4 flex items-center justify-between shadow-md border border-slate-800">

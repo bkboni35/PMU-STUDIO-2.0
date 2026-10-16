@@ -489,8 +489,25 @@ export function extractGenyRscData(rawHtml: string, targetUrl: string): Extracte
     const distCheval = p.distance || distance;
 
     // Vraie cote PMU ou Geny
-    const rawCote = p.cotePmu || p.coteGeny;
-    const coteProbable = typeof rawCote === 'number' && rawCote > 0 ? Math.round(rawCote * 10) / 10 : undefined;
+    const rawCote =
+      p.cotePmu ??
+      p.coteGeny ??
+      p.coteProbable ??
+      p.coteDirecte ??
+      p.cote ??
+      p.rapportProbable ??
+      p.dernierRapportDirect?.rapport ??
+      p.dernierRapportReference?.rapport ??
+      p.derniereCote ??
+      p.coteReference;
+
+    let coteProbable = typeof rawCote === 'number' && !isNaN(rawCote) && rawCote > 0 ? Math.round(rawCote * 10) / 10 : undefined;
+    if (!coteProbable && typeof rawCote === 'string') {
+      const parsedC = parseFloat(rawCote.replace(',', '.'));
+      if (!isNaN(parsedC) && parsedC > 0) {
+        coteProbable = Math.round(parsedC * 10) / 10;
+      }
+    }
 
     // Vrais gains en euros
     const gains = typeof p.gain === 'number' ? p.gain : (35000 + numero * 4000);

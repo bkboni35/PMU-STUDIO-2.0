@@ -1,8 +1,9 @@
 import type { CourseHippique } from '../types/turf';
-import { getDefaultSundayQuinteCourse } from './pmuSunday11Data';
+import { getDefaultSundayQuinteCourse, getToulouseR5Courses } from './pmuSunday11Data';
 
 export const SAMPLE_RACES: CourseHippique[] = [
   getDefaultSundayQuinteCourse(),
+  ...getToulouseR5Courses(),
   {
     id: '1689006',
     sourceUrl: 'https://www.geny.com/course/1689006-2026-10-06-vincennes-prix-daphne/partants-pronostics',

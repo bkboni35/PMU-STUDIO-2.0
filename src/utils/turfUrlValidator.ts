@@ -88,17 +88,27 @@ export function validateTurfUrl(rawUrl: string): UrlValidationResult {
       host.includes('paristurf.fr') ||
       host.includes('paris-turf.fr');
 
+    const hasSpecificRacePattern = 
+      /r\d+[-/]?c\d+/i.test(parsed.pathname) ||
+      /\/course\//i.test(parsed.pathname) ||
+      /\/partants/i.test(parsed.pathname) ||
+      /\/participants/i.test(parsed.pathname) ||
+      /\d{8}\/r\d+/i.test(parsed.pathname);
+
     const isProgram = 
-      parsed.pathname.includes('/programme') || 
-      parsed.pathname.includes('/calendrier') || 
-      parsed.pathname.includes('/reunions') ||
-      parsed.pathname.includes('/programme-courses');
+      !hasSpecificRacePattern && (
+        parsed.pathname.includes('/programme') || 
+        parsed.pathname.includes('/calendrier') || 
+        parsed.pathname.includes('/reunions') ||
+        parsed.pathname.includes('/programme-courses')
+      );
 
     const isLonaCi = host.includes('lonacionline.ci');
 
     // 3. Détection d'autres sources turf reconnues (PMU, Equidia, ZEturf, etc.)
     const isOtherTurf =
       host.includes('pmu.fr') ||
+      host.includes('turfinfo.api.pmu.fr') ||
       host.includes('zeturf') ||
       host.includes('turfomania') ||
       host.includes('zone-turf') ||

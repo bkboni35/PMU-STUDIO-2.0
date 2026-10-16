@@ -27,15 +27,15 @@ export async function generateFicheV38PdfFromDom(
 
   const pdfWidth = 210; // A4 mm
   const pdfHeight = 297; // A4 mm
-  const margin = 8;
-  const targetWidth = pdfWidth - margin * 2; // 194 mm
+  const margin = 5;
+  const targetWidth = pdfWidth - margin * 2; // 200 mm
 
   // Capture Page 1 (Header + Cartouche + Sélection 5 groupes + Grille V38 Discipline)
   const canvas1 = await html2canvas(page1El, {
     scale: 2.2, // Résolution haute définition pour impression A4 nette
     useCORS: true,
     allowTaint: true,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#0f172a',
     logging: false,
     scrollX: 0,
     scrollY: 0,
@@ -53,7 +53,7 @@ export async function generateFicheV38PdfFromDom(
       scale: 2.2,
       useCORS: true,
       allowTaint: true,
-      backgroundColor: '#ffffff',
+      backgroundColor: '#0f172a',
       logging: false,
       scrollX: 0,
       scrollY: 0,

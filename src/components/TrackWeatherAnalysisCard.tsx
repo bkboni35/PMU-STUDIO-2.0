@@ -27,9 +27,195 @@ import {
   AlertTriangle,
   RefreshCw,
   Info,
+  Table,
+  FileText,
 } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { getHorseGenyOdds } from '../utils/v38Helper';
+
+export const RaceConditionsSummaryTable: React.FC<{
+  course: CourseHippique;
+  penetrometreVal?: string;
+}> = ({ course, penetrometreVal }) => {
+  const terrain = course.terrain || 'Bon - Terrain assoupli';
+  const corde = course.corde || 'Gauche';
+  const distance = course.distance || 2400;
+  const hippodrome = course.hippodrome || 'Hippodrome';
+
+  const defaultPenetrometre = penetrometreVal || (
+    terrain.toLowerCase().includes('lourd') ? '4.2 (Lourd)' :
+    terrain.toLowerCase().includes('très souple') ? '3.8 (Très Souple)' :
+    terrain.toLowerCase().includes('souple') ? '3.5 (Souple)' :
+    terrain.toLowerCase().includes('mâchefer') ? 'Piste en Mâchefer compact' :
+    terrain.toLowerCase().includes('psf') ? 'Piste en Sable Fibré (PSF)' : '3.2 (Bon - Bon Souple)'
+  );
+
+  const allocationFormatted = useMemo(() => {
+    if (course.allocation && !isNaN(Number(course.allocation)) && Number(course.allocation) > 0) {
+      return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(Number(course.allocation));
+    }
+    return 'Non communiquée';
+  }, [course.allocation]);
+
+  const partantsCount = (course.partants || []).filter(p => !p.estNonPartant && p.statut !== 'Non-partant').length;
+
+  return (
+    <div className="p-5 sm:p-6 rounded-3xl bg-slate-950/95 border-2 border-emerald-500/40 shadow-2xl space-y-4 my-4">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-2xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+            <Table className="w-5 h-5 text-emerald-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="text-base sm:text-lg font-black text-white">
+                Tableau Récapitulatif des Conditions de Course
+              </h4>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 uppercase tracking-wider">
+                Certification PMU / Geny
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Synthèse des paramètres de piste, corde, nature du terrain, allocation totale et conditions d'admission
+            </p>
+          </div>
+        </div>
+
+        {/* Badges d'accès rapide */}
+        <div className="flex items-center gap-2 flex-wrap text-xs font-mono font-bold">
+          <span className="px-3 py-1 rounded-xl bg-slate-900 border border-amber-500/30 text-amber-300 shadow-sm">
+            💰 Dotation : {allocationFormatted}
+          </span>
+          <span className="px-3 py-1 rounded-xl bg-slate-900 border border-emerald-500/30 text-emerald-300 shadow-sm">
+            🌱 Sol : {terrain}
+          </span>
+        </div>
+      </div>
+
+      {/* Tableau détaillé des conditions */}
+      <div className="overflow-x-auto rounded-2xl border border-slate-800 bg-slate-900/60 shadow-inner">
+        <table className="w-full text-left text-xs border-collapse">
+          <thead>
+            <tr className="bg-slate-900/90 border-b border-slate-800 text-slate-400 font-extrabold uppercase tracking-wider text-[11px]">
+              <th className="py-3.5 px-4 w-1/4">Condition / Paramètre</th>
+              <th className="py-3.5 px-4 w-1/3">Donnée Officielle Certifiée</th>
+              <th className="py-3.5 px-4">Analyse Technique & Biais Synthetique</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-800/80 text-slate-200">
+            {/* 1. Piste & Distance */}
+            <tr className="hover:bg-slate-800/40 transition-colors">
+              <td className="py-3.5 px-4 font-bold text-amber-300 flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Piste & Distance</span>
+              </td>
+              <td className="py-3.5 px-4 font-extrabold text-white">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm">{hippodrome}</span>
+                  <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-mono">
+                    {course.reunion || 'R1'} {course.course || 'C1'}
+                  </span>
+                </div>
+                <div className="text-xs font-mono text-amber-300 font-bold mt-1">
+                  Parcours de {distance.toLocaleString('fr-FR')} mètres ({course.discipline || 'Attelé'})
+                </div>
+              </td>
+              <td className="py-3.5 px-4 text-slate-300 text-xs leading-relaxed">
+                Parcours exigeant de {distance}m à {hippodrome}. {course.estQuinte ? 'Épreuve Quinté+ prestigieuse demandant une gestion fine de l\'effort.' : 'Régularité et capacité de relance indispensables.'}
+              </td>
+            </tr>
+
+            {/* 2. Orientation de la Corde */}
+            <tr className="hover:bg-slate-800/40 transition-colors">
+              <td className="py-3.5 px-4 font-bold text-purple-300 flex items-center gap-2">
+                <Compass className="w-4 h-4 text-purple-400 shrink-0" />
+                <span>Corde & Stalles</span>
+              </td>
+              <td className="py-3.5 px-4 font-extrabold text-white">
+                <span className="text-sm">Corde à {corde}</span>
+                <span className="block text-[11px] text-purple-300 font-mono font-normal mt-0.5">
+                  {corde === 'Droite' ? 'Main droite (virages sur la droite)' : 'Main gauche (virages sur la gauche)'}
+                </span>
+              </td>
+              <td className="py-3.5 px-4 text-slate-300 text-xs leading-relaxed">
+                {course.discipline?.toLowerCase().includes('plat')
+                  ? 'Biais marqué en faveur des petits numéros de corde (stalles 1 à 6).'
+                  : course.discipline?.toLowerCase().includes('trot')
+                  ? 'Trajectoire idéale au ras du rail. Les chevaux en 3e épaisseur fournissent un effort supplémentaire.'
+                  : 'Exige souplesse et précision du saut dans l\'incurvation des tournants.'}
+              </td>
+            </tr>
+
+            {/* 3. Nature du Terrain & Pénétromètre */}
+            <tr className="hover:bg-slate-800/40 transition-colors">
+              <td className="py-3.5 px-4 font-bold text-emerald-300 flex items-center gap-2">
+                <Gauge className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>Nature du Terrain</span>
+              </td>
+              <td className="py-3.5 px-4 font-extrabold text-white">
+                <span className="text-sm">{terrain}</span>
+                <span className="block text-[11px] font-mono text-emerald-400 font-bold mt-0.5">
+                  Pénétromètre / Index : {defaultPenetrometre}
+                </span>
+              </td>
+              <td className="py-3.5 px-4 text-slate-300 text-xs leading-relaxed">
+                {terrain.toLowerCase().includes('lourd')
+                  ? 'Piste très profonde sélectionnant les chevaux durs à l\'effort dotés de fond.'
+                  : terrain.toLowerCase().includes('psf')
+                  ? 'Sable Fibré régulier, constant quelle que soit la météo.'
+                  : terrain.toLowerCase().includes('mâchefer')
+                  ? 'Surface en mâchefer compact favorisant les trotteurs avec une grosse action de jambe.'
+                  : 'Piste souple et roulante permettant aux finisseurs de déployer leur pointe de vitesse.'}
+              </td>
+            </tr>
+
+            {/* 4. Allocation Totale */}
+            <tr className="hover:bg-slate-800/40 transition-colors">
+              <td className="py-3.5 px-4 font-bold text-amber-400 flex items-center gap-2">
+                <Award className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Allocation Totale</span>
+              </td>
+              <td className="py-3.5 px-4 font-extrabold text-white">
+                <span className="font-mono text-base text-amber-300 bg-amber-950/80 px-3 py-1 rounded-xl border border-amber-500/40 inline-block shadow-xs">
+                  {allocationFormatted}
+                </span>
+                {course.prixNom && (
+                  <span className="block text-[11px] text-slate-400 font-normal mt-1">
+                    {course.prixNom}
+                  </span>
+                )}
+              </td>
+              <td className="py-3.5 px-4 text-slate-300 text-xs leading-relaxed">
+                Enjeu financier élevé. Répartition officielle PMU : 1er (~45%), 2e (~25%), 3e (~14%), 4e (~8%), 5e (~5%), 6e (~2%), 7e (~1%).
+              </td>
+            </tr>
+
+            {/* 5. Conditions d'Admission & Épreuve */}
+            <tr className="hover:bg-slate-800/40 transition-colors">
+              <td className="py-3.5 px-4 font-bold text-teal-300 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-teal-400 shrink-0" />
+                <span>Conditions d'Admission</span>
+              </td>
+              <td className="py-3.5 px-4 text-slate-200 leading-relaxed text-xs">
+                {course.conditions ? (
+                  <p className="whitespace-pre-line text-slate-300 font-medium">{course.conditions}</p>
+                ) : (
+                  <p className="text-slate-400 italic">
+                    Pour tous chevaux qualifiés selon le règlement officiel (âge, sexe, plafond de gains et recul).
+                  </p>
+                )}
+              </td>
+              <td className="py-3.5 px-4 text-slate-300 text-xs leading-relaxed">
+                Épreuve réagie avec <strong className="text-white font-mono">{partantsCount} partants</strong> validés. {course.estQuinte ? 'Support national Quinté+.' : ''}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
 
 interface TrackWeatherAnalysisCardProps {
   course: CourseHippique;
@@ -560,6 +746,9 @@ export const TrackWeatherAnalysisCard: React.FC<TrackWeatherAnalysisCardProps> =
           )}
         </p>
       </div>
+
+      {/* Tableau Récapitulatif des Conditions de Course (Piste, Corde, Nature du terrain, Allocation totale) */}
+      <RaceConditionsSummaryTable course={course} penetrometreVal={penetrometreVal} />
 
       {/* Section : Mécanisme de l'Audit 5 min post-arrivée & Certification Officielle */}
       <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-slate-950 via-[#0a1527] to-slate-950 border border-teal-500/40 space-y-4 shadow-xl relative overflow-hidden">

@@ -19,7 +19,17 @@ let auth: Auth;
 
 try {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  db = getFirestore(app);
+  const dbId = (firebaseConfig as any).firestoreDatabaseId;
+  const targetDbId = dbId && dbId !== '(default)' ? dbId : undefined;
+  
+  try {
+    db = initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+    }, targetDbId);
+  } catch {
+    db = targetDbId ? getFirestore(app, targetDbId) : getFirestore(app);
+  }
+  
   (db as any).type = 'firestore';
   auth = getAuth(app);
 } catch (error) {
@@ -138,13 +148,17 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
 export async function testFirestoreConnection() {
   if (!db || !(db as any).type) return false;
   try {
-    const testDoc = doc(db, '_connection_test_', 'ping');
+    const testDoc = doc(db, 'test', 'connection');
     const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000));
     await Promise.race([getDocFromServer(testDoc), timeout]);
-    console.log("Firestore connection successful");
+    console.log("Firestore connection verified");
     return true;
   } catch (error: any) {
-    console.warn("Firestore connection check notice:", error?.message || error);
+    if (error instanceof Error && error.message.includes('the client is offline')) {
+      console.warn("Firestore client is in offline mode or connecting...");
+    } else {
+      console.warn("Firestore connection notice:", error?.message || error);
+    }
     return false;
   }
 }

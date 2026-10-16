@@ -79,11 +79,19 @@ export const HierarchieQuinteV38Banner: React.FC<HierarchieQuinteV38BannerProps>
       },
     }[theme];
 
+    const effectiveOdds = cote && cote > 0 ? Number(cote) : 99;
+    const scoreX = Math.round(((73 + Number(num)) - effectiveOdds) * 10) / 10;
+
     return (
       <div key={uniqueKey} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-xl bg-slate-950/90 border border-slate-800 shadow-xs shrink-0">
         {/* Numéro du cheval */}
         <span className={`px-2 py-0.2 rounded-md font-mono text-xs sm:text-sm font-black border shadow-xs ${themeStyles.numBg}`}>
           {num}
+        </span>
+
+        {/* Badge Score X (73 + N° - Cote) */}
+        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-900 text-cyan-300 border border-cyan-500/30 font-mono shrink-0" title={`Score X = (73 + ${num}) - ${effectiveOdds.toFixed(1)} = ${scoreX.toFixed(1)}`}>
+          X={scoreX.toFixed(1).replace('.', ',')}
         </span>
 
         {/* Cote & Flèche d'indication */}

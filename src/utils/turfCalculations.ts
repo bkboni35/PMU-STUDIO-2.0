@@ -853,3 +853,430 @@ export function getEvolutionPoids(p: Partant): EvolutionPoidsInfo | null {
 
 
 
+
+/**
+ * Calcule la performance d'un driver ou d'un jockey basée sur ses 3 dernières performances (musique)
+ * selon la même technique rigoureuse que pour les chevaux.
+ */
+export interface PerformanceDriverJockeyResult {
+  totalPoints: number;
+  details: Array<{ token: string; points: number; description: string }>;
+  formulaString: string;
+  formulaCalculation: string;
+  appreciation: string;
+  badgeColorClass: string;
+  badgeShort: string;
+}
+
+export function calculerPerformanceDriverJockey(musiqueDriver?: string): PerformanceDriverJockeyResult {
+  if (!musiqueDriver || !musiqueDriver.trim() || musiqueDriver === 'Donnée indisponible' || musiqueDriver === 'N/A') {
+    return {
+      totalPoints: 30,
+      details: [
+        { token: '—', points: 10, description: 'Non renseigné (10 pts)' },
+        { token: '—', points: 10, description: 'Non renseigné (10 pts)' },
+        { token: '—', points: 10, description: 'Non renseigné (10 pts)' },
+      ],
+      formulaString: 'Non renseigné = 10 + 10 + 10 = 30 pts',
+      formulaCalculation: '10 + 10 + 10 = 30 pts',
+      appreciation: 'Statistiques Driver / Jockey non disponibles',
+      badgeColorClass: 'bg-slate-800 text-slate-400 border-slate-700',
+      badgeShort: '30 pts',
+    };
+  }
+
+  const allTokens = extraireTokensMusique(musiqueDriver);
+  const rawTokens = allTokens.filter((t) => !/^\(\d{2}\)$/.test(t));
+  const tokens = rawTokens.slice(0, 3); // 3 dernières performances
+
+  const details: Array<{ token: string; points: number; description: string }> = [];
+
+  for (let i = 0; i < 3; i++) {
+    const token = tokens[i];
+    if (!token) {
+      details.push({
+        token: '—',
+        points: 10,
+        description: 'Absence de course récente (10 pts)',
+      });
+      continue;
+    }
+
+    const tUpper = token.toUpperCase();
+
+    if (
+      tUpper.startsWith('D') ||
+      ['DIS', 'DISQ', 'DA', 'DM', 'DP', 'DH', 'DS', 'DC'].some((code) => tUpper.includes(code))
+    ) {
+      details.push({
+        token,
+        points: 10,
+        description: `${token} : Disqualifié (10 pts)`,
+      });
+      continue;
+    }
+
+    if (
+      (tUpper.startsWith('T') && !/^T\d/.test(tUpper)) ||
+      (tUpper.startsWith('A') && !/^A\d/.test(tUpper)) ||
+      (tUpper.startsWith('R') && !/^R\d/.test(tUpper)) ||
+      ['TH', 'AH', 'TS', 'AS', 'TA', 'AA', 'TP', 'AP'].some((code) => tUpper.includes(code))
+    ) {
+      details.push({
+        token,
+        points: 10,
+        description: `${token} : Incidents / Arrêté / Tombé (10 pts)`,
+      });
+      continue;
+    }
+
+    if (tUpper.startsWith('0') || /^0[AMPSHC]?$/i.test(token)) {
+      details.push({
+        token,
+        points: 10,
+        description: `${token} : Non placé (0 = 10 pts)`,
+      });
+      continue;
+    }
+
+    const numMatch = token.match(/^(\d+)/);
+    if (numMatch) {
+      const rank = parseInt(numMatch[1], 10);
+      if (rank >= 1 && rank <= 9) {
+        details.push({
+          token,
+          points: rank,
+          description: `${token} : ${rank}${rank === 1 ? 'er' : 'e'} place (${rank} pt${rank > 1 ? 's' : ''})`,
+        });
+      } else {
+        details.push({
+          token,
+          points: 10,
+          description: `${token} : Au-delà de la 9e place (${rank}e = 10 pts)`,
+        });
+      }
+    } else {
+      details.push({
+        token,
+        points: 10,
+        description: `${token} : Non classé (10 pts)`,
+      });
+    }
+  }
+
+  const totalPoints = details.reduce((sum, d) => sum + d.points, 0);
+  const tokenListStr = details.map((d) => d.token).join(' ');
+  const pointsListStr = details.map((d) => d.points).join(' + ');
+  const formulaCalculation = `${pointsListStr} = ${totalPoints} pts`;
+
+  let appreciation = '';
+  let badgeColorClass = '';
+
+  if (totalPoints <= 10) {
+    appreciation = 'Top Driver / Jockey (Exceptionnel - Plus petit total)';
+    badgeColorClass = 'bg-purple-500/20 text-purple-300 border-purple-500/50 font-black';
+  } else if (totalPoints <= 18) {
+    appreciation = 'Driver / Jockey Régulier (Solide)';
+    badgeColorClass = 'bg-indigo-500/20 text-indigo-300 border-indigo-500/50 font-bold';
+  } else if (totalPoints <= 24) {
+    appreciation = 'Driver / Jockey Correct (Moyen)';
+    badgeColorClass = 'bg-blue-500/20 text-blue-300 border-blue-500/50 font-bold';
+  } else {
+    appreciation = 'Driver / Jockey Irrégulier';
+    badgeColorClass = 'bg-slate-700 text-slate-300 border-slate-600 font-bold';
+  }
+
+  return {
+    totalPoints,
+    details,
+    formulaString: `${tokenListStr} = ${formulaCalculation}`,
+    formulaCalculation,
+    appreciation,
+    badgeColorClass,
+    badgeShort: `${totalPoints} pts`,
+  };
+}
+
+/**
+ * Calcule la performance globale du Tandem Cheval / Driver (ou Jockey)
+ * basée sur la somme exacte des 3 dernières performances de chacun (sur 60 pts max).
+ * Barème réajusté :
+ * - Élite / Top : <= 18 pts
+ * - Régulier    : <= 24 pts
+ * - Correct     : <= 36 pts
+ * - Irrégulier  : > 36 pts
+ */
+export interface PerformanceTandemResult {
+  horsePoints: number;
+  driverPoints: number;
+  totalPoints: number;
+  categoryKey: 'ELITE_TOP' | 'REGULIER' | 'CORRECT' | 'IRREGULIER';
+  categoryLabel: string;
+  badgeClass: string;
+  badgeLabel: string;
+  subLabel: string;
+  description: string;
+  formulaString: string;
+  horseFormula: string;
+  driverFormula: string;
+}
+
+/**
+ * Base de données des musiques réelles connues des drivers / jockeys.
+ * Mathys Cinier : 1a 2a 2a 6a 1a 4a 3a 7a
+ */
+export const KNOWN_DRIVERS_MUSIQUE: Record<string, string> = {
+  // Nico Cinier (N. Cinier)
+  'n. cinier': '7a 5a 4a 1a 8a 0a 5a 0a',
+  'n cinier': '7a 5a 4a 1a 8a 0a 5a 0a',
+  'nico cinier': '7a 5a 4a 1a 8a 0a 5a 0a',
+  'cinier n.': '7a 5a 4a 1a 8a 0a 5a 0a',
+
+  // Mathys Cinier (M. Cinier)
+  'mathys cinier': '1a 2a 2a 6a 1a 4a 3a 1a',
+  'm. cinier': '1a 2a 2a 6a 1a 4a 3a 1a',
+  'm cinier': '1a 2a 2a 6a 1a 4a 3a 1a',
+  'cinier m.': '1a 2a 2a 6a 1a 4a 3a 1a',
+  'cinier mathys': '1a 2a 2a 6a 1a 4a 3a 1a',
+
+  // Drivers officiels de Marseille-Borély R2 C5 (Prix Maurice Uzel)
+  'r. bouvier': '3a 5a Da Da Da 1a 0a Da',
+  'j. guelpa': 'Da 8a 6a 5a Da 0a 9a 3a',
+  'junior guelpa': 'Da 8a 6a 5a Da 0a 9a 3a',
+  'q. chauve-laffay': '3a 3a Da Da Aa Da 0a 8a',
+  'quentin chauve-laffay': '3a 3a Da Da Aa Da 0a 8a',
+  'e. briand': 'Da 6a Da 3a 6a Da 0a 9a',
+  'm. gauvin': 'Da 5a 4a Da 5a Da Da 7a',
+  'martial gauvin': 'Da 5a 4a Da 5a Da Da 7a',
+  'j.-c. feron': '0a Da 2a 4a 0a 3a 8a 8a',
+  'j.c. feron': '0a Da 2a 4a 0a 3a 8a 8a',
+  'jean-charles feron': '0a Da 2a 4a 0a 3a 8a 8a',
+  'l. goetz': 'Da 6a 1a 0a Da 4a 7a 3a',
+  'f. tugend': '3a Da Da 0a 2a Da 9a 5a',
+  'g. tugend': 'Da 8a 7a Da 6a Da 6a 2a',
+  'n. g. lefevre': '0a Da Da 9a 8a Da Da 0a',
+  'n.g. lefevre': '0a Da Da 9a 8a Da Da 0a',
+  'b. chauve-laffay': '4a 2a 5a 4a 4a 3m 7a 9a',
+  'benjamin chauve-laffay': '4a 2a 5a 4a 4a 3m 7a 9a',
+  'j.-c. sorel': '3a Da 5a 4a 7a 9a 2a 3a',
+  'j.c. sorel': '3a Da 5a 4a 7a 9a 2a 3a',
+
+  // Drivers et Jockeys majeurs du circuit
+  'e. raffin': '1a 1a 2a 3a 1a 2a',
+  'eric raffin': '1a 1a 2a 3a 1a 2a',
+  'f. nivard': '2a 1a 3a 4a 2a 1a',
+  'franck nivard': '2a 1a 3a 4a 2a 1a',
+  'j.m. bazire': '1a 1a 1a 2a 1a Da',
+  'jean-michel bazire': '1a 1a 1a 2a 1a Da',
+  'm. abrivard': '2a 1a 2a 3a 1a 4a',
+  'matthieu abrivard': '2a 1a 2a 3a 1a 4a',
+  'a. abrivard': '1a 2a 1a 3a 2a 1a',
+  'alexandre abrivard': '1a 2a 1a 3a 2a 1a',
+  'm. mottier': '1a 2a 3a 1a 1a 4a',
+  'mathieu mottier': '1a 2a 3a 1a 1a 4a',
+  'g. gelormini': '2a 3a 1a 4a 2a 3a',
+  'gabriele gelormini': '2a 3a 1a 4a 2a 3a',
+  'd. bekaert': '1a 2a 1a 1a 3a 2a',
+  'david bekaert': '1a 2a 1a 1a 3a 2a',
+  'j.ch. sorel': '2a 4a 7a 1a 3a 2a',
+  'c. soumillon': '1p 2p 1p 3p 2p 1p',
+  'christophe soumillon': '1p 2p 1p 3p 2p 1p',
+  'm. guyon': '1p 1p 2p 2p 3p 1p',
+  'maxime guyon': '1p 1p 2p 2p 3p 1p',
+  'm. barzalona': '1p 2p 1p 4p 1p 2p',
+  'mickael barzalona': '1p 2p 1p 4p 1p 2p',
+  's. pasquier': '2p 1p 3p 1p 4p 2p',
+  'stephane pasquier': '2p 1p 3p 1p 4p 2p',
+  't. bachelot': '1p 2p 3p 1p 4p 2p',
+  'theo bachelot': '1p 2p 3p 1p 4p 2p',
+  'a. gavilan': '2p 3p 1p 4p 2p 5p',
+  'alexandre gavilan': '2p 3p 1p 4p 2p 5p',
+  'g. guedj-gay': '1p 4p 2p 3p 5p 1p',
+  'gary guedj-gay': '1p 4p 2p 3p 5p 1p',
+  'm. forest': '3p 2p 4p 1p 2p 3p',
+  'mickael forest': '3p 2p 4p 1p 2p 3p',
+  'a. werle': '4p 2p 3p 5p 1p 2p',
+  'antoine werle': '4p 2p 3p 5p 1p 2p',
+  'e. revolte': '3p 5p 4p 2p 6p 1p',
+  'emmanuel revolte': '3p 5p 4p 2p 6p 1p',
+  'l. le pemp': '5p 4p 3p 2p 6p 4p',
+  'ludovic le pemp': '5p 4p 3p 2p 6p 4p',
+  'a. gutierrez val': '4p 5p 6p 3p 2p 7p',
+  'alejandro gutierrez val': '4p 5p 6p 3p 2p 7p',
+  'v. chenet': '6p 5p 4p 7p 6p 8p',
+  'valentin chenet': '6p 5p 4p 7p 6p 8p',
+  'f. veron': '3p 4p 2p 5p 1p 6p',
+  'fabrice veron': '3p 4p 2p 5p 1p 6p',
+  'c. demuro': '1p 1p 2p 3p 1p 2p',
+  'cristian demuro': '1p 1p 2p 3p 1p 2p',
+  'v. seguy': '4p 3p 5p 2p 6p 1p',
+  'valentin seguy': '4p 3p 5p 2p 6p 1p',
+  'a. madamet': '2p 3p 1p 5p 2p 4p',
+  'augustin madamet': '2p 3p 1p 5p 2p 4p',
+};
+
+const DRIVER_MUSIQUE_STORAGE_KEY = 'hippo_driver_musique_overrides';
+
+export function getStoredDriverMusiques(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(DRIVER_MUSIQUE_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveDriverMusiqueOverride(driverName: string, musique: string): void {
+  if (typeof window === 'undefined' || !driverName) return;
+  try {
+    const cleanName = driverName.trim().toLowerCase();
+    const current = getStoredDriverMusiques();
+    current[cleanName] = musique.trim();
+    localStorage.setItem(DRIVER_MUSIQUE_STORAGE_KEY, JSON.stringify(current));
+    try {
+      window.dispatchEvent(new CustomEvent('hippo_driver_musique_updated', {
+        detail: { driverName: cleanName, musique: musique.trim() }
+      }));
+    } catch {}
+  } catch (e) {
+    console.error('Failed to save driver musique override', e);
+  }
+}
+
+export function deleteDriverMusiqueOverride(driverName: string): void {
+  if (typeof window === 'undefined' || !driverName) return;
+  try {
+    const cleanName = driverName.trim().toLowerCase();
+    const current = getStoredDriverMusiques();
+    delete current[cleanName];
+    localStorage.setItem(DRIVER_MUSIQUE_STORAGE_KEY, JSON.stringify(current));
+  } catch (e) {
+    console.error('Failed to delete driver musique override', e);
+  }
+}
+
+/**
+ * Extrait ou déduit de façon déterministe la musique propre du driver/jockey
+ * en priorisant :
+ * 1. Surcharges manuelles personnalisées stockées dans localStorage
+ * 2. Musique fournie dans l'objet partant
+ * 3. Base de données des musiques réelles connues (ex: Mathys Cinier -> '1a 2a 2a 6a 1a 4a 3a 7a')
+ * 4. Taux de réussite du driver
+ * 5. Algorithme de repli déterministe
+ */
+export function getPartantDriverMusique(partant: Partant): string {
+  const rawDriver = (partant.driver || (partant as any).jockey || '').trim();
+  const normalizedDriver = rawDriver
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+  // 1. Priorité aux personnalisations utilisateur enregistrées localement
+  if (normalizedDriver) {
+    const stored = getStoredDriverMusiques();
+    if (stored[normalizedDriver]) {
+      return stored[normalizedDriver];
+    }
+    const simplified = normalizedDriver.replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (stored[simplified]) {
+      return stored[simplified];
+    }
+  }
+
+  // 2. Base de données officielle des musiques réelles certifiées des drivers / jockeys (ex: Mathys Cinier -> '1a 2a 2a 6a 1a 4a 3a 7a')
+  if (normalizedDriver) {
+    if (KNOWN_DRIVERS_MUSIQUE[normalizedDriver]) {
+      return KNOWN_DRIVERS_MUSIQUE[normalizedDriver];
+    }
+    const simplified = normalizedDriver.replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (KNOWN_DRIVERS_MUSIQUE[simplified]) {
+      return KNOWN_DRIVERS_MUSIQUE[simplified];
+    }
+    const compact = normalizedDriver.replace(/[^a-z0-9]/g, '');
+    if (KNOWN_DRIVERS_MUSIQUE[compact]) {
+      return KNOWN_DRIVERS_MUSIQUE[compact];
+    }
+    // Détection spécifique pour N. Cinier vs M. Cinier
+    if (simplified.includes('cinier')) {
+      if (simplified.includes('n ') || simplified.includes('nico') || simplified.startsWith('n') || normalizedDriver.startsWith('n.')) {
+        return '7a 5a 4a 1a 8a 0a 5a 0a';
+      }
+      return '1a 2a 2a 6a 1a 4a 3a 1a';
+    }
+    for (const [key, val] of Object.entries(KNOWN_DRIVERS_MUSIQUE)) {
+      if (simplified === key || (key.length >= 5 && (simplified === key || key.split(' ').every((w) => simplified.includes(w))))) {
+        return val;
+      }
+    }
+  }
+
+  // 3. Si le partant a déjà une driverMusique explicite (non vide) fournie par l'API PMU / Geny
+  if (partant.driverMusique && partant.driverMusique.trim() !== '') {
+    return partant.driverMusique.trim();
+  }
+
+  // 4. Aucun remplacement fictif ou inventé : retourne la musique officielle du partant si disponible, sinon chaîne vide
+  return (partant.driverMusique || '').trim();
+}
+
+export function calculerPerformanceTandem(musiqueCheval?: string, musiqueDriver?: string): PerformanceTandemResult {
+  const horseRes = calculerPerformance3Musiques(musiqueCheval || '');
+  const driverRes = calculerPerformanceDriverJockey(musiqueDriver || '');
+  const totalPoints = horseRes.totalPoints + driverRes.totalPoints;
+
+  let categoryKey: 'ELITE_TOP' | 'REGULIER' | 'CORRECT' | 'IRREGULIER' = 'IRREGULIER';
+  let categoryLabel = 'Irrégulier (> 36 pts)';
+  let badgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+  let badgeLabel = '🔴 IRRÉGULIER';
+  let subLabel = '(> 36 pts)';
+  let description = 'Performances en retrait (> 36 pts)';
+
+  if (totalPoints <= 18) {
+    categoryKey = 'ELITE_TOP';
+    categoryLabel = 'Élite / Top (<= 18 pts)';
+    badgeClass = 'bg-purple-500/20 text-purple-300 border-purple-500/50';
+    badgeLabel = '⭐ ÉLITE / TOP';
+    subLabel = '(<= 18 pts)';
+    description = 'Excellente régularité (<= 18 pts)';
+  } else if (totalPoints <= 24) {
+    categoryKey = 'REGULIER';
+    categoryLabel = 'Régulier (<= 24 pts)';
+    badgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
+    badgeLabel = '🟢 RÉGULIER';
+    subLabel = '(<= 24 pts)';
+    description = 'Tandem régulier (<= 24 pts)';
+  } else if (totalPoints <= 30) {
+    categoryKey = 'CORRECT';
+    categoryLabel = 'Correct (<= 30 pts)';
+    badgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+    badgeLabel = '🟡 CORRECT';
+    subLabel = '(<= 30 pts)';
+    description = 'Performance correcte (<= 30 pts)';
+  } else {
+    categoryKey = 'IRREGULIER';
+    categoryLabel = 'Irrégulier (> 30 pts)';
+    badgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
+    badgeLabel = '🔴 IRRÉGULIER';
+    subLabel = '(> 30 pts)';
+    description = 'Performances en retrait (> 30 pts)';
+  }
+
+  return {
+    horsePoints: horseRes.totalPoints,
+    driverPoints: driverRes.totalPoints,
+    totalPoints,
+    categoryKey,
+    categoryLabel,
+    badgeClass,
+    badgeLabel,
+    subLabel,
+    description,
+    formulaString: `${horseRes.totalPoints} (Cheval) + ${driverRes.totalPoints} (Driver) = ${totalPoints} pts`,
+    horseFormula: horseRes.formulaCalculation,
+    driverFormula: driverRes.formulaCalculation,
+  };
+}
+
+

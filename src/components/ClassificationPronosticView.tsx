@@ -770,7 +770,7 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
             {/* Séparateur & Tableau de Forme dans cette même présentation */}
             <div className="pt-3 border-t border-slate-800 space-y-3">
               <div className="w-full bg-gradient-to-r from-amber-500 via-amber-400 to-amber-500 py-1 px-3 rounded-lg flex items-center justify-between text-slate-950 font-black text-xs uppercase tracking-wider">
-                <span>CLASSIFICATION OFFICIELLE PAR FORME DE FORMULE</span>
+                <span>ETAT DE FORME DU CHEVAL</span>
                 <span className="text-[10px] bg-slate-950 text-amber-300 px-2 py-0.5 rounded border border-amber-300">
                   TABLEAU DE FORME V38
                 </span>
@@ -1077,6 +1077,8 @@ export const ClassificationPronosticView: React.FC<ClassificationPronosticViewPr
           <DisciplineGridTable course={course} variant="dark" />
         </section>
       )}
+
+
 
       {/* 5. ÉTAPE 4 : PROPOSITIONS DE JEUX PRODUITS PAR ALGORITHME */}
       {(activeStepFilter === 'ALL' || activeStepFilter === 'TICKETS') && (

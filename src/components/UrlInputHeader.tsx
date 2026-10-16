@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Globe, AlertTriangle, CheckCircle2, Sparkles, Star, Calendar, ClipboardPaste, History, Lock, X, ShieldAlert, Smartphone, Clock, Zap, ChevronLeft, ChevronRight, RotateCcw, Tv, Monitor, Laptop, Cpu, Sliders, Bell, Volume2, Trophy, Crown, Terminal, CheckSquare } from 'lucide-react';
+import { Search, Globe, AlertTriangle, CheckCircle2, Sparkles, Star, Calendar, ClipboardPaste, History, Lock, X, ShieldAlert, Smartphone, Clock, Zap, ChevronLeft, ChevronRight, RotateCcw, Tv, Monitor, Laptop, Cpu, Sliders, Bell, Volume2, Trophy, Crown, Terminal, CheckSquare, Square, Database, Layers, Filter, Maximize2, Minimize2 } from 'lucide-react';
 import { validateTurfUrl } from '../utils/turfUrlValidator';
 import { CourseHippique, PmuMeeting, TurfSource } from '../types/turf';
 import { UserProfile } from '../types/userAuth';
@@ -7,7 +7,7 @@ import { ThemeToggleWidget } from './ThemeToggleWidget';
 import { CountdownTimer } from './CountdownTimer';
 import { getRaceParisTargetTime } from '../utils/raceCountdown';
 import { normalizeDateForQuery, getIvoryCoastDate } from '../utils/timeConversion';
-import { PMU_SUNDAY_11_MEETINGS, getCuratedPmuMeetings } from '../data/pmuMeetingsData';
+import { PMU_SUNDAY_11_MEETINGS, getCuratedPmuMeetings, PMU_TOULOUSE_R5_MEETINGS } from '../data/pmuMeetingsData';
 import { PLR_FRIDAY_02_MEETINGS } from '../data/plrFriday02Data';
 import { HeaderDatePicker } from './HeaderDatePicker';
 import { BandePassanteArrivees } from './BandePassanteArrivees';
@@ -48,6 +48,7 @@ interface UrlInputHeaderProps {
   onOpenPmuApiHub?: () => void;
   hasScraperLogs?: boolean;
   onOpenScraperLogs?: () => void;
+  isRestrictedMode?: boolean;
 }
 
 interface UpcomingRaceRef {
@@ -70,9 +71,9 @@ function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
   const cordeVal: 'Droite' | 'Gauche' = m.corde === 'Droite' ? 'Droite' : 'Gauche';
   const allocNum = typeof m.allocation === 'number' ? m.allocation : parseInt(String(m.allocation || '30000').replace(/\D/g, ''), 10) || 30000;
 
-  const hippoSlug = m.hippodrome.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '-');
-  const courseSlug = m.nomCoursePhare.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '-');
-  const numericId = m.id.replace(/\D/g, '') || '1482910';
+  const hippoSlug = (m.hippodrome || 'Hippodrome').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '-');
+  const courseSlug = (m.nomCoursePhare || m.description || 'Course').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '-');
+  const numericId = String(m.id || '').replace(/\D/g, '') || '1482910';
   const defaultDateStr = m.date || 'Dimanche 11 Octobre 2026';
   const dateSlug = normalizeDateForQuery(defaultDateStr) || '2026-10-11';
   const constructedGenyUrl = `https://www.geny.com/partants-pmu/${dateSlug}-${hippoSlug}-pmu-${courseSlug}_c${numericId}`;
@@ -102,10 +103,17 @@ function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
         };
       });
 
+  const hasRealPartants = Boolean(
+    m.partants &&
+    m.partants.length >= 2 &&
+    m.partants.some((p: any) => p.nom && !p.nom.toUpperCase().includes('PARTANT OFFICIEL'))
+  );
+
   const baseCourse = {
     id: m.id,
     sourceUrl: m.lienGeny || constructedGenyUrl,
     sourceType: 'pmu.lonacionline.ci' as const,
+    isPlaceholder: !hasRealPartants,
     titre: `${m.nomCoursePhare} (${m.reunion} ${m.courseNumero}) - ${m.hippodrome}`,
     prixNom: m.nomCoursePhare,
     hippodrome: m.hippodrome,
@@ -145,7 +153,7 @@ function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
 
   return {
     ...baseCourse,
-    synthese: buildRealV38Synthese(baseCourse as CourseHippique),
+    synthese: buildRealV38Synthese(baseCourse as unknown as CourseHippique),
   };
 }
 
@@ -180,6 +188,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   onToggleExpertMode,
   hasScraperLogs,
   onOpenScraperLogs,
+  isRestrictedMode,
 }) => {
   const [inputUrl, setInputUrl] = useState(currentUrl);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -192,6 +201,14 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     } catch {}
     return getIvoryCoastDate(0);
   });
+
+  // Filtre des courses par numéro de réunion (ex: 'all', 'R1', 'R2', 'R3'...)
+  const [selectedReunion, setSelectedReunion] = useState<string>('all');
+
+  // Réinitialiser le filtre de réunion lors d'un changement de date
+  useEffect(() => {
+    setSelectedReunion('all');
+  }, [selectedFilterDate]);
 
   // Écouter les changements automatiques de date à minuit GMT
   useEffect(() => {
@@ -211,8 +228,37 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     const timer = setInterval(() => {
       setCurrentDateTime(new Date());
     }, 1000);
-    return () => clearInterval(timer);
+    const handleOpenModal = () => setIsDelayModalOpen(true);
+    window.addEventListener('hippo_open_delay_modal', handleOpenModal);
   }, []);
+
+  // Gestion du Mode Plein Écran via l'API Fullscreen natif
+  const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.warn('Erreur lors du passage en plein écran:', err);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen().catch((err) => {
+          console.warn('Erreur lors de la sortie du plein écran:', err);
+        });
+      }
+    }
+  };
+
+  // Afficher / masquer la grille détaillée de sélection des courses (Masquée par défaut)
+  const [showRaceSelectionGrid, setShowRaceSelectionGrid] = useState<boolean>(false);
 
   // Extraction en Temps Réel des Arrivées via Grounding Google Search (paristurf.com & pmu.fr)
   const [showParisTurfModal, setShowParisTurfModal] = useState(false);
@@ -342,6 +388,44 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     };
   }, []);
 
+  // Choix des courses à positionner sous l'espace de collage de lien ("PROCHAINE COURSE")
+  const [selectedRaceIds, setSelectedRaceIds] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('hippo_selected_next_race_ids');
+      if (saved !== null) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch {}
+    return ['__UNINITIALIZED__'];
+  });
+
+  // Synchronisation avec les modifications provenant du Centre d'Actualisation Quotidienne & Connecteur PMU API
+  useEffect(() => {
+    const handleSelectedRacesSync = (e?: any) => {
+      try {
+        if (e?.detail?.selectedRaceIds && Array.isArray(e.detail.selectedRaceIds)) {
+          setSelectedRaceIds(e.detail.selectedRaceIds);
+          return;
+        }
+        const saved = localStorage.getItem('hippo_selected_next_race_ids');
+        if (saved !== null) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            setSelectedRaceIds(parsed);
+          }
+        }
+      } catch {}
+    };
+
+    window.addEventListener('hippo_selected_races_changed', handleSelectedRacesSync);
+    window.addEventListener('storage', handleSelectedRacesSync);
+    return () => {
+      window.removeEventListener('hippo_selected_races_changed', handleSelectedRacesSync);
+      window.removeEventListener('storage', handleSelectedRacesSync);
+    };
+  }, []);
+
   // Construction dynamique et persistante du calendrier des courses filtré par date
   const upcomingRacesList = useMemo<UpcomingRaceRef[]>(() => {
     const list: UpcomingRaceRef[] = [];
@@ -366,25 +450,38 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
 
     if (meetingsToLoad.length === 0) {
       meetingsToLoad = PMU_SUNDAY_11_MEETINGS;
+    } else {
+      const toulouseCoursesCount = meetingsToLoad.filter(
+        (m) => m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse')
+      ).length;
+      if (toulouseCoursesCount < 6) {
+        meetingsToLoad = [
+          ...meetingsToLoad.filter(
+            (m) => !(m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse'))
+          ),
+          ...PMU_TOULOUSE_R5_MEETINGS,
+        ];
+      }
     }
 
     if (selectedFilterDate && selectedFilterDate !== 'all') {
       const norm = normalizeDateForQuery(selectedFilterDate);
       meetingsToLoad = meetingsToLoad.filter((m) => {
         const mNorm = normalizeDateForQuery(m.date || '');
-        return m.date === selectedFilterDate || (norm && mNorm && norm === mNorm);
+        const matchesDate = m.date === selectedFilterDate || (norm && mNorm && norm === mNorm);
+        return matchesDate || selectedRaceIds.includes(m.id);
       });
     }
 
-    // Charger l'intégralité des courses officielles du programme (EXCLUSIVEMENT 9 PARTANTS ET PLUS)
+    // Charger l'intégralité des courses officielles du programme (EXCLUSIVEMENT 9 PARTANTS ET PLUS OU COCHÉES)
     meetingsToLoad.forEach((m: any) => {
       const fullCourse = convertMeetingToCourseHippique(m);
       const partantsCount = m.partants && m.partants.length > 0
         ? m.partants.length
-        : (m.nombrePartants || (fullCourse.partants ? fullCourse.partants.length : 12));
+        : (m.exactPartantsCount || m.nombrePartants || (fullCourse.partants && fullCourse.partants.length > 0 ? fullCourse.partants.length : 0));
 
-      // Filtre impératif : Affiche SEULEMENT les courses de 9 partants et plus
-      if (partantsCount >= 9) {
+      // Filtre impératif : Affiche les courses de 9 partants et plus, OU celles expressément cochées pour la Prochaine Course
+      if (partantsCount >= 9 || selectedRaceIds.includes(m.id)) {
         list.push({
           id: m.id,
           reunionCourse: `${m.reunion} ${m.courseNumero}`,
@@ -410,48 +507,168 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     });
 
     return list;
-  }, [calendarVersion, selectedFilterDate]);
+  }, [calendarVersion, selectedFilterDate, selectedRaceIds]);
 
-  // Choix des courses (≥ 9 partants) à positionner sous l'espace de collage de lien
-  const [selectedRaceIds, setSelectedRaceIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('hippo_selected_next_race_ids');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch {}
-    return [];
-  });
-
+  // Initialisation par défaut si aucune sélection n'a encore été sauvegardée
   useEffect(() => {
-    try {
-      localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(selectedRaceIds));
-    } catch {}
-  }, [selectedRaceIds]);
-
-  // Si aucune course n'est cochée par l'utilisateur, cocher par défaut la 1ère course disponible de 9+ partants
-  useEffect(() => {
-    if (upcomingRacesList.length > 0 && selectedRaceIds.length === 0) {
-      setSelectedRaceIds([upcomingRacesList[0].id]);
+    if (upcomingRacesList.length > 0 && selectedRaceIds.length === 1 && selectedRaceIds[0] === '__UNINITIALIZED__') {
+      const initial = [upcomingRacesList[0].id];
+      setSelectedRaceIds(initial);
+      try {
+        localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(initial));
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: initial } }));
+        }, 0);
+      } catch {}
     }
-  }, [upcomingRacesList]);
+  }, [upcomingRacesList, selectedRaceIds]);
 
   const toggleRaceSelection = (id: string) => {
-    setSelectedRaceIds((prev) =>
-      prev.includes(id) ? prev.filter((rId) => rId !== id) : [...prev, id]
-    );
+    setSelectedRaceIds((prev) => {
+      const cleanPrev = prev.filter((x) => x !== '__UNINITIALIZED__');
+      const next = cleanPrev.includes(id)
+        ? cleanPrev.filter((rId) => rId !== id)
+        : [...cleanPrev, id];
+      try {
+        localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(next));
+        window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: next } }));
+      } catch {}
+      return next;
+    });
   };
 
-  // Liste des courses positionnées/sélectionnées sous l'espace de collage de lien
+  const handleSelectAllRaces = () => {
+    const allIds = upcomingRacesList.map((r) => r.id);
+    setSelectedRaceIds(allIds);
+    try {
+      localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(allIds));
+      window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: allIds } }));
+    } catch {}
+  };
+
+  const handleDeselectAllRaces = () => {
+    setSelectedRaceIds([]);
+    try {
+      localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify([]));
+      window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: [] } }));
+    } catch {}
+  };
+
+  // Liste des courses positionnées/sélectionnées sous l'espace de collage de lien (UNIQUEMENT celles cochées)
+  // Triées rigoureusement selon l'ordre chronologique de leur heure de départ
   const pinnedUpcomingRaces = useMemo(() => {
     if (upcomingRacesList.length === 0) return [];
-    if (selectedRaceIds.length === 0) {
-      return upcomingRacesList.slice(0, 1);
+    let list: UpcomingRaceRef[];
+    if (selectedRaceIds.length === 1 && selectedRaceIds[0] === '__UNINITIALIZED__') {
+      list = upcomingRacesList.slice(0, 1);
+    } else {
+      list = upcomingRacesList.filter((r) => selectedRaceIds.includes(r.id));
     }
-    const filtered = upcomingRacesList.filter((r) => selectedRaceIds.includes(r.id));
-    return filtered.length > 0 ? filtered : upcomingRacesList.slice(0, 1);
+    return list.slice().sort((a, b) => {
+      const targetA = getRaceParisTargetTime(a.date, a.heure).getTime();
+      const targetB = getRaceParisTargetTime(b.date, b.heure).getTime();
+      return targetA - targetB;
+    });
   }, [upcomingRacesList, selectedRaceIds]);
+
+  // Mode d'affichage de la rubrique PROCHAINE COURSE : 'single' = Une par une chronologique (demandé par l'utilisateur), 'all' = Liste complète
+  const [pinnedViewMode, setPinnedViewMode] = useState<'single' | 'all'>('single');
+  const [activePinnedIndex, setActivePinnedIndex] = useState<number>(0);
+
+  // Maintien d'un index valide dans la liste des courses cochées
+  useEffect(() => {
+    if (pinnedUpcomingRaces.length === 0) {
+      setActivePinnedIndex(0);
+      return;
+    }
+    if (activePinnedIndex >= pinnedUpcomingRaces.length) {
+      setActivePinnedIndex(0);
+    }
+  }, [pinnedUpcomingRaces.length, activePinnedIndex]);
+
+  // Avancement automatique fluide : se positionne sur la première course cochée non démarrée (heure future)
+  useEffect(() => {
+    if (pinnedUpcomingRaces.length === 0) return;
+
+    const selectNextPinnedRace = () => {
+      const now = Date.now();
+      const firstUpcomingIdx = pinnedUpcomingRaces.findIndex((r) => {
+        const target = getRaceParisTargetTime(r.date, r.heure).getTime();
+        return target > now;
+      });
+
+      if (firstUpcomingIdx !== -1) {
+        const currentActive = pinnedUpcomingRaces[activePinnedIndex];
+        if (!currentActive) {
+          setActivePinnedIndex(firstUpcomingIdx);
+        } else {
+          const currentTarget = getRaceParisTargetTime(currentActive.date, currentActive.heure).getTime();
+          if (currentTarget <= now) {
+            setActivePinnedIndex(firstUpcomingIdx);
+          }
+        }
+      }
+    };
+
+    selectNextPinnedRace();
+    const interval = setInterval(selectNextPinnedRace, 5000);
+    return () => clearInterval(interval);
+  }, [pinnedUpcomingRaces, activePinnedIndex]);
+
+  const handleNextPinned = () => {
+    if (pinnedUpcomingRaces.length === 0) return;
+    setActivePinnedIndex((prev) => (prev + 1) % pinnedUpcomingRaces.length);
+  };
+
+  const handlePrevPinned = () => {
+    if (pinnedUpcomingRaces.length === 0) return;
+    setActivePinnedIndex((prev) => (prev - 1 + pinnedUpcomingRaces.length) % pinnedUpcomingRaces.length);
+  };
+
+  // Liste dynamique des réunions du jour disponibles pour le filtre du menu déroulant (R1, R2, R3...)
+  const availableReunions = useMemo(() => {
+    const map = new Map<string, string>();
+    upcomingRacesList.forEach((r) => {
+      const parts = (r.reunionCourse || '').trim().split(' ');
+      const rNum = parts[0]?.toUpperCase();
+      if (rNum && rNum.startsWith('R') && !map.has(rNum)) {
+        map.set(rNum, r.hippodrome || 'Hippodrome');
+      }
+    });
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  }, [upcomingRacesList]);
+
+  // Courses filtrées selon la réunion sélectionnée dans l'en-tête
+  const displayedUpcomingRaces = useMemo(() => {
+    if (!selectedReunion || selectedReunion === 'all') return upcomingRacesList;
+    return upcomingRacesList.filter((r) => {
+      const parts = (r.reunionCourse || '').trim().split(' ');
+      return parts[0]?.toUpperCase() === selectedReunion.toUpperCase();
+    });
+  }, [upcomingRacesList, selectedReunion]);
+
+  const handleSelectAllMeetingRaces = (rNum: string) => {
+    const meetingRaceIds = upcomingRacesList
+      .filter((r) => (r.reunionCourse || '').toUpperCase().startsWith(rNum.toUpperCase()))
+      .map((r) => r.id);
+    if (meetingRaceIds.length === 0) return;
+
+    setSelectedRaceIds((prev) => {
+      const cleanPrev = prev.filter((x) => x !== '__UNINITIALIZED__');
+      const allSelected = meetingRaceIds.every((id) => cleanPrev.includes(id));
+      let next: string[];
+      if (allSelected) {
+        next = cleanPrev.filter((id) => !meetingRaceIds.includes(id));
+      } else {
+        next = Array.from(new Set([...cleanPrev, ...meetingRaceIds]));
+      }
+      try {
+        localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(next));
+        window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: next } }));
+      } catch {}
+      return next;
+    });
+  };
 
   // Sélectionner et actualiser automatiquement la prochaine course non démarrée du programme
   useEffect(() => {
@@ -508,12 +725,22 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     setInputUrl(ref.sourceUrl);
     setErrorMessage(null);
 
-    if (ref.fullCourseObject && onSelectCourse) {
-      onSelectCourse(ref.fullCourseObject);
+    const fullObj = ref.fullCourseObject;
+    const isPlaceholder =
+      !fullObj ||
+      Boolean((fullObj as any).isPlaceholder) ||
+      Boolean(fullObj.partants && fullObj.partants.some((p: any) => p.nom && p.nom.toUpperCase().includes('PARTANT OFFICIEL')));
+
+    if (fullObj && !isPlaceholder && onSelectCourse) {
+      onSelectCourse(fullObj);
       return;
     }
 
-    onAnalyze(ref.sourceUrl);
+    if (ref.sourceUrl) {
+      onAnalyze(ref.sourceUrl);
+    } else if (fullObj && onSelectCourse) {
+      onSelectCourse(fullObj);
+    }
   };
 
   // Date et heure de dernière mise à jour dynamique en temps réel
@@ -838,8 +1065,31 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                   setSelectedFilterDate(newDate);
                 }}
                 onOpenCalendar={onOpenCalendar}
-                onOpenPmuApiHub={onOpenPmuApiHub}
+                onOpenPmuApiHub={!isRestrictedMode ? onOpenPmuApiHub : undefined}
               />
+
+              {/* Menu Déroulant Filtrage par Réunion (R1, R2, R3...) */}
+              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-1.5 shadow-sm hover:border-amber-500/50 transition-colors">
+                <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Réunion :</span>
+                </span>
+                <select
+                  value={selectedReunion}
+                  onChange={(e) => setSelectedReunion(e.target.value)}
+                  className="bg-transparent text-white text-xs font-black focus:outline-none cursor-pointer pr-1"
+                  title="Filtrer les courses par numéro de réunion (ex: R1, R2, R3...)"
+                >
+                  <option value="all" className="bg-slate-900 text-white font-bold">
+                    Toutes les réunions {availableReunions.length > 0 ? `(${availableReunions.length})` : ''}
+                  </option>
+                  {availableReunions.map(([rNum, hippo]) => (
+                    <option key={rNum} value={rNum} className="bg-slate-900 text-white font-bold">
+                      {rNum} - {hippo}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {/* Côté Droite : Navigation Session, Historique, Favoris & Préférences Système */}
@@ -862,8 +1112,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 </button>
               )}
 
-              {/* 2. Bouton Favoris */}
-              {onOpenFavorites && (
+              {!isRestrictedMode && onOpenFavorites && (
                 <button
                   type="button"
                   onClick={onOpenFavorites}
@@ -880,8 +1129,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 </button>
               )}
 
-              {/* 2bis. Bouton Notifications Arrivées Favoris */}
-              {onOpenNotifications && (
+              {!isRestrictedMode && onOpenNotifications && (
                 <button
                   type="button"
                   onClick={onOpenNotifications}
@@ -905,7 +1153,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
               </button>
 
               {/* 3. Onglet Quotas AI */}
-              {onOpenAiQuotas && (
+              {!isRestrictedMode && onOpenAiQuotas && (
                 <button
                   type="button"
                   onClick={onOpenAiQuotas}
@@ -918,7 +1166,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
               )}
 
               {/* Bouton Afficher Logs Scraper si disponibles */}
-              {hasScraperLogs && onOpenScraperLogs && (
+              {!isRestrictedMode && hasScraperLogs && onOpenScraperLogs && (
                 <button
                   type="button"
                   onClick={onOpenScraperLogs}
@@ -931,7 +1179,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
               )}
 
               {/* 4. Bascule Mode Expert */}
-              {onToggleExpertMode && (
+              {!isRestrictedMode && onToggleExpertMode && (
                 <button
                   type="button"
                   onClick={onToggleExpertMode}
@@ -954,8 +1202,36 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
               {/* 4. Sélecteur Thème */}
               <ThemeToggleWidget />
 
+              {/* 4bis. Bouton Mode Plein Écran (API Fullscreen Natif) */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-black transition-all shadow-md active:scale-95 shrink-0 cursor-pointer ${
+                  isFullscreen
+                    ? 'bg-amber-500 text-slate-950 border-amber-300 shadow-amber-500/30 ring-2 ring-amber-400 font-extrabold'
+                    : 'bg-slate-900 hover:bg-slate-800 text-amber-300 border-amber-500/40 hover:border-amber-400'
+                }`}
+                title={
+                  isFullscreen
+                    ? 'Quitter le Mode Plein Écran'
+                    : 'Maximiser l\'affichage des tableaux de partants et pronostics en Mode Plein Écran'
+                }
+              >
+                {isFullscreen ? (
+                  <>
+                    <Minimize2 className="w-3.5 h-3.5 text-slate-950" />
+                    <span>Plein Écran : ON</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Plein Écran</span>
+                  </>
+                )}
+              </button>
+
               {/* 5. Console Administrateur */}
-              {onOpenAdmin && (
+              {!isRestrictedMode && onOpenAdmin && (
                 <button
                   type="button"
                   onClick={onOpenAdmin}
@@ -1138,9 +1414,9 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
             </div>
           )}
 
-          {/* Section : Choix des courses (≥ 9 partants) à positionner sous l'espace de collage de lien */}
-          {upcomingRacesList.length > 0 && (
-            <div className="mt-3.5 p-3 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md space-y-3">
+          {/* Section : Choix des courses (≥ 9 partants) - Masquée par défaut pour n'afficher que la bande épurée PROCHAINE COURSE */}
+          {upcomingRacesList.length > 0 && showRaceSelectionGrid && (
+            <div className="mt-3.5 p-3 sm:p-4 rounded-2xl bg-slate-900/90 border border-slate-800 shadow-md space-y-3 animate-fadeIn">
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80">
                 <div className="flex items-center gap-2">
                   <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400">
@@ -1149,22 +1425,64 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                   <div>
                     <h4 className="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
                       SÉLECTION DES COURSES (≥ 9 PARTANTS)
+                      {selectedReunion !== 'all' && (
+                        <span className="text-emerald-400 font-mono text-xs">({selectedReunion})</span>
+                      )}
                     </h4>
                     <p className="text-[11px] text-slate-400">
-                      Cochez les cases pour choisir les courses à positionner sous l'espace de collage de lien
+                      Cochez ou décochez les cases pour positionner les courses dans la rubrique « PROCHAINE COURSE »
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-1 rounded-full bg-amber-500/10 text-amber-400 text-[11px] font-mono font-bold border border-amber-500/30">
-                    {pinnedUpcomingRaces.length} / {upcomingRacesList.length} course(s) positionnée(s)
-                  </span>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {onOpenPmuApiHub && (
+                    <button
+                      type="button"
+                      onClick={onOpenPmuApiHub}
+                      className="px-2.5 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-bold border border-amber-500/40 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                      title="Ouvrir le Centre d'Actualisation Quotidienne & Connecteur PMU API pour choisir les courses"
+                    >
+                      <Database className="w-3 h-3 text-amber-400" />
+                      <span>Centre PMU API</span>
+                    </button>
+                  )}
+                  {selectedReunion !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => handleSelectAllMeetingRaces(selectedReunion)}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 text-[10px] font-black border border-emerald-500/40 transition-colors cursor-pointer shadow-xs"
+                      title={`Cocher ou décocher toutes les courses de la réunion ${selectedReunion}`}
+                    >
+                      Cocher tout {selectedReunion}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleSelectAllRaces}
+                    className="px-2 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[10px] font-bold border border-amber-500/40 transition-colors cursor-pointer"
+                  >
+                    Tout cocher
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeselectAllRaces}
+                    className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold border border-slate-700 transition-colors cursor-pointer"
+                  >
+                    Tout décocher
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowRaceSelectionGrid(false)}
+                    className="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 text-[10px] font-bold border border-rose-500/40 transition-colors cursor-pointer"
+                  >
+                    ✕ Masquer les cases
+                  </button>
                 </div>
               </div>
 
-              {/* Grille de sélection des courses avec cases à cocher & Compte à rebours devant chaque course */}
+              {/* Grille de sélection des courses (filtrée par réunion le cas échéant) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-60 overflow-y-auto pr-1 custom-scrollbar">
-                {upcomingRacesList.map((race) => {
+                {displayedUpcomingRaces.map((race) => {
                   const isChecked = selectedRaceIds.includes(race.id);
                   return (
                     <div
@@ -1175,16 +1493,21 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                           : 'bg-slate-950/70 border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/50'
                       }`}
                     >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div
+                        className="flex items-center gap-2 min-w-0 flex-1 cursor-pointer select-none"
+                        onClick={() => toggleRaceSelection(race.id)}
+                      >
                         {/* Case à cocher pour choisir les courses à positionner */}
-                        <input
-                          type="checkbox"
-                          id={`select-race-${race.id}`}
-                          checked={isChecked}
-                          onChange={() => toggleRaceSelection(race.id)}
-                          className="w-4 h-4 rounded text-amber-500 bg-slate-900 border-slate-700 focus:ring-amber-400 accent-amber-500 cursor-pointer shrink-0"
+                        <div
+                          className="w-4 h-4 shrink-0 flex items-center justify-center cursor-pointer"
                           title="Cocher pour positionner cette course sous l'espace de collage"
-                        />
+                        >
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4 text-amber-400" />
+                          ) : (
+                            <Square className="w-4 h-4 text-slate-500" />
+                          )}
+                        </div>
 
                         {/* Compte à rebours placé devant chaque course */}
                         <div className="shrink-0 font-mono">
@@ -1226,17 +1549,17 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
             </div>
           )}
 
-          {/* Rubrique PROCHAINE COURSE: Affichage des courses sélectionnées/positionnées sous l'espace de collage */}
-          {pinnedUpcomingRaces.length > 0 && (
-            <div className="mt-3 space-y-2.5">
-              {pinnedUpcomingRaces.map((race, idx) => (
-                <div
-                  key={race.id || idx}
-                  className="pt-3 border-t border-slate-800/80 bg-gradient-to-r from-slate-950 via-[#0a1120] to-slate-950 p-3 sm:p-3.5 rounded-2xl border border-amber-500/50 shadow-lg animate-fadeIn"
-                >
+          {/* Rubrique PROCHAINE COURSE : Affichage EXCLUSIF de la Bande Épurée de la Prochaine Course */}
+          {pinnedUpcomingRaces.length > 0 && (() => {
+            const race = pinnedUpcomingRaces[activePinnedIndex] || pinnedUpcomingRaces[0];
+            if (!race) return null;
+
+            return (
+              <div key={race.id || activePinnedIndex} className="mt-3.5 animate-fadeIn">
+                <div className="pt-3 border-t border-slate-800/80 bg-gradient-to-r from-slate-950 via-[#0a1120] to-slate-950 p-3 sm:p-3.5 rounded-2xl border border-amber-500/50 shadow-xl">
                   <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
-                    {/* Références de la course */}
-                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1">
+                    {/* Informations de la Prochaine Course en 1 seule ligne épurée */}
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 min-w-0">
                       {/* Label PROCHAINE COURSE */}
                       <div className="flex items-center gap-1.5 shrink-0 px-2.5 py-1 rounded-xl bg-amber-500/10 border border-amber-500/30">
                         <span className="relative flex h-2 w-2">
@@ -1249,62 +1572,132 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                         </span>
                       </div>
 
-                      {/* Compte à rebours placé devant chaque course */}
-                      <div className="shrink-0">
+                      {/* Compte à rebours placé devant la course */}
+                      <div className="shrink-0 font-mono">
                         <CountdownTimer date={race.date} heure={race.heure} compact />
                       </div>
 
-                      {/* Badges Références */}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {/* Badge R1 C4 */}
-                        <span className="px-2 py-0.5 rounded-lg font-black bg-amber-400 text-slate-950 text-xs shadow-xs border border-amber-300">
-                          {race.reunionCourse}
+                      {/* Badge Réunion & Course (ex: R2 C3) */}
+                      <span className="px-2.5 py-1 rounded-lg font-black bg-amber-400 text-slate-950 text-xs shadow-md border border-amber-300 shrink-0">
+                        {race.reunionCourse}
+                      </span>
+
+                      {/* Nom de la course */}
+                      <span className="font-black text-white text-xs sm:text-sm truncate max-w-[280px]" title={race.nomCourse}>
+                        {race.nomCourse}
+                      </span>
+
+                      <span className="text-slate-600 font-bold hidden sm:inline">•</span>
+
+                      {/* Hippodrome */}
+                      <span className="text-slate-300 font-bold text-xs truncate max-w-[180px]">
+                        📍 {race.hippodrome}
+                      </span>
+
+                      <span className="text-slate-600 font-bold hidden sm:inline">•</span>
+
+                      {/* Nombre de partants */}
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-800 text-amber-300 border border-slate-700 shrink-0">
+                        {race.nombrePartants} partants
+                      </span>
+
+                      {/* Discipline & Distance */}
+                      {race.discipline && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-800/80 text-slate-300 border border-slate-700/80 shrink-0">
+                          {race.discipline} {race.distance ? `• ${race.distance}m` : ''}
                         </span>
+                      )}
 
-                        {/* Nom de la course */}
-                        <span className="font-black text-white text-xs sm:text-sm">
-                          {race.nomCourse}
+                      {/* Quinté+ Badge */}
+                      {race.estQuinte && (
+                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wide shrink-0">
+                          Quinté+ PMU
                         </span>
-
-                        <span className="text-slate-600 font-bold">•</span>
-
-                        {/* Hippodrome */}
-                        <span className="text-slate-300 font-bold text-xs">
-                          {race.hippodrome}
-                        </span>
-
-                        <span className="text-slate-600 font-bold">•</span>
-
-                        {/* Nombre de partants (≥ 9) */}
-                        <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-800 text-amber-300 border border-slate-700">
-                          {race.nombrePartants} partants
-                        </span>
-
-                        {/* Quinté+ Badge */}
-                        {race.estQuinte && (
-                          <span className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wide">
-                            Quinté+ PMU
-                          </span>
-                        )}
-                      </div>
+                      )}
                     </div>
 
-                    {/* Bouton Analyser la course */}
+                    {/* Navigation discrète entre les courses cochées & Boutons d'action */}
                     <div className="flex items-center gap-2 justify-end shrink-0 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-800/80">
+                      {/* Contrôle discret pour naviguer entre les courses cochées */}
+                      {pinnedUpcomingRaces.length > 1 && (
+                        <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-xl px-2 py-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={handlePrevPinned}
+                            className="p-1 hover:bg-slate-800 text-amber-400 rounded transition-colors cursor-pointer"
+                            title="Course précédente selon l'heure de départ"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <span className="text-[10px] font-mono font-bold text-amber-300 px-1">
+                            {activePinnedIndex + 1}/{pinnedUpcomingRaces.length}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={handleNextPinned}
+                            className="p-1 hover:bg-slate-800 text-amber-400 rounded transition-colors cursor-pointer"
+                            title="Course suivante selon l'heure de départ"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => setShowRaceSelectionGrid(!showRaceSelectionGrid)}
+                        className={`px-2.5 py-1.5 rounded-xl font-bold text-xs border transition-colors cursor-pointer shrink-0 flex items-center gap-1 ${
+                          showRaceSelectionGrid
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                            : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800 hover:text-amber-300'
+                        }`}
+                        title="Ouvrir ou fermer la grille des cases à cocher"
+                      >
+                        <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Cases ({pinnedUpcomingRaces.length})</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => toggleRaceSelection(race.id)}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-rose-950/80 hover:text-rose-300 text-slate-400 font-bold text-xs border border-slate-700 transition-colors cursor-pointer shrink-0"
+                        title="Décocher cette course"
+                      >
+                        Retirer
+                      </button>
+
                       <button
                         type="button"
                         onClick={() => handleAnalyzeUpcomingRace(race)}
                         disabled={isLoading}
-                        className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs sm:text-sm shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition-all active:scale-95 shrink-0 border border-emerald-400/50 cursor-pointer"
+                        className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition-all active:scale-95 shrink-0 border border-emerald-400/50 cursor-pointer"
                         title="Analyser directement cette prochaine course au programme PMU"
                       >
-                        <Zap className="w-4 h-4 fill-slate-950 text-slate-950" />
+                        <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
                         <span>Analyser la course</span>
                       </button>
                     </div>
                   </div>
                 </div>
-              ))}
+              </div>
+            );
+          })()}
+
+          {/* Si aucune course n'est cochée et que la grille est masquée, afficher un petit rappel discret */}
+          {pinnedUpcomingRaces.length === 0 && upcomingRacesList.length > 0 && !showRaceSelectionGrid && (
+            <div className="mt-3.5 p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/80 text-xs text-slate-400 flex items-center justify-between gap-3">
+              <span className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>Rubrique <strong>PROCHAINE COURSE</strong> : Aucune course cochée.</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowRaceSelectionGrid(true)}
+                className="px-3 py-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-xs border border-amber-500/40 transition-colors cursor-pointer shrink-0 flex items-center gap-1.5"
+              >
+                <CheckSquare className="w-3.5 h-3.5" />
+                <span>Sélectionner des courses</span>
+              </button>
             </div>
           )}
         </div>

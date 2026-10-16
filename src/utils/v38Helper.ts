@@ -1,5 +1,5 @@
 import { CourseHippique, Partant, PronosticSynthese } from '../types/turf';
-import { calculerPerformance3Musiques, classerChevauxFormeEtPoints } from './turfCalculations';
+import { calculerPerformance3Musiques, calculerPerformanceTandem, getPartantDriverMusique, classerChevauxFormeEtPoints } from './turfCalculations';
 
 export type SurprisesMode = 'all_3' | 'top2_odds' | 'top2_numbers' | 'custom';
 export type DelaissesSortMode = 'desc_number' | 'asc_number' | 'asc_odds';
@@ -53,6 +53,7 @@ export interface V38Result {
   assignedCordes?: Map<number, number>;
   surprisesMode?: SurprisesMode;
   delaissesSortMode?: DelaissesSortMode;
+  systeme74Ranked: any[];
 }
 
 /**
@@ -271,6 +272,7 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     const indexValeur = p.indexValeur !== undefined 
       ? Number(p.indexValeur) 
       : Math.round((hippoScore - genyOdds) * 10) / 10;
+    const scoreX = (73 + num) - genyOdds;
 
     return {
       ...p,
@@ -280,6 +282,7 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
       hippoScore,
       genyOdds,
       coteSort: genyOdds,
+      scoreX,
     };
   });
 
@@ -324,115 +327,40 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     }
   }
 
-  // 3. CLASSEMENT UNIQUE DES 12 CHEVAUX TROUVÉS EN FONCTION DE LEUR COTE CROISSANTE
-  const selectionAll = [...selectedPool].sort(sortAscByOdds);
+  // --- SYSTÈME 74 RANKING ---
+  const activePartants = enriched.filter(p => !p.estNonPartant && p.statut !== 'Non-partant');
+  const systeme74Ranked = [...activePartants].map(p => {
+    const num = Number(p.numero);
+    const cote = getHorseGenyOdds(p);
+    const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+    return { ...p, scoreX, cote };
+  }).sort((a, b) => b.scoreX - a.scoreX);
 
-  // Récupérer également tous les autres partants actifs non retenus pour les Délaissés
-  const selected12Nums = new Set(selectionAll.map(p => Number(p.numero)));
-  const remainingActiveSorted = allActiveSorted.filter(p => !selected12Nums.has(Number(p.numero)));
+  const favoris = systeme74Ranked.slice(0, 3);             // 1er au 3e N°
+  const outsiders = systeme74Ranked.slice(3, 6);           // 4e au 6e N°
+  const tocardsSpeculatifs = systeme74Ranked.slice(6, 10); // 7e au 10e N° (4 N°)
+  const remaining74 = systeme74Ranked.slice(10);
+  const surprises = remaining74.slice(0, 4);
 
-  const totalSelected = selectionAll.length;
-
-  let basesSolides: typeof enriched = [];
-  let chancesSerieuses: typeof enriched = [];
-  let tocardsSpeculatifs: typeof enriched = [];
-  let surprises: typeof enriched = [];
-  let delaisses: typeof enriched = [];
-
-  // Tri par numéro de dossard croissant (du plus petit au plus grand)
-  const sortAscByNumber = (a: any, b: any) => Number(a.numero) - Number(b.numero);
-  // Tri par numéro de dossard décroissant ("du plus grand numéro au plus petit")
-  const sortDescByNumber = (a: any, b: any) => Number(b.numero) - Number(a.numero);
-
-  let favoris: typeof enriched = [];
-  let outsiders: typeof enriched = [];
-  let baseSurprises: typeof enriched = [];
-
-  // Structure demandée par l'utilisateur :
-  // FAVORIS (3 N°) : 1er, 2e, 3e
-  // OUTSIDERS (3 N°) : 4e, 5e, 6e
-  // TOCARDS (3 N°) : 7e, 8e, 9e
-  // SURPRISES (4 N°) : 10e, 11e + les 2 plus grands numéros des délaissés
-  if (totalSelected >= 11) {
-    favoris = selectionAll.slice(0, 3);                // 1er, 2e, 3e (3 N° FAVORIS)
-    outsiders = selectionAll.slice(3, 6);              // 4e, 5e, 6e (3 N° OUTSIDERS)
-    tocardsSpeculatifs = selectionAll.slice(6, 9);     // 7e, 8e, 9e (3 N° TOCARDS)
-    baseSurprises = selectionAll.slice(9, 11);         // 10e, 11e (2 N° de base des Surprises)
-  } else if (totalSelected >= 9) {
-    favoris = selectionAll.slice(0, Math.min(3, totalSelected));
-    outsiders = selectionAll.slice(3, Math.min(6, totalSelected));
-    tocardsSpeculatifs = selectionAll.slice(6, Math.min(9, totalSelected));
-    baseSurprises = selectionAll.slice(9, Math.min(11, totalSelected));
-  } else if (totalSelected >= 6) {
-    favoris = selectionAll.slice(0, Math.min(3, totalSelected));
-    outsiders = selectionAll.slice(3, Math.min(6, totalSelected));
-    tocardsSpeculatifs = selectionAll.slice(6, Math.min(9, totalSelected));
-    baseSurprises = [];
-  } else {
-    favoris = selectionAll.slice(0, Math.min(3, totalSelected));
-    outsiders = selectionAll.slice(3, Math.min(6, totalSelected));
-    tocardsSpeculatifs = [];
-    baseSurprises = [];
-  }
-
-  // Partants actifs non assignés aux 11 premiers (Favoris, Outsiders, Tocards et BaseSurprises)
-  const assigned11Nums = new Set([
+  const assignedNums = new Set([
     ...favoris.map(p => Number(p.numero)),
     ...outsiders.map(p => Number(p.numero)),
     ...tocardsSpeculatifs.map(p => Number(p.numero)),
-    ...baseSurprises.map(p => Number(p.numero)),
+    ...surprises.map(p => Number(p.numero)),
   ]);
-  const initialDelaisses = allActiveSorted.filter(p => !assigned11Nums.has(Number(p.numero)));
+  const delaisses = activePartants.filter(p => !assignedNums.has(Number(p.numero)));
 
-  // "Mais les 2 plus grand n° des délaissés viennent dans 'surprises' portant à 4 numéros SURPRISES"
-  const initialDelaissesSortedDesc = [...initialDelaisses].sort(sortDescByNumber);
-  const extraSurprisesFromDelaisses = initialDelaissesSortedDesc.slice(0, 2);
-  const remainingDelaisses = initialDelaissesSortedDesc.slice(2);
-
-  // Construction des 4 SURPRISES (10e & 11e + 2 plus grands numéros des délaissés)
-  let rawSurprises = [...baseSurprises, ...extraSurprisesFromDelaisses];
-
-  // Récupération des options de configuration pour les Surprises et Délaissés
-  const effectiveSurprisesMode: SurprisesMode = options?.surprisesMode 
-    || (typeof window !== 'undefined' ? (localStorage.getItem(V38_SURPRISES_MODE_STORAGE_KEY) as SurprisesMode) : null)
-    || 'all_3';
-
-  const effectiveDelaissesSort: DelaissesSortMode = options?.sortDelaisses
-    || (typeof window !== 'undefined' ? (localStorage.getItem(V38_DELAISSES_SORT_STORAGE_KEY) as DelaissesSortMode) : null)
-    || 'desc_number';
-
-  // Application de la sélection des SUR (SURPRISES) :
-  if (effectiveSurprisesMode === 'custom' && options?.customSurprisesNums && options.customSurprisesNums.length > 0) {
-    const customSet = new Set(options.customSurprisesNums.map(n => Number(n)));
-    surprises = allActiveSorted.filter(p => customSet.has(Number(p.numero))).sort(sortAscByPerformancePoints);
-    const assignedNums = new Set([
-      ...favoris.map(p => Number(p.numero)),
-      ...outsiders.map(p => Number(p.numero)),
-      ...tocardsSpeculatifs.map(p => Number(p.numero)),
-      ...surprises.map(p => Number(p.numero)),
-    ]);
-    delaisses = allActiveSorted.filter(p => !assignedNums.has(Number(p.numero)));
-  } else {
-    // Mode standard conforme à la demande : 4 numéros SURPRISES classés en fonction de la Classification Officielle par Points de Performance
-    surprises = [...rawSurprises].sort(sortAscByPerformancePoints);
-    delaisses = [...remainingDelaisses];
-  }
-
-  // Tri des DÉLAISSÉS : "Classe les délaissés du plus grand numéro au plus petit"
-  let finalDelaisses = [...delaisses];
-  if (effectiveDelaissesSort === 'desc_number') {
-    // Du plus grand numéro au plus petit (décroissant)
-    finalDelaisses.sort(sortDescByNumber);
-  } else if (effectiveDelaissesSort === 'asc_number') {
-    // Du plus petit au plus grand (croissant)
-    finalDelaisses.sort(sortAscByNumber);
-  } else {
-    // Par cote croissante
-    finalDelaisses.sort(sortAscByOdds);
-  }
-
-  const selection12 = selectionAll.slice(0, Math.min(12, totalSelected));
+  const selection12 = systeme74Ranked.slice(0, Math.min(12, systeme74Ranked.length));
   const selection11 = selection12; // Rétrocompatibilité
+
+  const finalDelaisses = [...delaisses].map(p => {
+    const num = Number(p.numero);
+    const cote = getHorseGenyOdds(p);
+    const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+    return { ...p, scoreX, cote };
+  }).sort((a, b) => b.scoreX - a.scoreX);
+  const effectiveSurprisesMode: SurprisesMode = options?.surprisesMode || 'all_3';
+  const effectiveDelaissesSort: DelaissesSortMode = options?.sortDelaisses || 'asc_odds';
 
   return {
     isPlat,
@@ -448,20 +376,21 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     poolG3,
     selection11,
     selection12,
-    favoris: [...favoris].sort(sortAscByOdds),
-    outsiders: [...outsiders].sort(sortAscByOdds),
+    favoris: [...favoris].sort((a, b) => b.scoreX - a.scoreX),
+    outsiders: [...outsiders].sort((a, b) => b.scoreX - a.scoreX),
     // Rétrocompatibilité complète :
-    basesSolides: [...favoris].sort(sortAscByOdds),
-    chancesSerieuses: [...outsiders].sort(sortAscByOdds),
-    tocardsSpeculatifs: [...tocardsSpeculatifs].sort(sortAscByOdds),
-    // Les surprises (classées selon la Classification Officielle par Points de Performance)
-    surprises: [...surprises].sort(sortAscByPerformancePoints),
+    basesSolides: [...favoris].slice(0, 2).sort((a, b) => b.scoreX - a.scoreX),
+    chancesSerieuses: [...outsiders].sort((a, b) => b.scoreX - a.scoreX),
+    tocardsSpeculatifs: [...tocardsSpeculatifs].sort((a, b) => b.scoreX - a.scoreX),
+    // Les surprises (classées par Score X décroissant)
+    surprises: [...surprises].sort((a, b) => b.scoreX - a.scoreX),
     delaisses: finalDelaisses,
     selectionV38: selection12,
     remainingV38: finalDelaisses,
     assignedCordes,
     surprisesMode: effectiveSurprisesMode,
     delaissesSortMode: effectiveDelaissesSort,
+    systeme74Ranked,
   };
 }
 
@@ -516,7 +445,8 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
   const favorisNums = new Set(favoris.map(p => Number(p.numero)));
   const outsiderNums = new Set(outsiders.map(p => Number(p.numero)));
   const tocardNums = new Set(tocardsSpeculatifs.map(p => Number(p.numero)));
-  const surpriseNums = new Set(surprises.map(p => Number(p.numero)));
+  // Hiérarchie d'analyse V38 : La sélection des surprises est déjà calculée dans v38
+  const surpriseNums = new Set(v38.surprises.map(p => Number(p.numero)));
 
   const allPartants = (course.partants || []).filter(p => !p.estNonPartant && p.statut !== 'Non-partant');
 
@@ -614,25 +544,20 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     C: rows[2],
   };
 
-  // Cote map et Performance map pour les tri des cases
+  // Système 74 difference X map pour le tri des cases
   const horseOddsMap = new Map<number, number>();
   const horsePerfPointsMap = new Map<number, number>();
   for (const p of allPartants) {
     horseOddsMap.set(Number(p.numero), getHorseGenyOdds(p));
     horsePerfPointsMap.set(Number(p.numero), calculerPerformance3Musiques(p.musique || '').totalPoints);
   }
-  const sortByOddsAsc = (a: number, b: number) => {
+  const sortBySysteme74Desc = (a: number, b: number) => {
     const oA = horseOddsMap.get(a) ?? 99;
     const oB = horseOddsMap.get(b) ?? 99;
-    if (oA !== oB) return oA - oB;
+    const scoreXA = (73 + a) - oA;
+    const scoreXB = (73 + b) - oB;
+    if (scoreXA !== scoreXB) return scoreXB - scoreXA;
     return a - b;
-  };
-
-  const sortByPerfPointsAsc = (a: number, b: number) => {
-    const pA = horsePerfPointsMap.get(a) ?? 99;
-    const pB = horsePerfPointsMap.get(b) ?? 99;
-    if (pA !== pB) return pA - pB;
-    return sortByOddsAsc(a, b);
   };
 
   // Dispatcher chaque partant actif :
@@ -655,14 +580,13 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
     }
   }
 
-  // Trier les numéros par cote croissante (Favoris, Outsiders, Tocards, Délaissés)
-  // et par Points de Performance pour la colonne SURPRISES
+  // Trier les numéros par Système 74 Différence (X) décroissante dans toutes les catégories
   for (const r of rows) {
-    r.bases.sort(sortByOddsAsc);
-    r.chances.sort(sortByOddsAsc);
-    r.tocards.sort(sortByOddsAsc);
-    r.surprises.sort(sortByPerfPointsAsc);
-    r.delaisses.sort(sortByOddsAsc);
+    r.bases.sort(sortBySysteme74Desc);
+    r.chances.sort(sortBySysteme74Desc);
+    r.tocards.sort(sortBySysteme74Desc);
+    r.surprises.sort(sortBySysteme74Desc);
+    r.delaisses.sort(sortBySysteme74Desc);
   }
 
   // --- 4 Lignes supplémentaires de Classification par Forme ---
@@ -721,11 +645,11 @@ export function computeDisciplineGrid(course: CourseHippique): DisciplineGridRes
       }
     }
 
-    row.bases.sort(sortByOddsAsc);
-    row.chances.sort(sortByOddsAsc);
-    row.tocards.sort(sortByOddsAsc);
-    row.surprises.sort(sortByPerfPointsAsc);
-    row.delaisses.sort(sortByOddsAsc);
+    row.bases.sort(sortBySysteme74Desc);
+    row.chances.sort(sortBySysteme74Desc);
+    row.tocards.sort(sortBySysteme74Desc);
+    row.surprises.sort(sortBySysteme74Desc);
+    row.delaisses.sort(sortBySysteme74Desc);
 
     return row;
   });

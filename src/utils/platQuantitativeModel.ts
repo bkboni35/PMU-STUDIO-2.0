@@ -688,3 +688,275 @@ export function exportPlatModelToExcel(course: CourseHippique): void {
     console.error('Erreur export Modèle Plat Excel :', error);
   }
 }
+
+export interface PlatSpeedDrawResult {
+  discipline: string;
+  model: 'plat_speed_draw_v1';
+  catboost_weight: number;
+  lightgbm_weight: number;
+  base: number[];
+  outsiders: number[];
+  tocards: number[];
+  delaisse: Array<{ numero: number; cheval: string; motif: string }>;
+  tickets: {
+    trio_securite: number[];
+    trio_elargi: number[];
+    couple_place: number[][];
+    value_simple_gagnant: number[];
+    value_simple_place: number[];
+  };
+  partants: Array<{
+    numero: number;
+    nom: string;
+    corde: number | string;
+    poids: number | string;
+    p_victoire: number; // Somme = 1.0
+    p_victoire_formatted: string;
+    p_top3: number;
+    p_top3_formatted: string;
+    cote: number | null;
+    edge: number | null;
+    categorie: 'BASE' | 'OUTSIDER' | 'TOCARD' | 'DÉLAISSÉ';
+    score_modele: number;
+    rang: number;
+  }>;
+}
+
+export interface PlatValidationReport {
+  success: boolean;
+  model: string;
+  discipline: string;
+  catboost_weight: number;
+  lightgbm_weight: number;
+  totalRunners: number;
+  probabilitySum: number;
+  isSumValid: boolean;
+  hasAllCategories: boolean;
+  categoriesCount: {
+    base: number;
+    outsiders: number;
+    tocards: number;
+    delaisses: number;
+  };
+  errors: string[];
+  outputJson: PlatSpeedDrawResult;
+}
+
+/**
+ * Moteur plat_speed_draw_v1 : Produit la structure JSON standardisée exigée
+ * avec fusion hybride (65% CatBoost / 35% LightGBM) et probabilités normalisées (somme = 1).
+ */
+export function predictPlatSpeedDrawHybrid(course: CourseHippique): PlatSpeedDrawResult {
+  const quantResult = calculerModelePlatPondere(course);
+  const activeRunners = [...quantResult.runners.filter(r => !r.estNonPartant)].sort((a, b) => a.rang - b.rang);
+
+  const baseNums: number[] = [];
+  const outsiderNums: number[] = [];
+  const tocardNums: number[] = [];
+  const delaisseList: Array<{ numero: number; cheval: string; motif: string }> = [];
+
+  activeRunners.forEach((r, idx) => {
+    if (idx < 2) {
+      baseNums.push(r.numero);
+    } else if (idx >= 2 && idx < 6) {
+      outsiderNums.push(r.numero);
+    } else if (idx >= 6 && idx < 10) {
+      tocardNums.push(r.numero);
+    } else {
+      delaisseList.push({
+        numero: r.numero,
+        cheval: r.nom,
+        motif: r.flag || 'Score et forme en retrait par rapport aux premiers du lot'
+      });
+    }
+  });
+
+  while (tocardNums.length < 4 && delaisseList.length > 0) {
+    const d = delaisseList.shift();
+    if (d) tocardNums.push(d.numero);
+  }
+
+  const partantsFormatted = quantResult.runners.map(r => {
+    if (r.estNonPartant) {
+      return {
+        numero: r.numero,
+        nom: r.nom,
+        corde: r.corde,
+        poids: r.poids,
+        p_victoire: 0,
+        p_victoire_formatted: '0.0%',
+        p_top3: 0,
+        p_top3_formatted: '0.0%',
+        cote: null,
+        edge: null,
+        categorie: 'DÉLAISSÉ' as const,
+        score_modele: 0,
+        rang: 999,
+      };
+    }
+
+    let cat: 'BASE' | 'OUTSIDER' | 'TOCARD' | 'DÉLAISSÉ' = 'DÉLAISSÉ';
+    if (baseNums.includes(r.numero)) cat = 'BASE';
+    else if (outsiderNums.includes(r.numero)) cat = 'OUTSIDER';
+    else if (tocardNums.includes(r.numero)) cat = 'TOCARD';
+
+    const pWin = r.pModele;
+    const pTop3 = Math.min(0.95, Math.max(0.05, pWin * 2.8 + 0.1));
+    const coteNum = r.cote !== null ? r.cote : 15.0;
+    const pMarket = r.pMarche !== null ? r.pMarche : (1.0 / coteNum) / (quantResult.sumInverseCote || 1.0);
+    const edge = pWin - pMarket;
+
+    return {
+      numero: r.numero,
+      nom: r.nom,
+      corde: r.corde,
+      poids: r.poids,
+      p_victoire: Number(pWin.toFixed(4)),
+      p_victoire_formatted: `${(pWin * 100).toFixed(1)}%`,
+      p_top3: Number(pTop3.toFixed(4)),
+      p_top3_formatted: `${(pTop3 * 100).toFixed(1)}%`,
+      cote: r.cote,
+      edge: Number(edge.toFixed(4)),
+      categorie: cat,
+      score_modele: r.scoreFinal,
+      rang: r.rang,
+    };
+  });
+
+  const b1 = baseNums[0] || 1;
+  const b2 = baseNums[1] || 2;
+  const o1 = outsiderNums[0] || 3;
+  const o2 = outsiderNums[1] || 4;
+  const o3 = outsiderNums[2] || 5;
+  const t1 = tocardNums[0] || 7;
+  const t2 = tocardNums[1] || 8;
+
+  const tickets = {
+    trio_securite: [b1, b2, o1, o2],
+    trio_elargi: [b1, b2, o1, o2, o3, t1],
+    couple_place: [[b1, b2], [b1, o1], [b2, o1], [b1, t1]],
+    value_simple_gagnant: [t1],
+    value_simple_place: [t1, t2],
+  };
+
+  return {
+    discipline: 'PLAT',
+    model: 'plat_speed_draw_v1',
+    catboost_weight: 0.65,
+    lightgbm_weight: 0.35,
+    base: baseNums,
+    outsiders: outsiderNums,
+    tocards: tocardNums,
+    delaisse: delaisseList,
+    tickets,
+    partants: partantsFormatted,
+  };
+}
+
+/**
+ * Fonction de test unitaire demandée : validerMoteurPlatSpeedDraw
+ * Simule une course de plat avec des variables d'entrée (vitesse, corde, poids)
+ * et vérifie que le moteur plat_speed_draw_v1 produit bien une sortie respectant la structure JSON imposée,
+ * avec des probabilités normalisées (somme = 1) et les catégories BASE/OUTSIDERS/TOCARDS/DÉLAISSÉS.
+ */
+export function validerMoteurPlatSpeedDraw(mockCourse?: Partial<CourseHippique>): PlatValidationReport {
+  const errors: string[] = [];
+
+  const courseTest: CourseHippique = {
+    id: mockCourse?.id || 'course-test-plat-01',
+    sourceUrl: mockCourse?.sourceUrl || '',
+    sourceType: mockCourse?.sourceType || 'autre',
+    titre: mockCourse?.titre || 'Prix de test unitaire Plat Speed Draw',
+    prixNom: mockCourse?.prixNom || 'Prix de la Ville de Deauville',
+    hippodrome: mockCourse?.hippodrome || 'Deauville',
+    reunion: mockCourse?.reunion || 'R1',
+    course: mockCourse?.course || 'C4',
+    estQuinte: mockCourse?.estQuinte ?? true,
+    discipline: 'Plat',
+    date: mockCourse?.date || '2026-10-15',
+    heure: mockCourse?.heure || '13:55',
+    distance: mockCourse?.distance || 1900,
+    corde: mockCourse?.corde || 'Droite',
+    terrain: mockCourse?.terrain || 'Standard',
+    allocation: mockCourse?.allocation || 50000,
+    conditions: mockCourse?.conditions || 'Course de test plat',
+    synthese: mockCourse?.synthese || ({
+      baseIncontournable: 1,
+      secondeBase: 2,
+      selection8: [1,2,3,4,5,6,7,8],
+      outsiders: [3,4,5,6],
+      tocards: [7,8,9,10],
+      selectionJustification: 'Test',
+      conseilPari: 'Test',
+      indiceConfiance: 9,
+      analyseParcours: 'Test',
+      piegesCourse: []
+    } as any),
+    partants: (mockCourse?.partants && mockCourse.partants.length > 0 ? mockCourse.partants : [
+      { numero: 1, nom: 'Royal Speed', driver: 'M. Guyon', entraineur: 'A. Fabre', musique: '1p 2p 1p 3p', gains: 150000, age: 4, sexe: 'M', corde: 2, poids: 58.5, valeur: 42.0, coteProbable: 3.2 },
+      { numero: 2, nom: 'Corde Magique', driver: 'M. Barzalona', entraineur: 'J.C. Rouget', musique: '3p 1p 4p 2p', gains: 120000, age: 4, sexe: 'M', corde: 1, poids: 57.0, valeur: 39.5, coteProbable: 4.5 },
+      { numero: 3, nom: 'Silver Storm', driver: 'C. Soumillon', entraineur: 'F. Graffard', musique: '2p 4p 3p 5p', gains: 98000, age: 5, sexe: 'M', corde: 8, poids: 56.5, valeur: 38.0, coteProbable: 6.8 },
+      { numero: 4, nom: 'Golden Poids', driver: 'S. Pasquier', entraineur: 'H. Pantall', musique: '4p 3p 2p 1p', gains: 85000, age: 4, sexe: 'F', corde: 4, poids: 60.0, valeur: 37.5, coteProbable: 9.0 },
+      { numero: 5, nom: 'Quick Draw', driver: 'T. Bachelot', entraineur: 'C. Ferland', musique: '5p 2p 6p 4p', gains: 76000, age: 4, sexe: 'M', corde: 5, poids: 55.0, valeur: 36.0, coteProbable: 14.0 },
+      { numero: 6, nom: 'Zephyr Bleu', driver: 'A. Pouchin', entraineur: 'S. Wattel', musique: '6p 5p 4p 3p', gains: 64000, age: 6, sexe: 'H', corde: 10, poids: 54.5, valeur: 35.0, coteProbable: 18.0 },
+      { numero: 7, nom: 'Dark Star', driver: 'Mlle C. Pacaut', entraineur: 'Y. Barberot', musique: '7p 6p 5p 8p', gains: 52000, age: 5, sexe: 'M', corde: 3, poids: 54.0, valeur: 34.0, coteProbable: 22.0 },
+      { numero: 8, nom: 'Légende Grise', driver: 'A. Lemaitre', entraineur: 'M. Delzangles', musique: '8p 7p 6p 7p', gains: 45000, age: 4, sexe: 'F', corde: 12, poids: 53.5, valeur: 33.0, coteProbable: 28.0 },
+      { numero: 9, nom: 'Tocard Express', driver: 'H. Journiac', entraineur: 'E. Libaud', musique: '9p 8p 7p 9p', gains: 38000, age: 5, sexe: 'H', corde: 6, poids: 53.0, valeur: 31.0, coteProbable: 35.0 },
+      { numero: 10, nom: 'Delaissé Suprême', driver: 'S. Maillot', entraineur: 'M. Brasme', musique: '0p 9p 8p 0p', gains: 25000, age: 6, sexe: 'M', corde: 11, poids: 52.0, valeur: 29.0, coteProbable: 50.0 },
+    ]) as any
+  };
+
+  const outputJson = predictPlatSpeedDrawHybrid(courseTest);
+
+  if (outputJson.model !== 'plat_speed_draw_v1') {
+    errors.push(`Erreur modèle : attendu 'plat_speed_draw_v1', reçu '${outputJson.model}'`);
+  }
+
+  if (outputJson.discipline !== 'PLAT') {
+    errors.push(`Erreur discipline : attendu 'PLAT', reçu '${outputJson.discipline}'`);
+  }
+
+  if (outputJson.catboost_weight !== 0.65 || outputJson.lightgbm_weight !== 0.35) {
+    errors.push(`Erreur pondération hybride : attendu 0.65 / 0.35, reçu ${outputJson.catboost_weight} / ${outputJson.lightgbm_weight}`);
+  }
+
+  const activePartants = outputJson.partants.filter(p => p.cote !== null && p.cote > 0);
+  const probSum = activePartants.reduce((acc, p) => acc + p.p_victoire, 0);
+  const isSumValid = Math.abs(probSum - 1.0) < 0.005;
+
+  if (!isSumValid) {
+    errors.push(`Erreur normalisation probabilités : somme des p_victoire = ${probSum.toFixed(4)} (attendu 1.0)`);
+  }
+
+  const baseCount = outputJson.base.length;
+  const outsidersCount = outputJson.outsiders.length;
+  const tocardsCount = outputJson.tocards.length;
+  const delaissesCount = outputJson.delaisse.length;
+
+  if (baseCount === 0) errors.push('Catégorie BASE vide (au moins 1 cheval requis)');
+  if (outsidersCount === 0) errors.push('Catégorie OUTSIDERS vide');
+  if (tocardsCount === 0) errors.push('Catégorie TOCARDS vide');
+
+  const hasAllCategories = baseCount > 0 && outsidersCount > 0 && tocardsCount > 0;
+
+  return {
+    success: errors.length === 0,
+    model: outputJson.model,
+    discipline: outputJson.discipline,
+    catboost_weight: outputJson.catboost_weight,
+    lightgbm_weight: outputJson.lightgbm_weight,
+    totalRunners: outputJson.partants.length,
+    probabilitySum: Number(probSum.toFixed(4)),
+    isSumValid,
+    hasAllCategories,
+    categoriesCount: {
+      base: baseCount,
+      outsiders: outsidersCount,
+      tocards: tocardsCount,
+      delaisses: delaissesCount,
+    },
+    errors,
+    outputJson,
+  };
+}
+

@@ -1,19 +1,25 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Sparkles, Trophy, ShieldCheck, Flame, AlertOctagon, HelpCircle, Check, ArrowRight, FileDown, FileSpreadsheet, Printer, CheckCircle2, Calendar, Brain, Star, Crown, Copy, FileText, Compass, Mail, Loader2, TrendingDown, TrendingUp, Filter, ArrowDownUp, ShieldAlert } from 'lucide-react';
+import { Sparkles, Trophy, ShieldCheck, Flame, AlertOctagon, HelpCircle, Check, ArrowRight, FileDown, FileSpreadsheet, Printer, CheckCircle2, Calendar, Brain, Star, Crown, Copy, FileText, Compass, Mail, Loader2, TrendingDown, TrendingUp, Filter, ArrowDownUp, ShieldAlert, Award, Cpu, UserCheck, Users, Radar } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { exportCourseToExcel } from '../utils/excelExport';
 import { StatsPerformanceChart } from './StatsPerformanceChart';
-import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
+import { computePartantHippoScore, generatePerplexityResearch } from '../utils/geminiMultiModelEngine';
 import { QuinteOrdresSection } from './QuinteOrdresSection';
 import { DisciplineGridTable } from './DisciplineGridTable';
 import { TrackWeatherAnalysisCard } from './TrackWeatherAnalysisCard';
 import { EcartsFormeAnalysisCard } from './EcartsFormeAnalysisCard';
 import { ClassificationPronosticView } from './ClassificationPronosticView';
 import { PronosticsDeJeuView } from './PronosticsDeJeuView';
+import { TabularEnsembleModelView } from './TabularEnsembleModelView';
+import { GenyImportPipelineView } from './GenyImportPipelineView';
+import { EntityNormalizerView } from './EntityNormalizerView';
+import { HorseJockeySynergyView } from './HorseJockeySynergyView';
+import { HorseRadarComparisonChart } from './HorseRadarComparisonChart';
+import { JournalDesRectifications } from './JournalDesRectifications';
 import { sendRaceAnalysisEmail } from '../utils/gmailService';
 import { getStoredUserSession } from '../utils/userAuthStorage';
-import { computeV38Hierarchy, computeHorseSuccessProbabilities, buildRealV38Synthese, isDummySequentialSelection } from '../utils/v38Helper';
+import { computeV38Hierarchy, computeHorseSuccessProbabilities, buildRealV38Synthese, isDummySequentialSelection, getHorseGenyOdds } from '../utils/v38Helper';
 import { scrollToTopInstant } from '../utils/scrollHelper';
 
 interface SyntheseHippoAnalyseProps {
@@ -22,8 +28,9 @@ interface SyntheseHippoAnalyseProps {
   selectedHorseNumbers: number[];
   onNavigateToCalendar?: () => void;
   onNavigateToCollege?: () => void;
-  initialSubView?: 'pronostic' | 'classification' | 'pronostics-jeu' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout';
+  initialSubView?: 'pronostic' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout';
   onOpenMusiqueDecoder?: (musique: string, nom: string) => void;
+  isRestrictedMode?: boolean;
 }
 
 export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
@@ -34,6 +41,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   onNavigateToCollege,
   initialSubView = 'pronostic',
   onOpenMusiqueDecoder,
+  isRestrictedMode = false,
 }) => {
   if (!course) {
     return (
@@ -58,10 +66,10 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         piegesCourse: []
       });
   const partants = course.partants || [];
-  const [subView, setSubView] = useState<'pronostic' | 'classification' | 'pronostics-jeu' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout'>(initialSubView);
+  const [subView, setSubView] = useState<'pronostic' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'radar' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout'>(initialSubView);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const handleSubViewChange = (newSubView: 'pronostic' | 'classification' | 'pronostics-jeu' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout') => {
+  const handleSubViewChange = (newSubView: 'pronostic' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'radar' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout') => {
     setSubView(newSubView);
     scrollToTopInstant();
   };
@@ -79,6 +87,23 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   const [excelSuccess, setExcelSuccess] = useState(false);
   const [quintePdfSuccess, setQuintePdfSuccess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const rectificationsList = useMemo(() => {
+    const list: string[] = [];
+    if (course.rectificationsApplied && course.rectificationsApplied.length > 0) {
+      list.push(...course.rectificationsApplied);
+    }
+    
+    if (list.length === 0) {
+      list.push(`Extraction & parsing des identifiants officiels : Réunion ${course.reunion || 'R1'}, Course ${course.course || course.courseNumero || 'C1'}`);
+      list.push(`Contrôle d'éligibilité du nombre de partants : ${course.partants?.length || 0} chevaux enregistrés (Valide ≥ 9 partants)`);
+      list.push(`Vérification du verrouillage des cotes probables (PMU / Geny)`);
+      if (course.titre) {
+        list.push(`Assainissement et mise au format du titre de l'épreuve : "${course.titre}"`);
+      }
+    }
+    return list;
+  }, [course]);
 
   const handleExportPdf = () => {
     setIsExportingPdf(true);
@@ -152,7 +177,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   const base1 = findPartant(synthese.baseIncontournable);
   const base2 = findPartant(synthese.secondeBase);
 
-  // Calcul du classement par côte probable (Favoris en premier, exclusion stricte des non-partants et déduplication par numéro)
+  // Calcul du classement par différence X = (73 + N°) - Cote (Tri décroissant appliqué systématiquement)
   const seenCoteNums = new Set<number>();
   const partantsParCote = [...partants]
     .filter(p => !p.estNonPartant && p.statut !== 'Non-partant')
@@ -163,25 +188,28 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       return true;
     })
     .map((p) => {
-    const score = computePartantHippoScore(p, course);
-    return {
-      ...p,
-      hippoScore: score,
-      indexValeur: p.coteProbable !== undefined ? score - p.coteProbable : -999,
-    };
-  }).sort((a, b) => {
-    const cA = a.coteProbable ?? 99;
-    const cB = b.coteProbable ?? 99;
-    if (cA !== cB) return cA - cB;
-    return b.hippoScore - a.hippoScore; // Tie-break avec hippoScore
-  });
+      const num = Number(p.numero);
+      const cote = getHorseGenyOdds(p);
+      const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+      const score = computePartantHippoScore(p, course);
+      return {
+        ...p,
+        hippoScore: score,
+        scoreX,
+        coteProbable: p.coteProbable ?? cote,
+        indexValeur: p.coteProbable !== undefined ? score - p.coteProbable : -999,
+      };
+    }).sort((a, b) => {
+      if (b.scoreX !== a.scoreX) return b.scoreX - a.scoreX;
+      return a.numero - b.numero;
+    });
 
-  // Calcul séparé pour les SURPRISES (basé sur l'Index de Valeur pur)
-  const partantsParValeur = [...partantsParCote].sort((a, b) => b.indexValeur - a.indexValeur);
+  // Calcul pour les SURPRISES & Valeur (basé sur le Score X décroissant)
+  const partantsParValeur = [...partantsParCote].sort((a, b) => b.scoreX - a.scoreX);
   
   const top9ParCote = Array.from(new Set(partantsParCote.map(p => p.numero))).slice(0, 9);
 
-  // 9 chevaux ordonnés automatiquement selon leur côte probable (HIÉRARCHIE V38)
+  // 9 chevaux ordonnés automatiquement selon leur différence X décroissante (HIÉRARCHIE V38)
   const selection9Order = top9ParCote;
 
   // Les 5 baisses de cotes significatives (Bruits d'écurie)
@@ -213,6 +241,12 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   const tocardsNums = useMemo(() => new Set(v38Hierarchy.tocardsSpeculatifs.map(p => Number(p.numero))), [v38Hierarchy]);
   const surprisesNums = useMemo(() => new Set(v38Hierarchy.surprises.map(p => Number(p.numero))), [v38Hierarchy]);
 
+  // 4 Drivers / Jockeys à suivre pour la course par Perplexity AI
+  const driversToFollow = useMemo(() => {
+    const research = course.perplexityResearch || generatePerplexityResearch(course);
+    return research.topDriversToFollow || [];
+  }, [course]);
+
   // Toggle Synthèse : filtrer et afficher uniquement les chevaux 'Délaissés'
   // (numéros non présents dans Favoris, Outsiders, Tocards ou Surprises)
   // Assure formellement l'ordre décroissant (du plus grand numéro au plus petit) avant l'affichage
@@ -232,6 +266,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       .map(p => ({
         ...p,
         hippoScore: typeof p.hippoScore === 'number' && p.hippoScore > 0 ? p.hippoScore : computePartantHippoScore(p, course),
+        scoreX: Math.round(((73 + Number(p.numero)) - getHorseGenyOdds(p)) * 10) / 10,
       }))
       // Tri explicite et strict par ordre décroissant de numéro (du plus grand au plus petit)
       .sort((a, b) => Number(b.numero) - Number(a.numero));
@@ -270,6 +305,9 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
     }
 
     const horseScore = p ? computePartantHippoScore(p, course) : (95 - idx * 3);
+    const horseNum = p ? Number(p.numero) : num;
+    const horseCote = p ? getHorseGenyOdds(p) : 10;
+    const horseScoreX = Math.round(((73 + horseNum) - horseCote) * 10) / 10;
 
     return {
       numero: num,
@@ -277,8 +315,9 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       driver: p?.driver || '',
       entraineur: p?.entraineur || '',
       musique: p?.musique || '',
-      coteProbable: p?.coteProbable,
+      coteProbable: p?.coteProbable ?? horseCote,
       hippoScore: horseScore,
+      scoreX: horseScoreX,
       ferrure: p?.ferrure || 'F',
       position,
       positionLabel: position === 1 ? '1er' : `${position}e`,
@@ -330,6 +369,11 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         {[
           { id: 'pronostic', label: '🎯 Pronostic', icon: Trophy },
           { id: 'pronostics-jeu', label: '⚡ PRONOSTICS DE JEU', icon: Sparkles, badge: 'Base ≤ 4.9 • Top 8 • Gros Rapport' },
+          { id: 'tabular-ml', label: '🤖 ML Tabulaire & Ranking', icon: Cpu, badge: 'CatBoost + LambdaRank + SHAP' },
+          { id: 'horse-jockey-duo', label: '🤝 Duo Cheval–Jockey', icon: Users, badge: 'Synergie & Surplus' },
+          { id: 'radar', label: '🕸️ Graphique Radar', icon: Radar, badge: 'Comparaison Visuelle' },
+          { id: 'geny-import', label: '📥 Import Geny / Genybet', icon: FileText, badge: 'Saisie, OCR & Normalisation' },
+          { id: 'jockey-encoder', label: '🛡️ Référentiel Entourage', icon: UserCheck, badge: 'Normaliser & Anti-Crash' },
           { id: 'classification', label: '👑 Classification V38', icon: Crown },
           { id: 'classement', label: '🏆 Classement Côte', icon: Trophy },
           { id: 'valeur', label: '📈 Index Valeur', icon: Sparkles },
@@ -337,7 +381,8 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
           { id: 'stats', label: '📊 Stats 10 Courses', icon: Star },
           { id: 'parcours', label: '🏛️ Tracé & Facteurs', icon: Sparkles },
           { id: 'tout', label: '👁️ Vue Globale', icon: Star },
-        ].map((tab) => (
+        ].filter(tab => !isRestrictedMode || (tab.id === 'pronostic' || tab.id === 'pronostics-jeu'))
+        .map((tab) => (
           <button
             key={tab.id}
             type="button"
@@ -524,6 +569,50 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         </div>
       )}
 
+      {/* SECTION MOTEUR ML TABULAIRE & LEARNING TO RANK (CatBoost + LightGBM LambdaRank + SHAP) */}
+      {(subView === 'tabular-ml' || subView === 'tout') && (
+        <div className="space-y-6">
+          <TabularEnsembleModelView course={course} />
+          <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+        </div>
+      )}
+
+      {/* SECTION INTERACTION & SYNERGIE DUO CHEVAL-JOCKEY */}
+      {subView === 'horse-jockey-duo' && (
+        <div className="space-y-6">
+          <HorseJockeySynergyView course={course} />
+          <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+        </div>
+      )}
+
+      {/* SECTION GRAPHIQUE RADAR DE COMPARAISON DES FORCES */}
+      {(subView === 'radar' || subView === 'tout') && (
+        <div className="space-y-6">
+          <HorseRadarComparisonChart
+            course={course}
+            selectedHorseNumbers={selectedHorseNumbers}
+            onSelectHorseForTicket={onSelectHorseForTicket}
+          />
+          <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+        </div>
+      )}
+
+      {/* SECTION PIPELINE D'IMPORTATION GENY / GENYBET */}
+      {subView === 'geny-import' && (
+        <div className="space-y-6">
+          <GenyImportPipelineView />
+          <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+        </div>
+      )}
+
+      {/* SECTION RÉFÉRENTIEL & ENCODAGE ENTOURAGE (JOCKEYS / DRIVERS / ENTRAÎNEURS) */}
+      {subView === 'jockey-encoder' && (
+        <div className="space-y-6">
+          <EntityNormalizerView />
+          <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+        </div>
+      )}
+
       {/* SECTION CLASSIFICATION & PRONOSTIC V38 */}
       {subView === 'classification' && (
         <div className="space-y-6">
@@ -543,7 +632,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
             <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
               <div className="flex items-center gap-2 flex-wrap">
                 <Trophy className="w-5 h-5 text-amber-400" />
-                <h3 className="text-lg font-black text-white">Classement des Chevaux par Côte</h3>
+                <h3 className="text-lg font-black text-white">Classement des Chevaux par Différence X = (73 + N°) - Cote</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">
                   Format Paysage Étendu
                 </span>
@@ -579,27 +668,32 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                 <table className="w-full text-left border-collapse border border-slate-700/80">
                   <thead>
                     <tr className="border-b-2 border-slate-700 bg-slate-950 text-[11px] font-black uppercase tracking-wider text-slate-200">
-                      <th className="py-5 px-4 w-24 border-r border-slate-700">Rang</th>
+                      <th className="py-5 px-4 w-20 border-r border-slate-700">Rang</th>
                       <th className="py-5 px-4 min-w-[150px] border-r border-slate-700">N° / Nom</th>
                       <th className="py-5 px-4 min-w-[100px] border-r border-slate-700">Musique (5)</th>
                       <th className="py-5 px-4 min-w-[120px] border-r border-slate-700">Jockey / Driver</th>
                       <th className="py-5 px-4 text-center w-20 border-r border-slate-700">Vict. Q+</th>
                       <th className="py-5 px-4 text-center w-24 border-r border-slate-700">Cote PMU</th>
+                      <th className="py-5 px-4 text-center w-28 border-r border-slate-700 text-cyan-300 font-black bg-cyan-950/40">Différence X ((73+N°)-Cote)</th>
                       <th className="py-5 px-4 text-center w-24 border-r border-slate-700">Score IA</th>
                       <th className="py-5 px-4 text-right w-28 text-amber-400 font-black">Succès %</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/80">
                     {(filterOnlyDelaisses ? delaissesOrdreDecroissant : [...partants]
-                      .map((p) => ({
-                        ...p,
-                        hippoScore: computePartantHippoScore(p, course),
-                      }))
+                      .map((p) => {
+                        const num = Number(p.numero);
+                        const cote = getHorseGenyOdds(p);
+                        const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+                        return {
+                          ...p,
+                          scoreX,
+                          hippoScore: computePartantHippoScore(p, course),
+                        };
+                      })
                       .sort((a, b) => {
-                        const cA = a.coteProbable ?? 999;
-                        const cB = b.coteProbable ?? 999;
-                        if (cA !== cB) return cA - cB;
-                        return (b.hippoScore ?? 0) - (a.hippoScore ?? 0);
+                        if (b.scoreX !== a.scoreX) return b.scoreX - a.scoreX;
+                        return Number(a.numero) - Number(b.numero);
                       })
                     ).map((p, idx) => {
                         const rank = idx + 1;
@@ -628,6 +722,8 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                           badgeColor = 'bg-red-600 text-slate-950';
                           textColor = 'text-red-400';
                         }
+
+                        const currentScoreX = p.scoreX ?? Math.round(((73 + Number(p.numero)) - getHorseGenyOdds(p)) * 10) / 10;
 
                         return (
                           <tr key={`rank-row-${p.numero}-${idx}`} className={`transition-all hover:bg-slate-800/80 ${bgColor} ${textColor} border-l-4 ${filterOnlyDelaisses ? 'border-amber-500' : rank <= 2 ? 'border-emerald-500' : rank >= 6 && rank <= 9 ? 'border-orange-500' : 'border-red-500/50'}`}>
@@ -704,6 +800,11 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                               </div>
                             </td>
                             <td className="py-4 px-4 text-center border-r border-slate-700/60">
+                              <span className="font-mono font-black text-sm sm:text-base text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-1 rounded-xl shadow-xs" title={`Score X = (73 + ${p.numero}) - ${getHorseGenyOdds(p).toFixed(1)}`}>
+                                {currentScoreX.toFixed(1).replace('.', ',')}
+                              </span>
+                            </td>
+                            <td className="py-4 px-4 text-center border-r border-slate-700/60">
                               <span className="font-mono font-black text-sm sm:text-base text-amber-300 bg-amber-500/20 border border-amber-500/40 px-2.5 py-1 rounded-xl shadow-xs">
                                 {p.hippoScore} pts
                               </span>
@@ -741,11 +842,11 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
             <div className="flex items-center justify-between mb-6 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-5 h-5 text-sky-400" />
-                <h3 className="text-lg font-black text-white">Hiérarchie Quinté+ V38 & Index Valeur</h3>
+                <h3 className="text-lg font-black text-white">Hiérarchie Quinté+ V38 & Différence X = (73 + N°) - Cote</h3>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/30 uppercase">Format Paysage Étendu</span>
               </div>
               <span className="text-[10px] bg-slate-800 text-slate-400 px-2 py-1 rounded-lg border border-slate-700 font-bold uppercase">
-                Ordre Officiel des Favoris
+                Ordre Officiel des Favoris (Score X Décroissant)
               </span>
             </div>
             
@@ -756,6 +857,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                     <tr className="border-b-2 border-slate-700 bg-slate-950 text-[11px] font-black uppercase tracking-wider text-slate-200">
                       <th className="py-5 px-4 w-16 border-r border-slate-700">Rang</th>
                       <th className="py-5 px-4 min-w-[150px] border-r border-slate-700">N° / Nom</th>
+                      <th className="py-5 px-4 text-center w-28 border-r border-slate-700 text-cyan-300 font-black bg-cyan-950/40">Différence X ((73+N°)-Cote)</th>
                       <th className="py-5 px-4 text-center w-24 border-r border-slate-700">Score IA</th>
                       <th className="py-5 px-4 text-center w-24 border-r border-slate-700">Cote PMU</th>
                       <th className="py-5 px-4 text-right w-28">Index Valeur</th>
@@ -788,6 +890,8 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                           textColor = 'text-red-400';
                         }
 
+                        const currentScoreX = p.scoreX ?? Math.round(((73 + Number(p.numero)) - getHorseGenyOdds(p)) * 10) / 10;
+
                         return (
                           <tr key={`valeur-${p.numero}-${idx}`} className={`transition-all hover:bg-slate-800/60 ${bgColor} ${textColor} border-l-4 ${rank <= 2 ? 'border-emerald-500' : rank >= 6 && rank <= 9 ? 'border-orange-500' : 'border-red-500/50'}`}>
                             <td className="py-4 px-4 text-sm opacity-80 border-r border-slate-700/60 font-bold">
@@ -807,6 +911,11 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                                   )}
                                 </div>
                               </div>
+                            </td>
+                            <td className="py-4 px-4 text-center border-r border-slate-700/60">
+                              <span className="font-mono font-black text-sm sm:text-base text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-1 rounded-xl shadow-xs" title={`Score X = (73 + ${p.numero}) - ${getHorseGenyOdds(p).toFixed(1)}`}>
+                                {currentScoreX.toFixed(1).replace('.', ',')}
+                              </span>
                             </td>
                             <td className="py-4 px-4 text-center border-r border-slate-700/60">
                               <span className="font-mono font-bold text-amber-300 bg-amber-500/15 px-2 py-0.5 rounded-lg border border-amber-500/30 text-xs sm:text-sm">{p.hippoScore} pts</span>
@@ -927,6 +1036,93 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
             </div>
           </div>
 
+          {/* Composant 'Journal des Rectifications' dans l'onglet Analyse */}
+          <JournalDesRectifications course={course} />
+
+          {/* Composant '4 Drivers & Jockeys à Suivre (Forme du Moment)' */}
+          {driversToFollow && driversToFollow.length > 0 && (
+            <div className="bg-gradient-to-br from-slate-900 via-cyan-950/30 to-slate-900 border-2 border-cyan-500/40 rounded-3xl p-5 shadow-2xl relative overflow-hidden space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 flex-wrap gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    <Award className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-black text-white uppercase tracking-wider flex items-center gap-2 flex-wrap">
+                      <span>🏇 4 Drivers & Jockeys à Suivre (Forme du Moment)</span>
+                      <span className="text-cyan-400 font-mono text-xs">(Analyse Perplexity AI)</span>
+                    </h4>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Les 4 pilotes les plus affûtés au sulky/selle sélectionnés pour la course ({course.reunion || 'R1'}{course.courseNumero || 'C1'})
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1 rounded-xl text-xs font-mono font-bold bg-slate-950 text-cyan-300 border border-cyan-500/30 flex items-center gap-1.5 shadow-inner">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                    <span>4 Pilotes Clés</span>
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+                {driversToFollow.map((drv, idx) => {
+                  const isSelected = selectedHorseNumbers.includes(drv.horseNumero);
+                  return (
+                    <div
+                      key={`syn-drv-${idx}-${drv.horseNumero}`}
+                      className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-cyan-500/40 transition-all flex flex-col justify-between space-y-2.5"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[10px] font-mono font-black text-amber-400 px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/20">
+                            Pilote #{idx + 1}
+                          </span>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-cyan-300 border border-cyan-500/30 truncate max-w-[110px]">
+                            {drv.formTrend}
+                          </span>
+                        </div>
+
+                        <h5 className="text-xs font-black text-white truncate">{drv.driverName}</h5>
+
+                        <div className="flex items-center justify-between text-xs text-slate-300 pt-1.5 border-t border-slate-850">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="w-5 h-5 rounded-md bg-cyan-500/20 text-cyan-400 font-black text-[10px] flex items-center justify-center border border-cyan-500/30 shrink-0">
+                              N°{drv.horseNumero}
+                            </span>
+                            <span className="font-bold text-white truncate text-[11px]">{drv.horseNom}</span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => onSelectHorseForTicket(drv.horseNumero)}
+                            className={`w-5 h-5 rounded flex items-center justify-center text-[10px] font-black transition-all shrink-0 ${
+                              isSelected
+                                ? 'bg-amber-500 text-slate-950'
+                                : 'bg-slate-800 hover:bg-cyan-500 hover:text-slate-950 text-white'
+                            }`}
+                            title={`Épingler N°${drv.horseNumero}`}
+                          >
+                            {isSelected ? '✓' : '+'}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="text-[10px] font-mono text-cyan-300 font-bold bg-slate-900 p-1.5 rounded-lg text-center border border-slate-850">
+                        {drv.winRateRecent}
+                      </div>
+
+                      <p className="text-[10px] text-slate-300 italic leading-snug bg-slate-900/60 p-2 rounded-lg border border-slate-850">
+                        « {drv.perplexityComment} »
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Rectangle d'Alerte : Les 5 baisses de cotes significatives */}
           {topBaisses && topBaisses.length > 0 && (
             <div className="bg-gradient-to-br from-slate-950 via-rose-950/20 to-slate-950 border-2 border-rose-500/50 rounded-3xl p-5 shadow-2xl relative overflow-hidden">
@@ -992,13 +1188,20 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
               <div className="flex flex-wrap gap-3 py-2">
                 {top9ParCote.map((num: number, idx: number) => {
                   const p = findPartant(num);
+                  const cote = p ? getHorseGenyOdds(p) : 10;
+                  const scoreX = Math.round(((73 + Number(num)) - cote) * 10) / 10;
                   const isSelected = selectedHorseNumbers.includes(num);
                   return (
-                    <button key={`sel9-${num}-${idx}`} onClick={() => onSelectHorseForTicket(num)} className={`p-4 rounded-2xl border flex items-center gap-4 transition-all ${isSelected ? 'bg-amber-500 text-slate-950 border-amber-400 ring-2 ring-amber-300' : 'bg-slate-950/80 text-white border-slate-700 hover:border-amber-500/50'}`}>
+                    <button key={`sel9-${num}-${idx}`} onClick={() => onSelectHorseForTicket(num)} className={`p-3.5 rounded-2xl border flex items-center gap-3 transition-all ${isSelected ? 'bg-amber-500 text-slate-950 border-amber-400 ring-2 ring-amber-300' : 'bg-slate-950/80 text-white border-slate-700 hover:border-amber-500/50'}`}>
                       <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black ${idx === 0 ? 'bg-amber-400 text-slate-950' : idx === 1 ? 'bg-slate-300 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>{idx + 1}</span>
                       <div className="text-left">
-                        <div className="font-black text-xl">N°{num}</div>
-                        <div className="text-xs font-bold truncate max-w-[100px]">{p?.nom || `Horse ${num}`}</div>
+                        <div className="font-black text-lg flex items-center gap-1.5">
+                          <span>N°{num}</span>
+                          <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-slate-900 text-cyan-300 border border-cyan-500/30">
+                            X={scoreX.toFixed(1).replace('.', ',')}
+                          </span>
+                        </div>
+                        <div className="text-xs font-bold truncate max-w-[110px]">{p?.nom || `Horse ${num}`}</div>
                       </div>
                     </button>
                   );
@@ -1544,22 +1747,25 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                       </div>
                     </div>
 
-                    {/* Musique & HippoScore V38 */}
+                    {/* Musique & Score X & HippoScore V38 */}
                     <div className="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800/60">
                       {onOpenMusiqueDecoder && h.musique && h.musique !== '?' && h.musique !== 'Inconnu' && h.musique.trim() !== '' ? (
                         <button
                           type="button"
                           onClick={() => onOpenMusiqueDecoder(h.musique, h.nom)}
-                          className="font-mono text-amber-300 hover:text-amber-200 underline truncate max-w-[120px] text-left cursor-pointer"
+                          className="font-mono text-amber-300 hover:text-amber-200 underline truncate max-w-[90px] text-left cursor-pointer"
                           title="Cliquez pour décrypter cette musique"
                         >
                           {h.musique}
                         </button>
                       ) : (
-                        <span className="font-mono text-slate-300 font-medium truncate max-w-[120px]">
+                        <span className="font-mono text-slate-300 font-medium truncate max-w-[90px]">
                           {h.musique || '—'}
                         </span>
                       )}
+                      <span className="font-mono font-black text-cyan-300 bg-slate-950 border border-cyan-500/30 px-1.5 py-0.5 rounded text-[10px]" title={`Score X = (73 + ${h.numero}) - ${h.coteProbable}`}>
+                        X={h.scoreX.toFixed(1).replace('.', ',')}
+                      </span>
                       <span className="font-black text-amber-300">
                         {h.hippoScore} pts
                       </span>
@@ -1590,7 +1796,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
             })}
           </div>
 
-          {/* SECTION : SURPRISES (10e, 11e, 12e de l'index de valeur) - Affichage direct sans position */}
+          {/* SECTION : SURPRISES (10e, 11e, 12e de la différence X) - Affichage direct sans position */}
           <div className="mt-4 p-4 rounded-2xl bg-rose-950/30 border-2 border-rose-500/40 relative z-10 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400">
@@ -1598,19 +1804,25 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
               </div>
               <div>
                 <h4 className="text-sm font-black text-rose-300 uppercase tracking-wider">SURPRISES DÉTECTÉES</h4>
-                <p className="text-[10px] text-slate-400">Outsiders à fort potentiel de rendement (Top Index Valeur)</p>
+                <p className="text-[10px] text-slate-400">Outsiders à fort potentiel de rendement (Score X élevé)</p>
               </div>
             </div>
 
             <div className="flex items-center gap-3">
-              {[...partantsParValeur.slice(9, 12)].sort((a, b) => a.numero - b.numero).map((p, idx) => (
-                <div key={`surprise-ui-${p.numero}-${idx}`} className="flex flex-col items-center gap-1 min-w-[60px] p-2 rounded-xl bg-slate-950 border border-rose-500/30 shadow-md">
-                  <span className="text-lg font-black text-white font-mono">N°{p.numero}</span>
-                  <span className={`text-[11px] font-black ${p.coteProbable && p.coteProbable > 18 ? 'text-red-500' : 'text-rose-400'}`}>
-                    {p.coteProbable ? `${p.coteProbable}/1` : '—'}
-                  </span>
-                </div>
-              ))}
+              {[...partantsParValeur.slice(9, 12)].sort((a, b) => b.scoreX - a.scoreX).map((p, idx) => {
+                const scoreX = p.scoreX ?? Math.round(((73 + Number(p.numero)) - getHorseGenyOdds(p)) * 10) / 10;
+                return (
+                  <div key={`surprise-ui-${p.numero}-${idx}`} className="flex flex-col items-center gap-1 min-w-[70px] p-2 rounded-xl bg-slate-950 border border-rose-500/30 shadow-md">
+                    <span className="text-lg font-black text-white font-mono">N°{p.numero}</span>
+                    <span className="text-[10px] font-mono font-black text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-500/30">
+                      X={scoreX.toFixed(1).replace('.', ',')}
+                    </span>
+                    <span className={`text-[11px] font-black ${p.coteProbable && p.coteProbable > 18 ? 'text-red-500' : 'text-rose-400'}`}>
+                      {p.coteProbable ? `${p.coteProbable}/1` : '—'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

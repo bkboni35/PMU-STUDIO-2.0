@@ -48,7 +48,9 @@ export const ProgrammeDuJour: React.FC<ProgrammeDuJourProps> = ({ onSelectMeetin
   }, []);
 
   const filteredMeetings = meetings.filter(m => {
-    const partantsCount = m.partants && m.partants.length > 0 ? m.partants.length : (m.nombrePartants || 12);
+    const partantsCount = m.partants && m.partants.length > 0
+      ? m.partants.length
+      : (m.exactPartantsCount || m.nombrePartants || 0);
     if (partantsCount < 9) return false;
 
     if (!filter.trim()) return true;
@@ -80,7 +82,7 @@ export const ProgrammeDuJour: React.FC<ProgrammeDuJourProps> = ({ onSelectMeetin
                   {todayIso}
                 </span>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                  {meetings.length} courses en direct
+                  {filteredMeetings.length} courses (≥ 9 partants)
                 </span>
               </div>
               <p className="text-xs text-slate-400">
@@ -126,7 +128,7 @@ export const ProgrammeDuJour: React.FC<ProgrammeDuJourProps> = ({ onSelectMeetin
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filteredMeetings.slice(0, 9).map((m) => (
+          {filteredMeetings.map((m) => (
             <div
               key={m.id}
               onClick={() => onSelectMeeting && onSelectMeeting(m)}

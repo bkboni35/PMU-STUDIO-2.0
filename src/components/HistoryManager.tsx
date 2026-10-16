@@ -25,6 +25,7 @@ import {
   CalendarDays,
   Filter,
   X,
+  ArrowRight,
 } from 'lucide-react';
 import { CourseHippique } from '../types/turf';
 import { CountdownTimer } from './CountdownTimer';
@@ -1033,350 +1034,75 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {filteredHistory.map((item) => {
-            const course = item.course;
-            const isCurrent = course.id === currentCourseId;
-            const hasArrival = Boolean(course.arriveeOfficielle);
-            const postRace = computePostRaceAnalysis(course);
-            const isComparisonExpanded = expandedComparisonId === item.id || (hasArrival && expandedComparisonId !== `collapsed_${item.id}`);
-            const isRefreshingThis = refreshingRaceId === item.id;
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-4 justify-items-center">
+            {filteredHistory.map((item) => {
+              const course = item.course;
+              const isCurrent = course.id === currentCourseId;
+              const hasArrival = Boolean(course.arriveeOfficielle);
+              
+              // Extraction des 5 premiers de la course pour affichage direct
+              const arrivalNums = (course.arriveeOfficielle || '')
+                .split(/[-,\s]+/)
+                .map((s) => parseInt(s.trim(), 10))
+                .filter((n) => !isNaN(n) && n > 0);
+              const top5Nums = arrivalNums.slice(0, 5);
 
-            // Calcul du classement par côte probable et Top 8 associé pour l'affichage de la sélection
-            const top8ParCote = [...(course.partants || [])]
-              .map(p => ({ 
-                ...p, 
-                coteSort: p.coteProbable !== undefined ? Number(p.coteProbable) : 99,
-                indexValeur: p.coteProbable !== undefined ? (p.hippoScore || 0) - p.coteProbable : -999 
-              }))
-              .sort((a, b) => {
-                if (a.coteSort !== b.coteSort) return a.coteSort - b.coteSort;
-                return (b.hippoScore || 0) - (a.hippoScore || 0);
-              })
-              .slice(0, 8)
-              .map(p => p.numero);
+              const postRace = computePostRaceAnalysis(course);
+              const isComparisonExpanded = expandedComparisonId === item.id;
 
-            // Extraction des 5 premiers de la course pour affichage direct
-            const arrivalNums = (course.arriveeOfficielle || '')
-              .split(/[-,\s]+/)
-              .map((s) => parseInt(s.trim(), 10))
-              .filter((n) => !isNaN(n) && n > 0);
-            const top5Nums = arrivalNums.slice(0, 5);
-
-            return (
-              <div
-                key={item.id}
-                className={`p-4 sm:p-5 rounded-3xl bg-slate-900 border transition-all duration-200 hover:border-amber-500/40 relative group ${
-                  isCurrent
-                    ? 'border-amber-500/60 shadow-lg shadow-amber-500/5 bg-slate-900/95'
-                    : 'border-slate-800 hover:bg-slate-900/90'
-                }`}
-              >
-                {/* Header d'item : Badges à gauche & Date d'Analyse en Haut à Droite */}
-                <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800/80 mb-3 flex-wrap sm:flex-nowrap">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-bold text-[11px] border border-slate-700 flex items-center gap-1.5">
-                      <MapPin className="w-3 h-3 text-amber-400 shrink-0" />
-                      <span>{course.hippodrome}</span>
-                    </span>
-
-                    {course.reunion && course.course && (
-                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-black text-[11px]">
-                        {course.reunion} · {course.course}
-                      </span>
-                    )}
-
-                    {course.discipline && (
-                      <span className="px-2 py-0.5 rounded-full bg-slate-800/80 text-slate-400 text-[10px] font-semibold">
-                        {course.discipline}
-                      </span>
-                    )}
-
-                    {!hasArrival && (
-                      <CountdownTimer date={course.date} heure={course.heure} compact />
-                    )}
-
-                    {/* Badge d'arrivée officielle (5 Premiers de la course) */}
-                    {hasArrival && (
-                      <span className="px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border-2 border-emerald-500/50 text-xs font-black flex items-center gap-1.5 shadow-md">
-                        <Trophy className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                        <span>Arrivée 5 Premiers : <strong className="text-white font-mono">{top5Nums.length > 0 ? top5Nums.join(' - ') : course.arriveeOfficielle}</strong></span>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* DATE ET HEURE D'ANALYSE (Position : En Haut à Droite) */}
-                  <div className="text-[11px] font-mono bg-slate-950 px-3 py-1 rounded-xl border border-slate-800/90 flex items-center gap-1.5 shrink-0 ml-auto shadow-xs">
-                    <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                    <span className="text-slate-400 font-medium hidden sm:inline">Analysée le :</span>
-                    <span className="text-amber-300 font-extrabold">{formatFullDateTime(item.analyzedAt)}</span>
-                    <span className="text-emerald-400 font-bold text-[10px]">({formatRelativeTime(item.analyzedAt)})</span>
-                  </div>
-                </div>
-
-                {/* BLOC DÉDIÉ ARRIVÉE OFFICIELLE : RÉSULTAT DES 5 PREMIERS DE LA COURSE */}
-                {hasArrival && (
-                  <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-slate-950 to-slate-950 border-2 border-emerald-500/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg my-3 animate-fadeIn">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 shrink-0">
-                        <Trophy className="w-5 h-5 text-amber-400" />
+              return (
+                <React.Fragment key={item.id}>
+                  <div
+                    onClick={() => onSelectCourse(course)}
+                    className={`w-[5cm] h-[3.2cm] border-2 border-orange-500 bg-slate-950 rounded-lg p-3 flex flex-col items-center justify-center text-center shadow-lg cursor-pointer transition-all hover:scale-105 hover:bg-slate-900 group relative overflow-hidden ${
+                      isCurrent ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-950' : ''
+                    }`}
+                    title={`${course.titre} - Cliquez pour charger`}
+                  >
+                    {/* Références de la course (Date + R1C1 + Hippodrome) */}
+                    <div className="flex flex-col items-center space-y-0.5">
+                      <div className="text-[13px] font-black text-amber-500/90 mb-0.5">
+                        {course.date || '--/--/----'}
                       </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-[11px] uppercase font-black text-emerald-400 tracking-wider block">
-                            Résultat des 5 Premiers de la Course
-                          </span>
-                          {postRace && (
-                            <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${postRace.badgeColor}`}>
-                              {postRace.badgeType}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Badges détaillés des 5 premiers chevaux */}
-                        <div className="flex items-center gap-1.5 flex-wrap pt-1">
-                          {top5Nums.map((num, idx) => {
-                            const horse = course.partants?.find((p) => p.numero === num);
-                            return (
-                              <React.Fragment key={`hist-top5-${item.id}-${num}-${idx}`}>
-                                {idx > 0 && <span className="text-slate-600 font-bold self-center mb-4">-</span>}
-                                <div
-                                  className={`flex flex-col items-center gap-0.5 min-w-[45px] p-2 rounded-xl border transition-all ${
-                                    idx === 0
-                                      ? 'bg-amber-500/20 border-amber-500/50'
-                                      : idx === 1
-                                      ? 'bg-slate-300/10 border-slate-400/30'
-                                      : idx === 2
-                                      ? 'bg-amber-800/20 border-amber-700/40'
-                                      : 'bg-slate-900 border-slate-800'
-                                  }`}
-                                >
-                                  <span className="font-black text-amber-300 text-base">
-                                    {num}
-                                  </span>
-                                  {horse && horse.coteProbable !== undefined && (
-                                    <span className={`text-[10px] font-black mt-0.5 ${Number(horse.coteProbable) > 18 ? 'text-red-500' : 'text-slate-400'}`}>
-                                      {horse.coteProbable}/1
-                                    </span>
-                                  )}
-                                </div>
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[14px] font-black text-orange-400 truncate">
+                          {course.reunion || 'R?'}{course.course || 'C?'}
+                        </span>
+                        <span className="text-[14px] font-mono text-slate-400 group-hover:text-amber-300">
+                          {course.heure || '--h--'}
+                        </span>
+                      </div>
+                      <div className="text-[14px] font-bold text-white truncate uppercase tracking-tight">
+                        {course.hippodrome}
                       </div>
                     </div>
 
-                    {postRace && (
-                      <button
-                        type="button"
-                        onClick={() => setExpandedComparisonId(isComparisonExpanded ? `collapsed_${item.id}` : item.id)}
-                        className="px-3.5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black transition-all shadow flex items-center gap-1.5 shrink-0 self-end sm:self-center"
-                      >
-                        <BarChart2 className="w-4 h-4 text-purple-200" />
-                        <span>{isComparisonExpanded ? "Masquer le bilan" : "Voir le bilan Post-Course IA"}</span>
-                        {isComparisonExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  {/* Left Side: Course Info */}
-                  <div className="space-y-1.5 min-w-0 flex-1">
-                    <h3 className="text-base sm:text-lg font-black text-white group-hover:text-amber-300 transition-colors truncate">
-                      {course.titre}
-                    </h3>
-
-                    {/* Summary row */}
-                    <div className="flex items-center gap-3 text-xs text-slate-400 flex-wrap">
-                      <span><strong>{course.partants?.length || 0}</strong> partants</span>
-                      <span>·</span>
-                      <span><strong>{course.distance}m</strong></span>
-                      {course.allocation && (
-                        <>
-                          <span>·</span>
-                          <span><strong>{course.allocation.toLocaleString()} €</strong></span>
-                        </>
-                      )}
+                    {/* Arrivée */}
+                    <div className="mt-2 w-full flex flex-col items-center border-t border-slate-800/50 pt-2">
+                      <div className="text-[14px] text-slate-500 uppercase font-black mb-1 flex items-center gap-1.5">
+                        <span>Arrivée</span>
+                        {hasArrival && <Trophy className="w-3.5 h-3.5 text-amber-500" />}
+                      </div>
+                      <div className="flex items-center justify-center gap-1">
+                        {hasArrival ? (
+                          <div className="flex gap-1 flex-wrap justify-center">
+                            {top5Nums.map((num, idx) => (
+                              <span key={idx} className="w-5 h-5 rounded-sm bg-slate-800 flex items-center justify-center text-[14px] font-black text-amber-400 border border-slate-700 shadow-sm">
+                                {num}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-[14px] text-slate-600 italic">En attente...</span>
+                        )}
+                      </div>
                     </div>
+
+                  {/* Effet décoratif au survol */}
+                  <div className="absolute bottom-0 right-0 p-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <ArrowRight className="w-3 h-3 text-orange-500" />
                   </div>
 
-                  {/* Right Side: Action Buttons - Single Line Compact */}
-                  <div className="flex flex-nowrap items-center gap-1.5 pt-2 md:pt-0 border-t md:border-t-0 border-slate-800 overflow-x-auto no-scrollbar">
-                    {/* Bouton Tableau des Partants */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelectCourse(course);
-                        if (onNavigateTab) onNavigateTab('partants');
-                      }}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-[11px] transition-all shadow-sm shrink-0"
-                      title="Afficher le tableau des partants"
-                    >
-                      <Trophy className="w-3 h-3" />
-                      <span>Partants</span>
-                    </button>
-
-                    {/* Bouton Onglet PRONOSTICS DE JEU */}
-                    <button
-                      type="button"
-                      onClick={() => setExpandedPronosticsId(expandedPronosticsId === item.id ? null : item.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border shrink-0 active:scale-95 cursor-pointer shadow-sm ${
-                        expandedPronosticsId === item.id
-                          ? 'bg-gradient-to-r from-amber-400 via-amber-500 to-amber-600 text-slate-950 border-amber-300 ring-2 ring-amber-300 shadow-amber-500/30'
-                          : 'bg-gradient-to-r from-amber-500/20 via-purple-500/20 to-amber-500/20 hover:from-amber-500/30 hover:to-purple-500/30 text-amber-300 border-amber-500/50'
-                      }`}
-                      title="Afficher l'onglet Pronostics de Jeu (Base de Jeu cote ≤ 4,9, TOP 8, Gros Rapport)"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Pronostics de Jeu</span>
-                      <span className="px-1.5 py-0.2 rounded-md text-[9px] font-black bg-slate-950 text-amber-300 hidden sm:inline border border-amber-500/40">
-                        Base • Top 8 • Gros Rapport
-                      </span>
-                      {expandedPronosticsId === item.id ? <ChevronUp className="w-3 h-3 text-slate-950" /> : <ChevronDown className="w-3 h-3 text-amber-400" />}
-                    </button>
-
-                    {/* Bouton Tracé & Facteurs (avec classement des numéros par cote) */}
-                    <button
-                      type="button"
-                      onClick={() => setExpandedTrackId(expandedTrackId === item.id ? null : item.id)}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[11px] font-black transition-all border shrink-0 active:scale-95 cursor-pointer shadow-sm ${
-                        expandedTrackId === item.id
-                          ? 'bg-amber-400 text-slate-950 border-amber-300 ring-2 ring-amber-300 shadow-amber-500/30'
-                          : 'bg-gradient-to-r from-amber-400 via-amber-500 to-amber-400 hover:from-amber-300 hover:to-amber-400 text-slate-950 border-amber-300'
-                      }`}
-                      title="Afficher le tracé, la météo, le terrain, les facteurs et le classement des numéros par cote"
-                    >
-                      <span className="text-xs">🏛️</span>
-                      <span>Tracé & Facteurs</span>
-                      {expandedTrackId === item.id ? <ChevronUp className="w-3 h-3 text-slate-950" /> : <ChevronDown className="w-3 h-3 text-slate-950" />}
-                    </button>
-
-                    {/* Bouton Actualiser en Direct / Live Sync Geny */}
-                    <button
-                      type="button"
-                      onClick={() => handleRefreshRaceLive(item)}
-                      disabled={isRefreshingThis}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-[11px] font-black transition-all shadow-sm shrink-0 disabled:opacity-50"
-                      title="Interroger en direct le code source officiel de Geny Course et pmu.fr"
-                    >
-                      {isRefreshingThis ? (
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <RefreshCw className="w-3 h-3 text-emerald-300" />
-                      )}
-                      <span>Actualiser</span>
-                    </button>
-
-                    {/* Bouton Voir Classement Scores */}
-                    <button
-                      type="button"
-                      onClick={() => setExpandedScoreId(expandedScoreId === item.id ? null : item.id)}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all border shrink-0 ${
-                        expandedScoreId === item.id
-                          ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-sm'
-                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                      }`}
-                      title="Afficher le classement des chevaux par côte"
-                    >
-                      <BarChart2 className="w-3 h-3" />
-                      <span>Côte</span>
-                      {expandedScoreId === item.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
-
-                    {/* Bouton Index Valeur */}
-                    <button
-                      type="button"
-                      onClick={() => setExpandedValueId(expandedValueId === item.id ? null : item.id)}
-                      className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all border shrink-0 ${
-                        expandedValueId === item.id
-                          ? 'bg-sky-600 text-white border-sky-400 shadow-sm'
-                          : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                      }`}
-                      title="Afficher le classement par index de valeur (Score - Côte)"
-                    >
-                      <Sparkles className="w-3 h-3 text-sky-400" />
-                      <span>Valeur</span>
-                      {expandedValueId === item.id ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                    </button>
-
-                    {/* Bouton Voir Comparatif Post-Course */}
-                    {hasArrival && postRace && (
-                      <button
-                        type="button"
-                        onClick={() => setExpandedComparisonId(isComparisonExpanded ? null : item.id)}
-                        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all border shrink-0 ${
-                          isComparisonExpanded
-                            ? 'bg-purple-600 text-white border-purple-400 shadow-sm'
-                            : 'bg-purple-950/60 hover:bg-purple-900/80 text-purple-200 border-purple-500/40'
-                        }`}
-                        title="Afficher l'analyse comparative entre la HIÉRARCHIE QUINTÉ+ V38 et l'arrivée officielle"
-                      >
-                        <BarChart2 className="w-3 h-3 text-purple-300" />
-                        <span>Post-Course</span>
-                        {isComparisonExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                      </button>
-                    )}
-
-                    {/* Boutons Exporter Hiérarchie V38 */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onSelectCourse(course);
-                        if (onNavigateTab) onNavigateTab('fiche-pdf-v38');
-                      }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-black text-[11px] transition-all shadow-md shrink-0 border border-amber-400 active:scale-95"
-                      title="Afficher l'onglet Exporter Hiérarchie V38 pour cette course"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-slate-950 stroke-[2.5]" />
-                      <span>Exporter Hiérarchie V38</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        try {
-                          exportQuinteOnlyToPdf(course);
-                          showToast(`🖨️ PDF Quinté téléchargé pour ${course.titre}`);
-                        } catch (_e) {
-                          try {
-                            exportCourseToPdf(course);
-                            showToast(`🖨️ PDF complet généré pour ${course.titre}`);
-                          } catch (_err) {
-                            showToast(`❌ Erreur lors de la génération du PDF.`);
-                          }
-                        }
-                      }}
-                      className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold text-[11px] transition-all shadow-sm shrink-0 border border-amber-500/40 active:scale-95"
-                      title="Télécharger directement Exporter Hiérarchie V38"
-                    >
-                      <Printer className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Télécharger PDF</span>
-                    </button>
-
-                    {course.sourceUrl && (
-                      <a
-                        href={course.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors shrink-0"
-                        title="Ouvrir sur le site officiel"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => handleDelete(item.id, course.titre)}
-                      className="p-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-950 hover:text-rose-400 text-slate-400 hover:border-rose-500/40 border border-transparent transition-all shrink-0"
-                      title="Supprimer cette course de l'historique"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
 
                 {/* Panneau dépliant : PRONOSTICS DE JEU (Base de Jeu, TOP 8, Gros Rapport) */}
                 {expandedPronosticsId === item.id && (
@@ -1709,8 +1435,9 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                   </div>
                 )}
               </div>
-            );
-          })}
+                </React.Fragment>
+              );
+            })}
         </div>
       )}
 

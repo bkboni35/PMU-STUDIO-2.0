@@ -26,7 +26,7 @@ import {
   Database,
 } from 'lucide-react';
 import { PmuMeeting, PmuCalendarResponse } from '../types/turf';
-import { getCuratedPmuMeetings, PMU_SUNDAY_11_MEETINGS, getSunday11Meetings, getMeetingsForDate, MULTI_DATE_MEETINGS_MAP } from '../data/pmuMeetingsData';
+import { getCuratedPmuMeetings, PMU_SUNDAY_11_MEETINGS, getSunday11Meetings, getMeetingsForDate, MULTI_DATE_MEETINGS_MAP, PMU_TOULOUSE_R5_MEETINGS } from '../data/pmuMeetingsData';
 import { ConcordanceAuditModal } from './ConcordanceAuditModal';
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
 import { InteractivePmuDatePicker } from './InteractivePmuDatePicker';
@@ -76,6 +76,17 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                 { title: 'Portail Officiel PMU.fr - Hippodrome d\'Auteuil Prix Montgomery', url: 'https://www.pmu.fr/turf/' }
               ],
             };
+          }
+          const toulouseCount = parsed.meetings.filter(
+            (m: any) => m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse')
+          ).length;
+          if (toulouseCount < 6) {
+            parsed.meetings = [
+              ...parsed.meetings.filter(
+                (m: any) => !(m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse'))
+              ),
+              ...PMU_TOULOUSE_R5_MEETINGS,
+            ];
           }
           return parsed;
         }
@@ -789,8 +800,17 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
       if (!res.ok) throw new Error('Erreur réseau');
       const data: PmuCalendarResponse = await res.json();
       
-      setDataIntegrityStatus('valid');
-      const filteredApiMeetings = (data.meetings || [])
+      let rawApiMeetings = data.meetings || [];
+      const toulouseCourses = rawApiMeetings.filter(
+        (m) => m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse')
+      );
+      if (toulouseCourses.length < 6) {
+        rawApiMeetings = [
+          ...rawApiMeetings.filter((m) => !(m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse'))),
+          ...PMU_TOULOUSE_R5_MEETINGS,
+        ];
+      }
+      const filteredApiMeetings = rawApiMeetings
         .filter((m) => !deletedIds.includes(m.id))
         .map((m) => ({
           ...m,
@@ -1118,7 +1138,15 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
     return getRaceLiveStatus(dateRelative, timeStr, dateStr, statut, arriveeOfficielle).isFinished;
   };
 
-  const meetings = calendarData?.meetings || [];
+  const rawMeetings = calendarData?.meetings || [];
+  const meetings = useMemo(() => {
+    return rawMeetings.filter((m) => {
+      const partantsCount = m.partants && m.partants.length > 0
+        ? m.partants.length
+        : (m.exactPartantsCount || m.nombrePartants || 0);
+      return partantsCount >= 9;
+    });
+  }, [rawMeetings]);
 
   // 1. Filtrage par plage de dates (7 derniers jours, 7 prochains jours, aujourd'hui, ou date spécifique)
   const activeDayMeetings = useMemo(() => {

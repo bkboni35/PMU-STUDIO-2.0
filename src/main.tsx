@@ -5,6 +5,7 @@ import { AppInitializer } from './components/AppInitializer';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './index.css';
 
+// Mounting point v2.0.0
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
@@ -14,4 +15,5 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
 

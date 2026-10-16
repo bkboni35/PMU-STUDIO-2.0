@@ -419,8 +419,8 @@ function buildCoursePdfDoc(course: CourseHippique): jsPDF {
       body: tableData,
       theme: 'grid',
       styles: {
-        fontSize: 7,
-        cellPadding: 1.5,
+        fontSize: 13,
+        cellPadding: 3,
         textColor: [15, 23, 42],
         lineColor: [148, 163, 184],
         lineWidth: 0.2,
@@ -515,8 +515,8 @@ function buildCoursePdfDoc(course: CourseHippique): jsPDF {
         body: gridRows,
         theme: 'grid',
         styles: {
-          fontSize: 7.5,
-          cellPadding: 2,
+          fontSize: 13,
+          cellPadding: 3,
           halign: 'center',
           valign: 'middle',
           lineColor: [203, 213, 225],
@@ -986,11 +986,11 @@ export function buildQuinteOnlyPdfDoc(course: CourseHippique): jsPDF {
   doc.setTextColor(15, 23, 42); // Black
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8.2);
-  doc.text('—— CLASSIFICATION PAR FORME DE FORMULE ——', margin + boxWidth / 2, yPos + 4.3, { align: 'center' });
+  doc.text('—— ETAT DE FORME DU CHEVAL ——', margin + boxWidth / 2, yPos + 4.3, { align: 'center' });
 
   yPos += bandeH + 1.5;
 
-  // --- 6. TABLEAU DE CLASSIFICATION PAR FORME DE FORMULE (GRILLE 5 COLONNES) ---
+  // --- 6. TABLEAU DE L'ETAT DE FORME DU CHEVAL (GRILLE 5 COLONNES) ---
   const formRowsData = disciplineGrid.formRows || [];
   const formRowH = 10.2;
 

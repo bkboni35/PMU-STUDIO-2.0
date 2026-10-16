@@ -1,5 +1,5 @@
 import { CourseHippique } from '../types/turf';
-import { HistoryCourseItem, getRaceHistory } from './favoritesStorage';
+import { HistoryCourseItem, getRaceHistory, safeSetItemWithQuotaHandling } from './favoritesStorage';
 
 export interface RaceEvaluationItem {
   num: number;
@@ -276,11 +276,7 @@ export function updateBacktestWithArrival(
   }
 
   // Sauvegarder dans localStorage
-  try {
-    localStorage.setItem('hippo_analysis_history', JSON.stringify(history));
-  } catch (e) {
-    console.error('Erreur sauvegarde backtest history:', e);
-  }
+  safeSetItemWithQuotaHandling('hippo_analysis_history', history, 30);
 
   // 2. Recalculer les statistiques consolidées du backtest
   const stats = recalculateBacktestGlobalStats(history);

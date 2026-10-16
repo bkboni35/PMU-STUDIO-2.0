@@ -19,10 +19,46 @@ import {
   Code,
   Layers,
   Sparkles,
+  Square,
+  CheckSquare,
+  BookmarkCheck,
+  Zap,
+  CheckCheck,
 } from 'lucide-react';
 import { PmuMeeting } from '../types/turf';
 import { getIvoryCoastDate } from '../utils/timeConversion';
 import { scrollToTopInstant } from '../utils/scrollHelper';
+import { CountdownTimer } from './CountdownTimer';
+
+// Helpers de persistance et de synchronisation des courses sélectionnées
+const getStoredSelectedRaceIds = (): string[] => {
+  try {
+    const saved = localStorage.getItem('hippo_selected_next_race_ids');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) {
+        return parsed.filter((x: string) => Boolean(x) && x !== '__UNINITIALIZED__');
+      }
+    }
+  } catch {}
+  return [];
+};
+
+const saveAndBroadcastSelectedRaceIds = (ids: string[], source = 'PmuApiHubModal') => {
+  try {
+    localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(ids));
+    setTimeout(() => {
+      window.dispatchEvent(
+        new CustomEvent('hippo_selected_races_changed', {
+          detail: { selectedRaceIds: ids, source },
+        })
+      );
+      window.dispatchEvent(new Event('hippo_calendar_updated'));
+    }, 0);
+  } catch (err) {
+    console.warn('Erreur stockage ou broadcast:', err);
+  }
+};
 
 interface PmuApiHubModalProps {
   isOpen: boolean;
@@ -78,6 +114,136 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
   const [quinteCourse, setQuinteCourse] = useState<PmuMeeting | null>(null);
   const [filterHippo, setFilterHippo] = useState('');
 
+  // Gestion des courses choisies pour l'onglet "PROCHAINE COURSE"
+  const [selectedNextRaceIds, setSelectedNextRaceIds] = useState<string[]>(getStoredSelectedRaceIds);
+
+  // Synchronisation en direct avec le stockage local et les événements d'autres composants
+  useEffect(() => {
+    const handleSync = (e?: any) => {
+      if (e?.detail?.source === 'PmuApiHubModal') return;
+      const ids = getStoredSelectedRaceIds();
+      setSelectedNextRaceIds(ids);
+    };
+
+    handleSync();
+    window.addEventListener('hippo_selected_races_changed', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('hippo_selected_races_changed', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, [isOpen]);
+
+  // Persister les réunions dans le cache global du calendrier
+  const persistMeetingsToCalendar = useCallback((meetingsToPersist: PmuMeeting[]) => {
+    try {
+      const raw = localStorage.getItem('hippo_calendar_data');
+      let cal: { meetings: PmuMeeting[]; updatedAt?: string } = { meetings: [] };
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && Array.isArray(parsed.meetings)) {
+            cal = parsed;
+          }
+        } catch {}
+      }
+
+      const map = new Map<string, PmuMeeting>();
+      cal.meetings.forEach((m) => map.set(m.id, m));
+      meetingsToPersist.forEach((m) => {
+        map.set(m.id, { ...(map.get(m.id) || {}), ...m });
+      });
+
+      cal.meetings = Array.from(map.values());
+      cal.updatedAt = new Date().toISOString();
+      localStorage.setItem('hippo_calendar_data', JSON.stringify(cal));
+      setTimeout(() => {
+        window.dispatchEvent(new Event('hippo_calendar_updated'));
+      }, 0);
+    } catch (err) {
+      console.warn('Erreur mise à jour calendrier local:', err);
+    }
+  }, []);
+
+  // Cocher / Décocher une course pour l'onglet "PROCHAINE COURSE" (Mise à jour fonctionnelle synchrone & réactive)
+  const toggleRaceForUpcomingTab = useCallback((meeting: PmuMeeting) => {
+    if (!meeting) return;
+    const raceId = meeting.id;
+    if (!raceId) return;
+
+    setSelectedNextRaceIds((prev) => {
+      const cleanPrev = Array.isArray(prev) ? prev.filter((id) => Boolean(id) && id !== '__UNINITIALIZED__') : [];
+      const isSelected = cleanPrev.includes(raceId);
+      const nextIds = isSelected ? cleanPrev.filter((id) => id !== raceId) : [...cleanPrev, raceId];
+
+      if (!isSelected) {
+        persistMeetingsToCalendar([meeting]);
+      }
+      saveAndBroadcastSelectedRaceIds(nextIds, 'PmuApiHubModal');
+      return nextIds;
+    });
+  }, [persistMeetingsToCalendar]);
+
+  // Cocher / Décocher toutes les courses d'une réunion en un clic (Mise à jour fonctionnelle synchrone & réactive)
+  const toggleAllRacesInMeeting = useCallback((meetingCourses: PmuMeeting[]) => {
+    if (!meetingCourses || meetingCourses.length === 0) return;
+    const meetingIds = meetingCourses.map((c) => c.id).filter(Boolean);
+    if (meetingIds.length === 0) return;
+
+    setSelectedNextRaceIds((prev) => {
+      const cleanPrev = Array.isArray(prev) ? prev.filter((id) => Boolean(id) && id !== '__UNINITIALIZED__') : [];
+      const allSelected = meetingIds.every((id) => cleanPrev.includes(id));
+      let nextIds: string[];
+      if (allSelected) {
+        nextIds = cleanPrev.filter((id) => !meetingIds.includes(id));
+      } else {
+        nextIds = Array.from(new Set([...cleanPrev, ...meetingIds]));
+      }
+
+      if (!allSelected) {
+        persistMeetingsToCalendar(meetingCourses);
+      }
+      saveAndBroadcastSelectedRaceIds(nextIds, 'PmuApiHubModal');
+      return nextIds;
+    });
+  }, [persistMeetingsToCalendar]);
+
+  // Actions de sélection en masse
+  const handleSelectAllFiltered = useCallback((meetingsList: PmuMeeting[]) => {
+    if (meetingsList.length === 0) return;
+    const targetIds = meetingsList.map((m) => m.id).filter(Boolean);
+    setSelectedNextRaceIds((prev) => {
+      const cleanPrev = Array.isArray(prev) ? prev.filter((id) => Boolean(id) && id !== '__UNINITIALIZED__') : [];
+      const newIds = Array.from(new Set([...cleanPrev, ...targetIds]));
+      persistMeetingsToCalendar(meetingsList);
+      saveAndBroadcastSelectedRaceIds(newIds, 'PmuApiHubModal');
+      return newIds;
+    });
+  }, [persistMeetingsToCalendar]);
+
+  const handleSelectNinePlus = useCallback((meetingsList: PmuMeeting[]) => {
+    const ninePlus = meetingsList.filter((m) => {
+      const count = m.partants && m.partants.length > 0
+        ? m.partants.length
+        : (m.exactPartantsCount || m.nombrePartants || 0);
+      return count >= 9;
+    });
+    if (ninePlus.length === 0) return;
+    const targetIds = ninePlus.map((m) => m.id).filter(Boolean);
+    setSelectedNextRaceIds((prev) => {
+      const cleanPrev = Array.isArray(prev) ? prev.filter((id) => Boolean(id) && id !== '__UNINITIALIZED__') : [];
+      const newIds = Array.from(new Set([...cleanPrev, ...targetIds]));
+      persistMeetingsToCalendar(ninePlus);
+      saveAndBroadcastSelectedRaceIds(newIds, 'PmuApiHubModal');
+      return newIds;
+    });
+  }, [persistMeetingsToCalendar]);
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedNextRaceIds([]);
+    saveAndBroadcastSelectedRaceIds([], 'PmuApiHubModal');
+  }, []);
+
   // Testeur d'endpoint
   const [testEndpoint, setTestEndpoint] = useState<string>('programme_jour');
   const [testReunion, setTestReunion] = useState<string>('R1');
@@ -96,9 +262,14 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data.meetings)) {
-          setMeetings(data.meetings);
-          const q = data.meetings.find((m: PmuMeeting) => m.estQuinte);
+          const cleanMeetings = data.meetings.map((m: any, idx: number) => ({
+            ...m,
+            id: m.id || `pmu-live-${dateStr.replace(/-/g, '')}-${(m.reunion || 'r1').toLowerCase()}-${(m.courseNumero || `c${idx + 1}`).toLowerCase()}`,
+          }));
+          setMeetings(cleanMeetings);
+          const q = cleanMeetings.find((m: PmuMeeting) => m.estQuinte);
           setQuinteCourse(q || null);
+          persistMeetingsToCalendar(cleanMeetings);
         }
       } else {
         // Fallback calendar endpoint
@@ -106,9 +277,14 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
         if (calRes.ok) {
           const calData = await calRes.json();
           if (Array.isArray(calData.meetings)) {
-            setMeetings(calData.meetings);
-            const q = calData.meetings.find((m: PmuMeeting) => m.estQuinte);
+            const cleanMeetings = calData.meetings.map((m: any, idx: number) => ({
+              ...m,
+              id: m.id || `pmu-live-${dateStr.replace(/-/g, '')}-${(m.reunion || 'r1').toLowerCase()}-${(m.courseNumero || `c${idx + 1}`).toLowerCase()}`,
+            }));
+            setMeetings(cleanMeetings);
+            const q = cleanMeetings.find((m: PmuMeeting) => m.estQuinte);
             setQuinteCourse(q || null);
+            persistMeetingsToCalendar(cleanMeetings);
           }
         }
       }
@@ -174,7 +350,13 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
       setTestLatencyMs(latency);
       setTestStatusCode(res.status);
 
-      const json = await res.json();
+      const text = await res.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { error: `Réponse non-JSON reçue (HTTP ${res.status}): ${text.slice(0, 150)}...` };
+      }
       setTestResult(json);
     } catch (err: any) {
       setTestResult({ error: err.message || 'Erreur réseau' });
@@ -186,8 +368,13 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Filtrage des réunions par hippodrome / discipline
+  // Filtrage des réunions par hippodrome / discipline (EXCLUSIVEMENT ≥ 9 PARTANTS)
   const filteredMeetings = meetings.filter((m) => {
+    const partantsCount = m.partants && m.partants.length > 0
+      ? m.partants.length
+      : (m.exactPartantsCount || m.nombrePartants || 0);
+    if (partantsCount < 9) return false;
+
     if (!filterHippo.trim()) return true;
     const q = filterHippo.toLowerCase().trim();
     return (
@@ -330,21 +517,78 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
                 </div>
               </div>
 
-              {/* Résumé de l'épreuve Quinté+ si détectée */}
+              {/* Bandeau : SÉLECTION POUR L'ONGLET « PROCHAINE COURSE » */}
+              <div className="bg-gradient-to-r from-amber-950/40 via-slate-800/90 to-slate-900 border border-amber-500/40 rounded-xl p-3 sm:p-4 shadow-lg flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/30">
+                    <Clock className="w-5 h-5 text-amber-400" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-xs sm:text-sm font-black text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                        <BookmarkCheck className="w-4 h-4 text-amber-400" />
+                        POSITIONNER DANS L'ONGLET « PROCHAINE COURSE »
+                      </h3>
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[11px] font-bold border border-amber-500/40">
+                        {selectedNextRaceIds.length} course(s) positionnée(s)
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-300 mt-1 max-w-2xl">
+                      Cochez les cases pour choisir les courses à positionner dans la rubrique & l'onglet <strong>« PROCHAINE COURSE »</strong> afin de les analyser ultérieurement en 1 clic.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAllFiltered(filteredMeetings)}
+                    className="px-2.5 py-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-xs font-bold border border-amber-500/40 transition-colors cursor-pointer flex items-center gap-1.5"
+                    title="Cocher toutes les courses affichées pour l'onglet Prochaine Course"
+                  >
+                    <CheckSquare className="w-3.5 h-3.5" />
+                    <span>Tout cocher ({filteredMeetings.length})</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectNinePlus(filteredMeetings)}
+                    className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-200 text-xs font-bold border border-slate-700 transition-colors cursor-pointer"
+                    title="Cocher uniquement les courses de 9 partants et plus"
+                  >
+                    Courses ≥ 9 partants
+                  </button>
+                  {selectedNextRaceIds.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleDeselectAll}
+                      className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white text-xs font-bold border border-slate-700 transition-colors cursor-pointer"
+                      title="Tout décocher"
+                    >
+                      Tout décocher
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Résumé de l'épreuve Quinté+ si détectée avec case à cocher */}
               {quinteCourse && (
-                <div className="bg-gradient-to-r from-amber-950/40 via-slate-800/80 to-amber-950/30 border border-amber-500/50 rounded-xl p-3 sm:p-4 flex items-center justify-between flex-wrap gap-3">
+                <div className={`bg-gradient-to-r from-amber-950/40 via-slate-800/80 to-amber-950/30 border rounded-xl p-3 sm:p-4 flex items-center justify-between flex-wrap gap-3 transition-all ${
+                  selectedNextRaceIds.includes(quinteCourse.id)
+                    ? 'border-amber-400 ring-1 ring-amber-400/40 shadow-lg'
+                    : 'border-amber-500/50'
+                }`}>
                   <div className="flex items-center gap-3">
                     <div className="p-2.5 bg-amber-500/20 text-amber-400 rounded-xl border border-amber-500/40">
                       <Trophy className="w-6 h-6 fill-amber-400" />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-black text-amber-400 bg-slate-900 px-2 py-0.5 rounded border border-amber-500/40 text-xs">
                           {quinteCourse.reunion} {quinteCourse.courseNumero} · Épreuve Quinté+
                         </span>
-                        <span className="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">
-                          {quinteCourse.heure}
-                        </span>
+                        <div className="shrink-0 font-mono">
+                          <CountdownTimer date={quinteCourse.date || selectedDate} heure={quinteCourse.heure} compact />
+                        </div>
                       </div>
                       <h3 className="text-sm sm:text-base font-black text-white mt-1">
                         {quinteCourse.nomCoursePhare} — {quinteCourse.hippodrome}
@@ -354,18 +598,48 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
                       </p>
                     </div>
                   </div>
-                  {onSelectMeeting && (
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Case à cocher Quinté+ pour Prochaine Course */}
                     <button
-                      onClick={() => {
-                        onSelectMeeting(quinteCourse);
-                        onClose();
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        toggleRaceForUpcomingTab(quinteCourse);
                       }}
-                      className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs px-4 py-2 rounded-xl transition-all shadow-lg shadow-amber-500/20 cursor-pointer flex items-center gap-1.5"
+                      className={`flex items-center gap-2 px-3 py-2 rounded-xl border cursor-pointer select-none transition-all ${
+                        selectedNextRaceIds.includes(quinteCourse.id)
+                          ? 'bg-amber-500/25 border-amber-400 text-amber-300 ring-1 ring-amber-400/50 shadow-md font-bold'
+                          : 'bg-slate-900/90 border-slate-700 hover:border-amber-500/50 text-slate-300 hover:text-white'
+                      }`}
+                      title="Cliquer pour cocher/décocher ce Quinté+ pour l'onglet PROCHAINE COURSE"
                     >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Analyser le Quinté+</span>
+                      {selectedNextRaceIds.includes(quinteCourse.id) ? (
+                        <CheckSquare className="w-4 h-4 text-amber-400 shrink-0" />
+                      ) : (
+                        <Square className="w-4 h-4 text-slate-400 shrink-0" />
+                      )}
+                      <span className="text-xs font-bold">
+                        {selectedNextRaceIds.includes(quinteCourse.id)
+                          ? '📌 Positionné dans « PROCHAINE COURSE »'
+                          : 'Positionner dans « PROCHAINE COURSE »'}
+                      </span>
                     </button>
-                  )}
+
+                    {onSelectMeeting && (
+                      <button
+                        onClick={() => {
+                          onSelectMeeting(quinteCourse);
+                          onClose();
+                        }}
+                        className="bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 font-black text-xs px-4 py-2 rounded-xl transition-all shadow-lg shadow-amber-500/20 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>Analyser le Quinté+</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -383,87 +657,174 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {Array.from(reunionsMap.entries()).map(([rNum, courses]) => (
-                    <div key={rNum} className="bg-slate-800/40 border border-slate-700/60 rounded-xl overflow-hidden">
-                      <div className="px-4 py-2.5 bg-slate-800/80 border-b border-slate-700/60 flex items-center justify-between">
+                  {Array.from(reunionsMap.entries()).map(([rNum, courses]) => {
+                    const meetingRaceIds = courses.map((c) => c.id);
+                    const selectedInMeetingCount = meetingRaceIds.filter((id) => selectedNextRaceIds.includes(id)).length;
+                    const allInMeetingSelected = courses.length > 0 && selectedInMeetingCount === courses.length;
+
+                    return (
+                    <div key={rNum} className="bg-slate-800/40 border border-slate-700/60 rounded-xl overflow-hidden shadow-lg">
+                      <div className="px-4 py-2.5 bg-slate-800/90 border-b border-slate-700/60 flex items-center justify-between gap-3 flex-wrap">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono font-black text-white bg-amber-500 text-slate-950 px-2 py-0.5 rounded text-xs">
+                          <span className="font-mono font-black text-slate-950 bg-amber-400 px-2 py-0.5 rounded text-xs">
                             {rNum}
                           </span>
                           <span className="font-bold text-white text-xs sm:text-sm">
                             {courses[0]?.hippodrome || 'Hippodrome'}
                           </span>
                           <span className="text-xs text-slate-400 font-mono">
-                            ({courses.length} courses déclarées)
+                            ({courses.length} courses)
                           </span>
                         </div>
+
+                        {/* Bouton pour cocher / décocher toutes les courses de la réunion en un clic */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleAllRacesInMeeting(courses);
+                          }}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                            allInMeetingSelected
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 shadow-md ring-1 ring-amber-300'
+                              : selectedInMeetingCount > 0
+                              ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30'
+                              : 'bg-slate-900/90 text-slate-300 hover:text-white border-slate-700 hover:border-amber-500/50 hover:bg-slate-800'
+                          }`}
+                          title={
+                            allInMeetingSelected
+                              ? `Décocher toutes les ${courses.length} courses de ${rNum}`
+                              : `Cocher toutes les ${courses.length} courses de ${rNum} en 1 clic pour PROCHAINE COURSE`
+                          }
+                        >
+                          {allInMeetingSelected ? (
+                            <>
+                              <CheckSquare className="w-3.5 h-3.5" />
+                              <span>Toute la réunion cochée ({selectedInMeetingCount}/{courses.length})</span>
+                            </>
+                          ) : selectedInMeetingCount > 0 ? (
+                            <>
+                              <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                              <span>Cocher toute la réunion ({selectedInMeetingCount}/{courses.length})</span>
+                            </>
+                          ) : (
+                            <>
+                              <Square className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Cocher toute la réunion {rNum} ({courses.length})</span>
+                            </>
+                          )}
+                        </button>
                       </div>
 
                       <div className="divide-y divide-slate-800/60">
-                        {courses.map((c) => (
-                          <div
-                            key={c.id}
-                            className="p-3 hover:bg-slate-900/50 transition-colors flex items-center justify-between gap-3 flex-wrap"
-                          >
-                            <div className="flex items-center gap-3">
-                              <span className="font-mono font-bold text-amber-400 text-xs w-8 text-center shrink-0">
-                                {c.courseNumero}
-                              </span>
-                              <div>
-                                <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs font-bold text-white flex items-center gap-1">
-                                    {c.estQuinte && <Trophy className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
-                                    <span>{c.nomCoursePhare}</span>
-                                  </span>
-                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
-                                    {c.discipline}
-                                  </span>
-                                  {c.corde && (
-                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/80 text-amber-300/80">
-                                      {c.corde}
-                                    </span>
+                        {courses.map((c) => {
+                          const isRacePositioned = selectedNextRaceIds.includes(c.id);
+                          return (
+                            <div
+                              key={c.id}
+                              className={`p-3 transition-colors flex items-center justify-between gap-3 flex-wrap ${
+                                isRacePositioned
+                                  ? 'bg-amber-950/25 border-l-4 border-amber-500 hover:bg-amber-950/35'
+                                  : 'hover:bg-slate-900/50'
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 flex-wrap sm:flex-nowrap min-w-0">
+                                {/* Case à cocher pour choisir les courses à positionner dans PROCHAINE COURSE */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    toggleRaceForUpcomingTab(c);
+                                  }}
+                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border cursor-pointer select-none transition-all shrink-0 ${
+                                    isRacePositioned
+                                      ? 'bg-amber-500/25 border-amber-500 text-amber-300 font-bold shadow-xs ring-1 ring-amber-500/40'
+                                      : 'bg-slate-950/80 border-slate-700 hover:border-slate-500 text-slate-400 hover:text-slate-200'
+                                  }`}
+                                  title="Cliquer pour cocher/décocher cette course dans l'onglet PROCHAINE COURSE"
+                                >
+                                  {isRacePositioned ? (
+                                    <CheckSquare className="w-4 h-4 text-amber-400 shrink-0" />
+                                  ) : (
+                                    <Square className="w-4 h-4 text-slate-500 shrink-0" />
                                   )}
-                                </div>
-                                <div className="text-[11px] text-slate-400 flex items-center gap-3 mt-0.5">
-                                  <span className="flex items-center gap-1">
-                                    <Clock className="w-3 h-3 text-slate-500" />
-                                    {c.heure}
+                                  <span className="text-[11px] font-bold">
+                                    {isRacePositioned
+                                      ? '📌 Positionnée (PROCHAINE COURSE)'
+                                      : 'Positionner dans PROCHAINE COURSE'}
                                   </span>
-                                  <span>{c.distance}m</span>
-                                  <span>{c.nombrePartants} partants</span>
-                                  <span>{Number(c.allocation).toLocaleString()} €</span>
+                                </button>
+
+                                {/* Compte à rebours dynamique en temps réel placé devant chaque course */}
+                                <div className="shrink-0 font-mono">
+                                  <CountdownTimer date={c.date || selectedDate} heure={c.heure} compact />
+                                </div>
+                                <span className="font-mono font-bold text-amber-400 text-xs w-8 text-center shrink-0 bg-slate-950 px-1.5 py-0.5 rounded border border-slate-800">
+                                  {c.courseNumero}
+                                </span>
+                                <div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-xs font-bold text-white flex items-center gap-1">
+                                      {c.estQuinte && <Trophy className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />}
+                                      <span>{c.nomCoursePhare}</span>
+                                    </span>
+                                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">
+                                      {c.discipline}
+                                    </span>
+                                    {c.corde && (
+                                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800/80 text-amber-300/80">
+                                        {c.corde}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] text-slate-400 flex items-center gap-3 mt-0.5">
+                                    <span className="flex items-center gap-1">
+                                      <Clock className="w-3 h-3 text-slate-500" />
+                                      {c.heure}
+                                    </span>
+                                    <span>{c.distance}m</span>
+                                    <span className={c.nombrePartants >= 9 ? 'text-amber-300/90 font-medium' : ''}>
+                                      {c.nombrePartants} partants
+                                    </span>
+                                    <span>{Number(c.allocation).toLocaleString()} €</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
 
-                            <div className="flex items-center gap-2">
-                              {onSelectMeeting && (
-                                <button
-                                  onClick={() => {
-                                    onSelectMeeting(c);
-                                    onClose();
-                                  }}
-                                  className="text-xs bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-white font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1"
+                              <div className="flex items-center gap-2 shrink-0">
+                                {onSelectMeeting && (
+                                  <button
+                                    onClick={() => {
+                                      onSelectMeeting(c);
+                                      onClose();
+                                    }}
+                                    className="text-xs bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-white font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-xs"
+                                    title="Charger et analyser cette course maintenant"
+                                  >
+                                    <Zap className="w-3.5 h-3.5 text-amber-400 hover:text-slate-950" />
+                                    <span>Charger Course</span>
+                                  </button>
+                                )}
+                                <a
+                                  href={`https://online.turfinfo.api.pmu.fr/rest/client/1/programme/${c.id.replace('pmu-live-', '').split('-')[0]}/${rNum}/${c.courseNumero}/participants?specialisation=INTERNET`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-slate-500 hover:text-amber-400 p-1.5 rounded"
+                                  title="Voir JSON PMU officiel"
                                 >
-                                  <span>Charger Course</span>
-                                </button>
-                              )}
-                              <a
-                                href={`https://online.turfinfo.api.pmu.fr/rest/client/1/programme/${c.id.replace('pmu-live-', '').split('-')[0]}/${rNum}/${c.courseNumero}/participants?specialisation=INTERNET`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-slate-500 hover:text-amber-400 p-1.5 rounded"
-                                title="Voir JSON PMU officiel"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </a>
+                                  <ExternalLink className="w-3.5 h-3.5" />
+                                </a>
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
+              </div>
               )}
             </div>
           )}

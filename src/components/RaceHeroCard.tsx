@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, Calendar, Clock, MapPin, Gauge, ShieldAlert, Award, ExternalLink, Zap, Star, ShieldCheck, CheckCircle2, CloudSun, FileText, AlertTriangle, RefreshCw, AlertCircle, Sparkles, Users, BookmarkCheck, Heart, RotateCcw, Share2, Check, SlidersHorizontal, ArrowDownUp, Settings2, X, Lock } from 'lucide-react';
-import { isCourseFinished, shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus } from '../utils/raceCountdown';
+import { isCourseFinished, shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus, isPastDepartureTime } from '../utils/raceCountdown';
 import { CourseHippique, Partant } from '../types/turf';
 import { CountdownTimer } from './CountdownTimer';
+import { RaceCountdown } from './RaceCountdown';
 import { 
   computeV38Hierarchy, 
   getOfficialHippodromeCorde, 
@@ -19,6 +20,7 @@ import { DisciplineGridTable } from './DisciplineGridTable';
 import { toggleFavoriteRace, isCourseFavorite } from '../utils/favoritesStorage';
 import { ArrivalAuditCountdownWidget } from './ArrivalAuditCountdownWidget';
 import { ArrivalAuditProgressRingBadge } from './ArrivalAuditProgressRingBadge';
+import { RaceHeroLiveTimerCard } from './RaceHeroLiveTimerCard';
 
 interface RaceHeroCardProps {
   course: CourseHippique;
@@ -65,9 +67,9 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
   const [delaissesSortMode, setDelaissesSortMode] = useState<DelaissesSortMode>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(V38_DELAISSES_SORT_STORAGE_KEY) as DelaissesSortMode;
-      if (saved && saved !== 'asc_odds') return saved;
+      if (saved) return saved;
     }
-    return 'desc_number';
+    return 'asc_odds';
   });
 
   const [customSurprisesNums, setCustomSurprisesNums] = useState<number[]>(() => {
@@ -160,6 +162,8 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
           {course.prixNom || 'Prix Austria'} ({course.reunion || 'R1'} {course.course || 'C4'}) - {course.hippodrome || 'Vincennes'} {course.allocation ? `- ${course.allocation.toLocaleString('fr-FR')} €` : '- 53 000 €'}
         </span>
       </div>
+
+
 
       {/* Top badges bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -320,13 +324,13 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
       </div>
 
       {/* Race Main Title & Hippodrome */}
-      <div className="mb-5">
+      <div className="mb-4">
         <div className="flex items-baseline gap-3 flex-wrap">
           <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
             {course.titre}
           </h2>
         </div>
-        <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm text-slate-400 mt-2">
+        <div className="flex flex-wrap items-center gap-3 text-xs sm:text-sm text-slate-400 mt-2">
           <div className="flex items-center gap-1.5 text-amber-400 font-semibold">
             <MapPin className="w-4 h-4" />
             <span>Hippodrome de {course.hippodrome}</span>
@@ -336,15 +340,12 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
             <span>{course.date}</span>
           </div>
           <div className="flex items-center gap-1.5 font-bold text-white">
-            <CountdownTimer
-              date={course.date}
-              heure={course.heure || '13h55'}
-              isFinished={isCourseFinished(course)}
-              statutCourse={course.statutCourse}
-              isProvisional={Boolean(course.statutCourse?.toLowerCase()?.includes('provisoire') || (course as any).statutArrivee === 'provisoire')}
-              showDepartureBadge={true}
-            />
+            <RaceCountdown course={course} />
           </div>
+        </div>
+
+        {/* Action buttons row */}
+        <div className="flex flex-wrap items-center gap-2 mt-3">
           {/* Bouton PRONOSTICS DE JEU */}
           <button
             type="button"
@@ -421,6 +422,9 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
         </div>
       </div>
 
+      {/* Minuteur Visuel Dynamique en Direct (Se met à jour chaque seconde) */}
+      <RaceHeroLiveTimerCard course={course} />
+
       {/* Règle de sécurité : Pas d'invention d'arrivée si non vérifiée & Statut Course en cours */}
       {!course.arriveeOfficielle && (
         <div className={`mb-4 p-3 rounded-2xl border flex items-center justify-between gap-3 text-xs ${
@@ -493,7 +497,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                   <div className="flex flex-col gap-1">
                     <span className="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md">
                       <CheckCircle2 className="w-4 h-4 text-slate-950" />
-                      <span>ARRIVÉE OFFICIELLE {course.reunion}{course.course}:</span>
+                      <span>ARRIVÉE CERTIFIÉE ET CONFIRMÉE {course.reunion}{course.course}:</span>
                     </span>
                   </div>
                 )}
@@ -675,10 +679,10 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                 </div>
                 <div>
                   <h3 className="text-xs sm:text-sm font-black text-white uppercase tracking-wider">
-                    PRONOSTICS DE L'ÉPREUVE (HIÉRARCHIE D'ANALYSE)
+                    SYSTÈME 74
                   </h3>
                   <p className="text-[11px] text-slate-400 font-medium mt-0.5">
-                    12 chevaux repérés : <strong className="text-emerald-300">5 N° de {v38.labelGroup1}</strong> + <strong className="text-sky-300">3 N° de {v38.labelGroup2}</strong> + <strong className="text-purple-300">4 N° de {v38.labelGroup3}</strong>
+                    Classification basée sur la différence (X) du Système 74
                   </p>
                 </div>
               </div>
@@ -693,7 +697,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                   <span>Modifier la sélection des SUR</span>
                 </button>
                 <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
-                  ✓ 12 N° Classés par Cote
+                  ✓ {v38.selection12.length} N° Classés par Cote
                 </span>
               </div>
             </div>
@@ -710,15 +714,18 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     <span className="text-[9px] text-emerald-300/80 font-mono">1er, 2e, 3e</span>
                   </div>
                   <div className="space-y-1.5">
-                    {v38.favoris.map((p, idx) => (
+                    {v38.favoris
+                      .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
+                      .sort((a, b) => b.scoreX - a.scoreX)
+                      .map(({ p, scoreX }, idx) => (
                       <div key={`hero-base-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="w-6 h-6 rounded-lg bg-emerald-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
                             {p.numero}
                           </span>
                           <span className="font-bold text-white truncate text-[11px]">{p.nom}</span>
-                          <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-emerald-400 border border-emerald-500/30 font-mono">
-                            {p.group === 'G1' ? (v38.isPlat ? 'CA' : 'G1') : p.group === 'G2' ? (v38.isPlat ? 'CB' : 'G2') : (v38.isPlat ? 'CC' : 'G3')}
+                          <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-cyan-400 border border-cyan-500/30 font-mono">
+                            {scoreX.toFixed(1).replace('.', ',')}
                           </span>
                         </div>
                         {p.coteProbable !== undefined && (
@@ -743,7 +750,10 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     <span className="text-[9px] text-amber-300/80 font-mono">4e, 5e, 6e</span>
                   </div>
                   <div className="space-y-1.5">
-                    {v38.outsiders.map((p, idx) => (
+                    {v38.outsiders
+                      .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
+                      .sort((a, b) => b.scoreX - a.scoreX)
+                      .map(({ p, scoreX }, idx) => (
                       <div key={`hero-chance-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
@@ -751,7 +761,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                           </span>
                           <span className="font-bold text-white truncate text-[11px]">{p.nom}</span>
                           <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-amber-400 border border-amber-500/30 font-mono">
-                            {p.group === 'G1' ? (v38.isPlat ? 'CA' : 'G1') : p.group === 'G2' ? (v38.isPlat ? 'CB' : 'G2') : (v38.isPlat ? 'CC' : 'G3')}
+                            {scoreX.toFixed(1).replace('.', ',')}
                           </span>
                         </div>
                         {p.coteProbable !== undefined && (
@@ -776,7 +786,10 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     <span className="text-[9px] text-orange-300/80 font-mono">7e à 9e</span>
                   </div>
                   <div className="space-y-1.5">
-                    {v38.tocardsSpeculatifs.map((p, idx) => (
+                    {v38.tocardsSpeculatifs
+                      .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
+                      .sort((a, b) => b.scoreX - a.scoreX)
+                      .map(({ p, scoreX }, idx) => (
                       <div key={`hero-tocard-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="w-6 h-6 rounded-lg bg-orange-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
@@ -784,7 +797,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                           </span>
                           <span className="font-bold text-white truncate text-[11px]">{p.nom}</span>
                           <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-orange-400 border border-orange-500/30 font-mono">
-                            {p.group === 'G1' ? (v38.isPlat ? 'CA' : 'G1') : p.group === 'G2' ? (v38.isPlat ? 'CB' : 'G2') : (v38.isPlat ? 'CC' : 'G3')}
+                            {scoreX.toFixed(1).replace('.', ',')}
                           </span>
                         </div>
                         {p.coteProbable !== undefined && (
@@ -817,7 +830,10 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     </button>
                   </div>
                   <div className="space-y-1.5">
-                    {v38.surprises.map((p, idx) => (
+                    {v38.surprises
+                      .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
+                      .sort((a, b) => b.scoreX - a.scoreX)
+                      .map(({ p, scoreX }, idx) => (
                       <div key={`hero-surprise-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span className="w-6 h-6 rounded-lg bg-purple-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
@@ -825,7 +841,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                           </span>
                           <span className="font-bold text-white truncate text-[11px]">{p.nom}</span>
                           <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-purple-400 border border-purple-500/30 font-mono">
-                            {p.group === 'G1' ? (v38.isPlat ? 'CA' : 'G1') : p.group === 'G2' ? (v38.isPlat ? 'CB' : 'G2') : (v38.isPlat ? 'CC' : 'G3')}
+                            {scoreX.toFixed(1).replace('.', ',')}
                           </span>
                         </div>
                         {p.coteProbable !== undefined && (
@@ -844,8 +860,8 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                 <div>
                   <div className="flex items-center justify-between text-slate-400 text-xs font-black uppercase mb-2 pb-1 border-b border-slate-800">
                     <div className="flex items-center gap-1.5">
-                      <ShieldAlert className="w-3.5 h-3.5" />
-                      <span>LES DÉLAISSÉS</span>
+                      <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+                      <span className="text-orange-300">CAPABLES D'EXPLOITS</span>
                     </div>
                     <button
                       type="button"
@@ -869,13 +885,19 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     {v38.delaisses.length === 0 ? (
                       <span className="text-[10px] text-slate-500 italic block p-1">Aucun délaissé</span>
                     ) : (
-                      v38.delaisses.map((p, idx) => (
+                      v38.delaisses
+                        .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
+                        .sort((a, b) => b.scoreX - a.scoreX)
+                        .map(({ p, scoreX }, idx) => (
                         <div key={`hero-delaisse-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="w-6 h-6 rounded-lg bg-slate-800 text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
                               {p.numero}
                             </span>
                             <span className="font-medium text-slate-300 truncate text-[11px]">{p.nom}</span>
+                            <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-slate-400 border border-slate-700/30 font-mono">
+                              {scoreX.toFixed(1).replace('.', ',')}
+                            </span>
                           </div>
                           {p.coteProbable !== undefined && (
                             <span className="text-[10px] font-mono text-slate-400 shrink-0">

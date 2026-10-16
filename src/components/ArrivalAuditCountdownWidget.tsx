@@ -61,17 +61,20 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
     ? formatTimeStr(auditStatus.officialTimestamp + POST_OFFICIAL_AUDIT_DELAY_MS)
     : null;
 
+  const [dismissedAlert, setDismissedAlert] = useState<boolean>(false);
+
   // Déclenchement automatique de l'alerte sonore et visuelle en cas de modification d'arrivée (rétrogradation / disqualification)
   useEffect(() => {
     if (course.arrivalAuditModificationDetected) {
+      setDismissedAlert(false);
       playArrivalModificationAlertAudio();
     }
   }, [course.arrivalAuditModificationDetected]);
 
   // 1. Cas : Modification d'arrivée constatée après enquête des commissaires
-  if (course.arrivalAuditModificationDetected) {
+  if (course.arrivalAuditModificationDetected && !dismissedAlert) {
     return (
-      <div className="w-full p-4.5 rounded-2xl bg-gradient-to-r from-rose-950 via-rose-900 to-slate-950 border-2 border-rose-500 shadow-2xl space-y-3 animate-bounce shadow-rose-500/30">
+      <div className="w-full p-4.5 rounded-2xl bg-gradient-to-r from-rose-950 via-rose-900 to-slate-950 border-2 border-rose-500 shadow-2xl space-y-3 shadow-rose-500/30">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div className="flex items-start gap-3.5">
             <div className="p-3 rounded-2xl bg-rose-500 text-slate-950 shadow-lg shadow-rose-500/40 shrink-0 font-black animate-pulse">
@@ -97,11 +100,20 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
               )}
             </div>
           </div>
-          {course.arrivalAuditTimestamp && (
-            <span className="text-[10px] font-mono text-rose-200 bg-rose-950 px-3 py-1.5 rounded-xl border border-rose-500/50 shadow">
-              Alerte émise à {new Date(course.arrivalAuditTimestamp).toLocaleTimeString('fr-FR')}
-            </span>
-          )}
+          <div className="flex items-center gap-2">
+            {course.arrivalAuditTimestamp && (
+              <span className="text-[10px] font-mono text-rose-200 bg-rose-950 px-3 py-1.5 rounded-xl border border-rose-500/50 shadow">
+                Alerte émise à {new Date(course.arrivalAuditTimestamp).toLocaleTimeString('fr-FR')}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => setDismissedAlert(true)}
+              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow transition-colors flex items-center gap-1 cursor-pointer"
+            >
+              Fermer
+            </button>
+          </div>
         </div>
       </div>
     );

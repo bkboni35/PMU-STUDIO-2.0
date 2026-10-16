@@ -601,76 +601,80 @@ export const PMU_SUNDAY_11_MEETINGS: PmuMeeting[] = [
   },
 
   // =========================================================================
-  // R4 - TOULOUSE (4 Courses : C2, C3, C4, C5) - Plat - Corde à Droite
+  // R5 - TOULOUSE (6 Courses : C1, C2, C4, C5, C6, C8) - Plat - Corde à Droite
   // =========================================================================
   {
-    id: 'pmu-sun11-r4-c2',
+    id: 'pmu-sun11-r5-c1',
     date: 'Dimanche 11 Octobre 2026',
     dateRelative: "Aujourd'hui",
-    reunion: 'R4',
-    courseNumero: 'C2',
+    reunion: 'R5',
+    courseNumero: 'C1',
     hippodrome: 'Toulouse',
-    heure: '11h30',
+    heure: '11h45',
     discipline: 'Plat',
     nomCoursePhare: 'Prix de la Cépière',
     distance: 1600,
-    allocation: '22 000 €',
+    allocation: '27 000 €',
     estQuinte: false,
     corde: 'Droite',
-    description: 'Classe 2 - Pour poulains et pouliches de 3 ans - 1600m - 10 Partants',
-    lienGeny: 'https://www.geny.com/partants-pmu/2026-10-11-toulouse-prix-de-la-cepiere_c2',
+    description: 'Classe 2 - Pour poulains et pouliches de 3 ans - 1600m - 12 Partants',
+    lienGeny: 'https://www.geny.com/partants-pmu/2026-10-11-toulouse-prix-de-la-cepiere_c1',
+    nombrePartants: 12,
+    statut: 'À venir',
+    partants: [
+      { numero: 1, nom: 'CAPITOLE STAR', driver: 'M. Guyon', entraineur: 'J.C. Rouget', musique: '1p 2p 1p', coteProbable: 2.5, corde: 1, age: 3, sexe: 'M', gains: 45000, statut: 'Partant' },
+      { numero: 2, nom: 'OCCITANIE ROSE', driver: 'C. Soumillon', entraineur: 'F. Rohaut', musique: '2p 1p 3p', coteProbable: 3.8, corde: 4, age: 3, sexe: 'F', gains: 38000, statut: 'Partant' },
+      { numero: 3, nom: 'GARONNE BOY', driver: 'S. Pasquier', entraineur: 'X. Thomas-Demeaulte', musique: '1p 3p 2p', coteProbable: 5.2, corde: 2, age: 3, sexe: 'M', gains: 32000, statut: 'Partant' },
+      { numero: 4, nom: 'TOULOUSE DREAM', driver: 'A. Gavilan', entraineur: 'D. Guillemin', musique: '3p 2p 4p', coteProbable: 7.0, corde: 5, age: 3, sexe: 'H', gains: 27000, statut: 'Partant' },
+      { numero: 5, nom: 'VIOLETTE DE MIDI', driver: 'G. Guedj-Gay', entraineur: 'F. Rohaut', musique: '4p 1p 5p', coteProbable: 9.2, corde: 3, age: 3, sexe: 'F', gains: 22000, statut: 'Partant' },
+      { numero: 6, nom: 'SAINT CERNIN', driver: 'M. Forest', entraineur: 'C. Ferland', musique: '2p 4p 3p', coteProbable: 11.5, corde: 7, age: 3, sexe: 'M', gains: 18000, statut: 'Partant' },
+      { numero: 7, nom: 'LA DAURADE', driver: 'A. Werle', entraineur: 'O. Trigodet', musique: '5p 3p 2p', coteProbable: 14.0, corde: 6, age: 3, sexe: 'F', gains: 15000, statut: 'Partant' },
+      { numero: 8, nom: 'CANAL DU MIDI', driver: 'E. Revolte', entraineur: 'D. Guillemin', musique: '3p 5p 6p', coteProbable: 18.0, corde: 8, age: 3, sexe: 'H', gains: 12000, statut: 'Partant' },
+      { numero: 9, nom: 'PONT NEUF', driver: 'L. Le Pemp', entraineur: 'O. Trigodet', musique: '6p 4p 5p', coteProbable: 24.0, corde: 9, age: 3, sexe: 'M', gains: 9000, statut: 'Partant' },
+      { numero: 10, nom: 'PYRENEES FLOWER', driver: 'A. Gutierrez Val', entraineur: 'P. Sogorb', musique: '4p 6p 7p', coteProbable: 30.0, corde: 10, age: 3, sexe: 'F', gains: 6000, statut: 'Partant' },
+      { numero: 11, nom: 'MATABIAU EXPRESS', driver: 'V. Chenet', entraineur: 'C. Gourdain', musique: '5p 4p 6p', coteProbable: 35.0, corde: 11, age: 3, sexe: 'M', gains: 4500, statut: 'Partant' },
+      { numero: 12, nom: 'CARMES DANCER', driver: 'F. Veron', entraineur: 'D. Watrigant', musique: '6p 5p 7p', coteProbable: 42.0, corde: 12, age: 3, sexe: 'F', gains: 3000, statut: 'Partant' },
+    ]
+  },
+  {
+    id: 'pmu-sun11-r5-c2',
+    date: 'Dimanche 11 Octobre 2026',
+    dateRelative: "Aujourd'hui",
+    reunion: 'R5',
+    courseNumero: 'C2',
+    hippodrome: 'Toulouse',
+    heure: '12h20',
+    discipline: 'Plat',
+    nomCoursePhare: 'Prix Panacée - Fonds Européen de l\'Élevage',
+    distance: 2400,
+    allocation: '52 000 €',
+    estQuinte: false,
+    corde: 'Droite',
+    description: 'Listed Race - Pour femelles de 3 ans et plus - 2400m - 10 Partantes',
+    lienGeny: 'https://www.geny.com/partants-pmu/2026-10-11-toulouse-prix-panacee_c2',
     nombrePartants: 10,
     statut: 'À venir',
     partants: [
-      { numero: 1, nom: 'CAPITOLE STAR', driver: 'M. Guyon', entraineur: 'J.C. Rouget', musique: '1p 2p 1p', coteProbable: 2.3, corde: 1, age: 3, sexe: 'M', gains: 45000, statut: 'Partant' },
-      { numero: 2, nom: 'OCCITANIE ROSE', driver: 'C. Soumillon', entraineur: 'F. Rohaut', musique: '2p 1p 3p', coteProbable: 3.6, corde: 4, age: 3, sexe: 'F', gains: 38000, statut: 'Partant' },
-      { numero: 3, nom: 'GARONNE BOY', driver: 'S. Pasquier', entraineur: 'X. Thomas-Demeaulte', musique: '1p 3p 2p', coteProbable: 5.4, corde: 2, age: 3, sexe: 'M', gains: 32000, statut: 'Partant' },
-      { numero: 4, nom: 'TOULOUSE DREAM', driver: 'A. Gavilan', entraineur: 'D. Guillemin', musique: '3p 2p 4p', coteProbable: 7.2, corde: 5, age: 3, sexe: 'H', gains: 27000, statut: 'Partant' },
-      { numero: 5, nom: 'VIOLETTE DE MIDI', driver: 'G. Guedj-Gay', entraineur: 'F. Rohaut', musique: '4p 1p 5p', coteProbable: 9.5, corde: 3, age: 3, sexe: 'F', gains: 22000, statut: 'Partant' },
-      { numero: 6, nom: 'SAINT CERNIN', driver: 'M. Forest', entraineur: 'C. Ferland', musique: '2p 4p 3p', coteProbable: 12.0, corde: 7, age: 3, sexe: 'M', gains: 18000, statut: 'Partant' },
-      { numero: 7, nom: 'LA DAURADE', driver: 'A. Werle', entraineur: 'O. Trigodet', musique: '5p 3p 2p', coteProbable: 15.0, corde: 6, age: 3, sexe: 'F', gains: 15000, statut: 'Partant' },
-      { numero: 8, nom: 'CANAL DU MIDI', driver: 'E. Revolte', entraineur: 'D. Guillemin', musique: '3p 5p 6p', coteProbable: 19.0, corde: 8, age: 3, sexe: 'H', gains: 12000, statut: 'Partant' },
-      { numero: 9, nom: 'PONT NEUF', driver: 'L. Le Pemp', entraineur: 'O. Trigodet', musique: '6p 4p 5p', coteProbable: 25.0, corde: 9, age: 3, sexe: 'M', gains: 9000, statut: 'Partant' },
-      { numero: 10, nom: 'PYRENEES FLOWER', driver: 'A. Gutierrez Val', entraineur: 'P. Sogorb', musique: '4p 6p 7p', coteProbable: 32.0, corde: 10, age: 3, sexe: 'F', gains: 6000, statut: 'Partant' },
+      { numero: 1, nom: 'QUEEN OF BRESIL', driver: 'M. Guyon', entraineur: 'A. Fabre', musique: '1p 1p 2p', coteProbable: 2.9, corde: 3, age: 4, sexe: 'F', gains: 95000, statut: 'Partant' },
+      { numero: 2, nom: 'SWEET GEM', driver: 'C. Soumillon', entraineur: 'J.C. Rouget', musique: '2p 1p 3p', coteProbable: 3.5, corde: 1, age: 3, sexe: 'F', gains: 78000, statut: 'Partant' },
+      { numero: 3, nom: 'LADY MALLOW', driver: 'S. Pasquier', entraineur: 'F. Chappet', musique: '3p 2p 1p', coteProbable: 5.8, corde: 5, age: 4, sexe: 'F', gains: 68000, statut: 'Partant' },
+      { numero: 4, nom: 'PRINCESS DU MOURNE', driver: 'T. Bachelot', entraineur: 'F. Rohaut', musique: '1p 4p 2p', coteProbable: 7.2, corde: 2, age: 3, sexe: 'F', gains: 54000, statut: 'Partant' },
+      { numero: 5, nom: 'CELESTIAL BEAUTY', driver: 'A. Madamet', entraineur: 'C. Ferland', musique: '4p 3p 1p', coteProbable: 9.0, corde: 6, age: 4, sexe: 'F', gains: 48000, statut: 'Partant' },
+      { numero: 6, nom: 'DIAMOND ROSE', driver: 'C. Demuro', entraineur: 'X. Thomas-Demeaulte', musique: '2p 5p 4p', coteProbable: 12.0, corde: 4, age: 3, sexe: 'F', gains: 42000, statut: 'Partant' },
+      { numero: 7, nom: 'GOLDEN GLORY', driver: 'A. Gavilan', entraineur: 'D. Guillemin', musique: '5p 2p 3p', coteProbable: 15.0, corde: 8, age: 4, sexe: 'F', gains: 36000, statut: 'Partant' },
+      { numero: 8, nom: 'SILVER LADY', driver: 'G. Guedj-Gay', entraineur: 'F. Rohaut', musique: '3p 6p 5p', coteProbable: 18.0, corde: 7, age: 3, sexe: 'F', gains: 30000, statut: 'Partant' },
+      { numero: 9, nom: 'WHITE PEARL', driver: 'M. Forest', entraineur: 'O. Trigodet', musique: '6p 4p 2p', coteProbable: 22.0, corde: 9, age: 4, sexe: 'F', gains: 25000, statut: 'Partant' },
+      { numero: 10, nom: 'FLOWER POWER', driver: 'E. Revolte', entraineur: 'O. Trigodet', musique: '4p 5p 6p', coteProbable: 28.0, corde: 10, age: 3, sexe: 'F', gains: 20000, statut: 'Partant' },
     ]
   },
   {
-    id: 'pmu-sun11-r4-c3',
+    id: 'pmu-sun11-r5-c4',
     date: 'Dimanche 11 Octobre 2026',
     dateRelative: "Aujourd'hui",
-    reunion: 'R4',
-    courseNumero: 'C3',
-    hippodrome: 'Toulouse',
-    heure: '12h05',
-    discipline: 'Plat',
-    nomCoursePhare: 'Prix Claude de Langalerie',
-    distance: 2400,
-    allocation: '19 000 €',
-    estQuinte: false,
-    corde: 'Droite',
-    description: 'Classe 3 - Handicap - Pour 4 ans et au-dessus - 2400m - 8 Partants',
-    lienGeny: 'https://www.geny.com/partants-pmu/2026-10-11-toulouse-prix-claude-de-langalerie_c3',
-    nombrePartants: 8,
-    statut: 'À venir',
-    partants: [
-      { numero: 1, nom: 'AL HIZAM', driver: 'M. Guyon', entraineur: 'J.C. Rouget', musique: '1p 2p 3p', coteProbable: 2.8, corde: 2, age: 4, sexe: 'H', gains: 52000, statut: 'Partant' },
-      { numero: 2, nom: 'LORD OF TOULOUSE', driver: 'C. Soumillon', entraineur: 'F. Rohaut', musique: '2p 1p 4p', coteProbable: 3.9, corde: 4, age: 5, sexe: 'M', gains: 48000, statut: 'Partant' },
-      { numero: 3, nom: 'QUEEN DE GARONNE', driver: 'S. Pasquier', entraineur: 'X. Thomas-Demeaulte', musique: '3p 3p 1p', coteProbable: 5.2, corde: 1, age: 4, sexe: 'F', gains: 43000, statut: 'Partant' },
-      { numero: 4, nom: 'MONTAUBAN PRIDE', driver: 'A. Gavilan', entraineur: 'D. Guillemin', musique: '4p 2p 2p', coteProbable: 7.0, corde: 5, age: 6, sexe: 'H', gains: 39000, statut: 'Partant' },
-      { numero: 5, nom: 'TARBES SPEED', driver: 'G. Guedj-Gay', entraineur: 'F. Rohaut', musique: '1p 5p 3p', coteProbable: 9.5, corde: 3, age: 5, sexe: 'H', gains: 34000, statut: 'Partant' },
-      { numero: 6, nom: 'ALBI EXPRESS', driver: 'M. Forest', entraineur: 'C. Ferland', musique: '5p 4p 2p', coteProbable: 13.0, corde: 6, age: 4, sexe: 'M', gains: 29000, statut: 'Partant' },
-      { numero: 7, nom: 'GASCOGNE BOY', driver: 'A. Werle', entraineur: 'O. Trigodet', musique: '2p 6p 5p', coteProbable: 17.0, corde: 7, age: 6, sexe: 'H', gains: 24000, statut: 'Partant' },
-      { numero: 8, nom: 'PYRENEES GOLD', driver: 'E. Revolte', entraineur: 'D. Guillemin', musique: '6p 5p 6p', coteProbable: 24.0, corde: 8, age: 5, sexe: 'H', gains: 19000, statut: 'Partant' },
-    ]
-  },
-  {
-    id: 'pmu-sun11-r4-c4',
-    date: 'Dimanche 11 Octobre 2026',
-    dateRelative: "Aujourd'hui",
-    reunion: 'R4',
+    reunion: 'R5',
     courseNumero: 'C4',
     hippodrome: 'Toulouse',
-    heure: '12h40',
+    heure: '13h30',
     discipline: 'Plat',
     nomCoursePhare: 'Prix de Tournefeuille',
     distance: 1400,
@@ -696,22 +700,22 @@ export const PMU_SUNDAY_11_MEETINGS: PmuMeeting[] = [
     ]
   },
   {
-    id: 'pmu-sun11-r4-c5',
+    id: 'pmu-sun11-r5-c5',
     date: 'Dimanche 11 Octobre 2026',
     dateRelative: "Aujourd'hui",
-    reunion: 'R4',
+    reunion: 'R5',
     courseNumero: 'C5',
     hippodrome: 'Toulouse',
-    heure: '13h15',
+    heure: '14h05',
     discipline: 'Plat',
     nomCoursePhare: 'Prix de Saint-Cyprien',
     distance: 2000,
     allocation: '18 000 €',
     estQuinte: false,
     corde: 'Droite',
-    description: 'Classe 3 - Handicap - Pour 4 ans et au-dessus - 2000m - 9 Partants',
+    description: 'Classe 3 - Handicap - Pour 4 ans et au-dessus - 2000m - 10 Partants',
     lienGeny: 'https://www.geny.com/partants-pmu/2026-10-11-toulouse-prix-de-saint-cyprien_c5',
-    nombrePartants: 9,
+    nombrePartants: 10,
     statut: 'À venir',
     partants: [
       { numero: 1, nom: 'SAINT CYPRIEN BOY', driver: 'M. Guyon', entraineur: 'J.C. Rouget', musique: '1p 3p 2p', coteProbable: 2.9, corde: 2, age: 4, sexe: 'H', gains: 44000, statut: 'Partant' },
@@ -722,7 +726,76 @@ export const PMU_SUNDAY_11_MEETINGS: PmuMeeting[] = [
       { numero: 6, nom: 'SAINT MICHEL', driver: 'M. Forest', entraineur: 'C. Ferland', musique: '5p 2p 6p', coteProbable: 13.0, corde: 7, age: 5, sexe: 'H', gains: 22000, statut: 'Partant' },
       { numero: 7, nom: 'ESQUIROL PRINCE', driver: 'A. Werle', entraineur: 'O. Trigodet', musique: '2p 5p 5p', coteProbable: 16.5, corde: 6, age: 4, sexe: 'M', gains: 18000, statut: 'Partant' },
       { numero: 8, nom: 'CARMES DREAM', driver: 'E. Revolte', entraineur: 'D. Guillemin', musique: '6p 4p 7p', coteProbable: 22.0, corde: 8, age: 6, sexe: 'H', gains: 14000, statut: 'Partant' },
-      { numero: 9, nom: 'MINIMES ROSE', driver: 'A. Gutierrez Val', entraineur: 'P. Sogorb', musique: '7p 7p 6p', coteProbable: 30.0, corde: 9, age: 5, sexe: 'F', gains: 11000, statut: 'Partant' },
+      { numero: 9, nom: 'MINIMES ROSE', driver: 'A. Gutierrez Val', entraineur: 'P. Sogorb', musique: '7p 7p 6p', coteProbable: 28.0, corde: 9, age: 5, sexe: 'F', gains: 11000, statut: 'Partant' },
+      { numero: 10, nom: 'RANGUEIL SUN', driver: 'V. Seguy', entraineur: 'M. Guarnieri', musique: '5p 6p 8p', coteProbable: 34.0, corde: 10, age: 4, sexe: 'H', gains: 8500, statut: 'Partant' },
+    ]
+  },
+  {
+    id: 'pmu-sun11-r5-c6',
+    date: 'Dimanche 11 Octobre 2026',
+    dateRelative: "Aujourd'hui",
+    reunion: 'R5',
+    courseNumero: 'C6',
+    hippodrome: 'Toulouse',
+    heure: '14h40',
+    discipline: 'Plat',
+    nomCoursePhare: 'Prix Pierre de Castelbajac',
+    distance: 2100,
+    allocation: '21 000 €',
+    estQuinte: false,
+    corde: 'Droite',
+    description: 'Classe 2 - Pour chevaux entiers, hongres et juments de 4 ans et au-dessus - 2100m - 12 Partants',
+    lienGeny: 'https://www.geny.com/partants-pmu/2026-10-11-toulouse-prix-pierre-de-castelbajac_c6',
+    nombrePartants: 12,
+    statut: 'À venir',
+    partants: [
+      { numero: 1, nom: 'CASTELBAJAC HERO', driver: 'M. Guyon', entraineur: 'J.C. Rouget', musique: '1p 1p 3p', coteProbable: 2.7, corde: 2, age: 4, sexe: 'M', gains: 68000, statut: 'Partant' },
+      { numero: 2, nom: 'PONT DE ROCHE', driver: 'C. Soumillon', entraineur: 'F. Rohaut', musique: '2p 2p 1p', coteProbable: 3.9, corde: 5, age: 5, sexe: 'H', gains: 59000, statut: 'Partant' },
+      { numero: 3, nom: 'GARONNE STAR', driver: 'S. Pasquier', entraineur: 'X. Thomas-Demeaulte', musique: '3p 1p 4p', coteProbable: 5.4, corde: 1, age: 4, sexe: 'F', gains: 51000, statut: 'Partant' },
+      { numero: 4, nom: 'LAUTREC GLORY', driver: 'T. Bachelot', entraineur: 'D. Guillemin', musique: '4p 3p 2p', coteProbable: 7.2, corde: 4, age: 6, sexe: 'H', gains: 45000, statut: 'Partant' },
+      { numero: 5, nom: 'CAPITOLINE PRIDE', driver: 'A. Gavilan', entraineur: 'C. Ferland', musique: '2p 5p 1p', coteProbable: 9.5, corde: 3, age: 4, sexe: 'F', gains: 39000, statut: 'Partant' },
+      { numero: 6, nom: 'BLAGNAC FLIER', driver: 'M. Forest', entraineur: 'O. Trigodet', musique: '5p 4p 3p', coteProbable: 12.0, corde: 6, age: 5, sexe: 'H', gains: 33000, statut: 'Partant' },
+      { numero: 7, nom: 'CANAL ROYAL', driver: 'G. Guedj-Gay', entraineur: 'F. Rohaut', musique: '3p 6p 2p', coteProbable: 15.0, corde: 7, age: 4, sexe: 'M', gains: 28000, statut: 'Partant' },
+      { numero: 8, nom: 'AURIGNAC FLASH', driver: 'A. Werle', entraineur: 'D. Watrigant', musique: '6p 2p 5p', coteProbable: 18.0, corde: 8, age: 5, sexe: 'H', gains: 24000, statut: 'Partant' },
+      { numero: 9, nom: 'SAINT LYS DANCER', driver: 'E. Revolte', entraineur: 'D. Guillemin', musique: '4p 7p 6p', coteProbable: 23.0, corde: 9, age: 4, sexe: 'F', gains: 20000, statut: 'Partant' },
+      { numero: 10, nom: 'COMMINGES GOLD', driver: 'L. Le Pemp', entraineur: 'O. Trigodet', musique: '7p 5p 4p', coteProbable: 29.0, corde: 10, age: 6, sexe: 'H', gains: 16000, statut: 'Partant' },
+      { numero: 11, nom: 'VOLVESTRE ROSE', driver: 'A. Gutierrez Val', entraineur: 'P. Sogorb', musique: '8p 6p 7p', coteProbable: 36.0, corde: 11, age: 5, sexe: 'F', gains: 12000, statut: 'Partant' },
+      { numero: 12, nom: 'FRONTON SPIRIT', driver: 'V. Chenet', entraineur: 'C. Gourdain', musique: '6p 8p 9p', coteProbable: 45.0, corde: 12, age: 4, sexe: 'H', gains: 8000, statut: 'Partant' },
+    ]
+  },
+  {
+    id: 'pmu-sun11-r5-c8',
+    date: 'Dimanche 11 Octobre 2026',
+    dateRelative: "Aujourd'hui",
+    reunion: 'R5',
+    courseNumero: 'C8',
+    hippodrome: 'Toulouse',
+    heure: '15h50',
+    discipline: 'Plat',
+    nomCoursePhare: 'Prix de la Cité Médiévale',
+    distance: 1600,
+    allocation: '20 000 €',
+    estQuinte: false,
+    corde: 'Droite',
+    description: 'Handicap divisé - Deuxième épreuve - Réf: +28 - Pour 4 ans et au-dessus - 1600m - 14 Partants',
+    lienGeny: 'https://www.geny.com/partants-pmu/2026-10-11-toulouse-prix-cite-medievale_c8',
+    nombrePartants: 14,
+    statut: 'À venir',
+    partants: [
+      { numero: 1, nom: 'CITE MEDIEVALE', driver: 'M. Guyon', entraineur: 'J.C. Rouget', musique: '1p 2p 4p', coteProbable: 3.1, corde: 2, age: 5, sexe: 'H', gains: 62000, statut: 'Partant' },
+      { numero: 2, nom: 'REMPARTS D\'OR', driver: 'C. Soumillon', entraineur: 'F. Rohaut', musique: '2p 3p 1p', coteProbable: 4.4, corde: 5, age: 4, sexe: 'M', gains: 53000, statut: 'Partant' },
+      { numero: 3, nom: 'CHATEAU COMTE', driver: 'S. Pasquier', entraineur: 'X. Thomas-Demeaulte', musique: '3p 1p 5p', coteProbable: 5.8, corde: 1, age: 6, sexe: 'H', gains: 47000, statut: 'Partant' },
+      { numero: 4, nom: 'BASTIDE NOIRE', driver: 'T. Bachelot', entraineur: 'D. Guillemin', musique: '4p 4p 2p', coteProbable: 7.5, corde: 7, age: 4, sexe: 'F', gains: 41000, statut: 'Partant' },
+      { numero: 5, nom: 'DONJON ROYAL', driver: 'A. Gavilan', entraineur: 'C. Ferland', musique: '1p 5p 3p', coteProbable: 9.0, corde: 4, age: 5, sexe: 'H', gains: 36000, statut: 'Partant' },
+      { numero: 6, nom: 'PORTAIL NORD', driver: 'M. Forest', entraineur: 'O. Trigodet', musique: '5p 2p 6p', coteProbable: 11.5, corde: 6, age: 4, sexe: 'M', gains: 31000, statut: 'Partant' },
+      { numero: 7, nom: 'TOUR DE GUET', driver: 'G. Guedj-Gay', entraineur: 'F. Rohaut', musique: '2p 6p 4p', coteProbable: 14.0, corde: 3, age: 5, sexe: 'F', gains: 27000, statut: 'Partant' },
+      { numero: 8, nom: 'ARCHER DE MIDI', driver: 'A. Werle', entraineur: 'D. Watrigant', musique: '6p 3p 2p', coteProbable: 17.0, corde: 8, age: 4, sexe: 'H', gains: 23000, statut: 'Partant' },
+      { numero: 9, nom: 'COUR DES MIRACLES', driver: 'E. Revolte', entraineur: 'D. Guillemin', musique: '3p 7p 5p', coteProbable: 21.0, corde: 9, age: 6, sexe: 'F', gains: 19000, statut: 'Partant' },
+      { numero: 10, nom: 'CRENEL D\'ARGENT', driver: 'L. Le Pemp', entraineur: 'O. Trigodet', musique: '7p 4p 6p', coteProbable: 26.0, corde: 10, age: 5, sexe: 'H', gains: 15000, statut: 'Partant' },
+      { numero: 11, nom: 'HERSE FLEURIE', driver: 'A. Gutierrez Val', entraineur: 'P. Sogorb', musique: '8p 5p 7p', coteProbable: 32.0, corde: 11, age: 4, sexe: 'F', gains: 11000, statut: 'Partant' },
+      { numero: 12, nom: 'MOAT RUNNER', driver: 'V. Chenet', entraineur: 'C. Gourdain', musique: '5p 8p 8p', coteProbable: 38.0, corde: 12, age: 5, sexe: 'H', gains: 8000, statut: 'Partant' },
+      { numero: 13, nom: 'BARBACANE STAR', driver: 'F. Veron', entraineur: 'D. Watrigant', musique: '9p 6p 9p', coteProbable: 45.0, corde: 13, age: 4, sexe: 'F', gains: 5000, statut: 'Partant' },
+      { numero: 14, nom: 'POTERNE BLEUE', driver: 'V. Seguy', entraineur: 'M. Guarnieri', musique: '7p 9p 0p', coteProbable: 55.0, corde: 14, age: 6, sexe: 'H', gains: 3000, statut: 'Partant' },
     ]
   },
 
@@ -845,9 +918,9 @@ export const PMU_SUNDAY_11_MEETINGS: PmuMeeting[] = [
     allocation: '22 000 €',
     estQuinte: false,
     corde: 'Droite',
-    description: 'Course E - Pour chevaux de 4 ans n\'ayant pas gagné 36.000 € - Recul de 25m à 18.000 € - 11 Partants',
+    description: 'Course E - Pour chevaux de 4 ans n\'ayant pas gagné 36.000 € - Recul de 25m à 18.000 € - 12 Partants',
     lienGeny: 'https://www.geny.com/partants-pmu/2026-10-11-lyon-la-soie-prix-du-parc-de-parilly_c4',
-    nombrePartants: 11,
+    nombrePartants: 12,
     statut: 'À venir',
     partants: [
       { numero: 1, nom: 'KRONOS DE PARILLY', driver: 'S. Peltier', entraineur: 'S. Peltier', musique: '1a 2a 2a', coteProbable: 3.2, age: 4, sexe: 'H', gains: 17500, statut: 'Partant' },
@@ -861,6 +934,7 @@ export const PMU_SUNDAY_11_MEETINGS: PmuMeeting[] = [
       { numero: 9, nom: 'KOLD PLAY', driver: 'S. Cingland', entraineur: 'S. Cingland', musique: '3a 2a 6a', coteProbable: 10.0, age: 4, sexe: 'M', gains: 32100, distance: 2725, statut: 'Partant' },
       { numero: 10, nom: 'KALYPSO STAR', driver: 'J.CU. Feron', entraineur: 'R. Mourice', musique: '4a 5a 4a', coteProbable: 15.0, age: 4, sexe: 'F', gains: 30800, distance: 2725, statut: 'Partant' },
       { numero: 11, nom: 'KAPORAL D\'AMOUR', driver: 'F. Jamard', entraineur: 'L. Paleau', musique: '6a Da 5a', coteProbable: 22.0, age: 4, sexe: 'H', gains: 29500, distance: 2725, statut: 'Partant' },
+      { numero: 12, nom: 'LADY DE MONGOCHY', driver: 'M. Cinier', entraineur: 'M. Cinier', musique: '1a 2a 1a 4a', driverMusique: '1a 2a 2a 6a 1a 4a 3a 7a', coteProbable: 3.8, age: 4, sexe: 'F', gains: 32500, distance: 2725, statut: 'Partant' },
     ]
   },
   {
@@ -1168,8 +1242,56 @@ export const PMU_MONDAY_12_MEETINGS: PmuMeeting[] = [
       { numero: 6, nom: 'MAMA IMELDA', driver: 'M. Grandin', entraineur: 'M. Grandin', coteProbable: 4.8, musique: '1p 3p 2p', age: 4, sexe: 'F', gains: 36000 },
       { numero: 7, nom: 'ALROMAN', driver: 'G. Millet', entraineur: 'G. Millet', coteProbable: 8.0, musique: '4p 1p 5p', age: 5, sexe: 'H', gains: 29000 },
     ]
+  },
+  {
+    id: 'pmu-marseille-r2-c5-maurice-uzel',
+    date: 'Vendredi 16 Octobre 2026',
+    dateRelative: "Aujourd'hui",
+    reunion: 'R2',
+    courseNumero: 'C5',
+    hippodrome: 'Marseille-Borély',
+    heure: '11h25',
+    discipline: 'Trot Attelé',
+    nomCoursePhare: 'Prix Maurice Uzel',
+    distance: 3000,
+    allocation: '24 000 €',
+    estQuinte: false,
+    corde: 'Gauche',
+    description: 'Course E - Pour juments de 5 ans n\'ayant pas gagné 63.000 € - Recul de 25m à 31.000 € - 14 Partantes',
+    lienGeny: 'https://www.geny.com/partants-pmu/2026-10-16-marseille-borely-prix-maurice-uzel_c5',
+    nombrePartants: 14,
+    statut: 'À venir',
+    partants: [
+      { numero: 1, nom: 'Lumière du Look', driver: 'N. Cinier', entraineur: 'N. Cinier', musique: '7a 5a 4a 1a', driverMusique: '7a 5a 4a 1a 8a 0a 5a 0a', coteProbable: 10.0, distance: 3000, age: 5, sexe: 'F', gains: 29500, statut: 'Partant' },
+      { numero: 2, nom: 'Lolita de l\'Etoile', driver: 'R. Bouvier', entraineur: 'R. Bouvier', musique: '3a 5a Da Da', driverMusique: '3a 5a Da Da Da 1a 0a Da', coteProbable: 8.5, distance: 3000, age: 5, sexe: 'F', gains: 30200, statut: 'Partant' },
+      { numero: 3, nom: 'Lou de Losque', driver: 'J. Guelpa', entraineur: 'J. Guelpa', musique: 'Da 8a 6a 5a', driverMusique: 'Da 8a 6a 5a Da 0a 9a 3a', coteProbable: 18.0, distance: 3000, age: 5, sexe: 'F', gains: 30800, statut: 'Partant' },
+      { numero: 4, nom: 'Lily Ginyu', driver: 'Q. Chauve-Laffay', entraineur: 'H. Chauve-Laffay', musique: '3a 3a Da Da', driverMusique: '3a 3a Da Da Aa Da 0a 8a', coteProbable: 7.2, distance: 3000, age: 5, sexe: 'F', gains: 30900, statut: 'Partant' },
+      { numero: 5, nom: 'Lou de Beaulac', driver: 'E. Briand', entraineur: 'E. Briand', musique: 'Da 6a Da 3a', driverMusique: 'Da 6a Da 3a 6a Da 0a 9a', coteProbable: 25.0, distance: 3000, age: 5, sexe: 'F', gains: 30950, statut: 'Partant' },
+      { numero: 6, nom: 'La Brière', driver: 'M. Gauvin', entraineur: 'M. Gauvin', musique: 'Da 5a 4a Da', driverMusique: 'Da 5a 4a Da 5a Da Da 7a', coteProbable: 35.0, distance: 3000, age: 5, sexe: 'F', gains: 30990, statut: 'Partant' },
+      { numero: 7, nom: 'Lilas Aimef', driver: 'J.-C. Féron', entraineur: 'J.-C. Féron', musique: '0a Da 2a 4a', driverMusique: '0a Da 2a 4a 0a 3a 8a 8a', coteProbable: 14.0, distance: 3000, age: 5, sexe: 'F', gains: 31000, statut: 'Partant' },
+      { numero: 8, nom: 'Landelina', driver: 'L. Goetz', entraineur: 'L. Goetz', musique: 'Da 6a 1a 0a', driverMusique: 'Da 6a 1a 0a Da 4a 7a 3a', coteProbable: 6.5, distance: 3000, age: 5, sexe: 'F', gains: 31000, statut: 'Partant' },
+      { numero: 9, nom: 'Lili du Cherisay', driver: 'F. Tugend', entraineur: 'F. Tugend', musique: '3a Da Da 0a', driverMusique: '3a Da Da 0a 2a Da 9a 5a', coteProbable: 16.0, distance: 3025, age: 5, sexe: 'F', gains: 58000, statut: 'Partant' },
+      { numero: 10, nom: 'Lovictory Williams', driver: 'G. Tugend', entraineur: 'G. Tugend', musique: 'Da 8a 7a Da', driverMusique: 'Da 8a 7a Da 6a Da 6a 2a', coteProbable: 22.0, distance: 3025, age: 5, sexe: 'F', gains: 59500, statut: 'Partant' },
+      { numero: 11, nom: 'Laska du Livier', driver: 'N. G. Lefèvre', entraineur: 'N. G. Lefèvre', musique: '0a Da Da 9a', driverMusique: '0a Da Da 9a 8a Da Da 0a', coteProbable: 28.0, distance: 3025, age: 5, sexe: 'F', gains: 60200, statut: 'Partant' },
+      { numero: 12, nom: 'Lola Loulou', driver: 'B. Chauve-Laffay', entraineur: 'H. Chauve-Laffay', musique: '4a 2a 5a 4a', driverMusique: '4a 2a 5a 4a 4a 3m 7a 9a', coteProbable: 9.0, distance: 3025, age: 5, sexe: 'F', gains: 61500, statut: 'Partant' },
+      { numero: 13, nom: 'Liberata', driver: 'J.-C. Sorel', entraineur: 'J.-C. Sorel', musique: '3a Da 5a 4a', driverMusique: '3a Da 5a 4a 7a 9a 2a 3a', coteProbable: 11.0, distance: 3025, age: 5, sexe: 'F', gains: 62200, statut: 'Partant' },
+      { numero: 14, nom: 'Lady de Mongochy', driver: 'M. Cinier', entraineur: 'M. Cinier', musique: '1a 2a 2a 6a', driverMusique: '1a 2a 2a 6a 1a 4a 3a 1a', coteProbable: 3.5, distance: 3025, age: 5, sexe: 'F', gains: 62900, statut: 'Partant' },
+    ],
   }
 ];
+
+/**
+ * Réunion officielle R5 : TOULOUSE (6 Courses : C1, C2, C4, C5, C6, C8)
+ * - C1 : Prix de la Cépière (11h45) - 1600m - 12 Partants
+ * - C2 : Prix Panacée - Fonds Européen de l'Élevage (12h20) - 2400m - 10 Partantes
+ * - C4 : Prix de Tournefeuille (13h30) - 1400m - 11 Partants
+ * - C5 : Prix de Saint-Cyprien (14h05) - 2000m - 10 Partants
+ * - C6 : Prix Pierre de Castelbajac (14h40) - 2100m - 12 Partants
+ * - C8 : Prix de la Cité Médiévale (15h50) - 1600m - 14 Partants
+ */
+export const PMU_TOULOUSE_R5_MEETINGS: PmuMeeting[] = PMU_SUNDAY_11_MEETINGS.filter(
+  (m) => m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse')
+);
 
 /**
  * Catalogue consolidé par date (YYYY-MM-DD)
@@ -1177,7 +1299,7 @@ export const PMU_MONDAY_12_MEETINGS: PmuMeeting[] = [
 export const MULTI_DATE_MEETINGS_MAP: Record<string, { label: string; meetings: PmuMeeting[] }> = {
   '2026-10-10': {
     label: 'Samedi 10 Octobre 2026',
-    meetings: PMU_SATURDAY_10_MEETINGS,
+    meetings: [...PMU_SATURDAY_10_MEETINGS, ...PMU_TOULOUSE_R5_MEETINGS],
   },
   '2026-10-11': {
     label: 'Dimanche 11 Octobre 2026',
@@ -1185,7 +1307,19 @@ export const MULTI_DATE_MEETINGS_MAP: Record<string, { label: string; meetings: 
   },
   '2026-10-12': {
     label: 'Lundi 12 Octobre 2026',
-    meetings: PMU_MONDAY_12_MEETINGS,
+    meetings: [...PMU_MONDAY_12_MEETINGS, ...PMU_TOULOUSE_R5_MEETINGS],
+  },
+  '2026-10-15': {
+    label: 'Jeudi 15 Octobre 2026',
+    meetings: PMU_SUNDAY_11_MEETINGS,
+  },
+  '2026-10-16': {
+    label: 'Vendredi 16 Octobre 2026',
+    meetings: PMU_SUNDAY_11_MEETINGS,
+  },
+  '2026-10-17': {
+    label: 'Samedi 17 Octobre 2026',
+    meetings: PMU_SUNDAY_11_MEETINGS,
   },
 };
 
@@ -1198,13 +1332,59 @@ export function getSunday11Meetings(): PmuMeeting[] {
 
 /**
  * Retourne les réunions pour n'importe quelle date demandée avec fallback gracieux
+ * et garantie de présence de la réunion R5 Toulouse (6 courses)
  */
 export function getMeetingsForDate(dateIso: string): PmuMeeting[] {
   const clean = (dateIso || '').trim().slice(0, 10);
-  if (MULTI_DATE_MEETINGS_MAP[clean]) {
-    return MULTI_DATE_MEETINGS_MAP[clean].meetings;
+  let meetings = MULTI_DATE_MEETINGS_MAP[clean]?.meetings || PMU_SUNDAY_11_MEETINGS;
+  const toulouseCount = meetings.filter(
+    (m) => m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse')
+  ).length;
+  if (toulouseCount < 6) {
+    meetings = [
+      ...meetings.filter(
+        (m) => !(m.reunion === 'R5' && (m.hippodrome || '').toLowerCase().includes('toulouse'))
+      ),
+      ...PMU_TOULOUSE_R5_MEETINGS,
+    ];
   }
-  return PMU_SUNDAY_11_MEETINGS;
+  return meetings;
+}
+
+/**
+ * Convertit et retourne les 6 courses de R5 Toulouse en objets CourseHippique complets
+ * pour le sélecteur de course et le calendrier interactif.
+ */
+export function getToulouseR5Courses(): CourseHippique[] {
+  return PMU_TOULOUSE_R5_MEETINGS.map((m) => {
+    const allocNum = parseInt(String(m.allocation || '25 000').replace(/[^0-9]/g, ''), 10) || 25000;
+    const draftCourse = {
+      id: m.id,
+      sourceUrl: m.lienGeny,
+      sourceType: 'geny.com' as const,
+      titre: `${m.nomCoursePhare} (${m.reunion} ${m.courseNumero}) - ${m.hippodrome} - ${m.allocation}`,
+      prixNom: m.nomCoursePhare,
+      hippodrome: m.hippodrome,
+      reunion: m.reunion,
+      course: m.courseNumero,
+      courseNumero: m.courseNumero,
+      estQuinte: Boolean(m.estQuinte),
+      discipline: m.discipline as any,
+      date: m.date || 'Dimanche 11 Octobre 2026',
+      heure: m.heure || '12h00',
+      distance: typeof m.distance === 'number' ? m.distance : 2000,
+      corde: (m.corde as any) || 'Droite',
+      terrain: 'Bon souple',
+      allocation: allocNum,
+      conditions: m.description,
+      statutCourse: 'À venir' as const,
+      partants: m.partants || [],
+    };
+    return {
+      ...draftCourse,
+      synthese: buildRealV38Synthese(draftCourse as CourseHippique),
+    };
+  });
 }
 
 /**

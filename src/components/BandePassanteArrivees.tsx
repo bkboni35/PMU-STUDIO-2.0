@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Trophy, Play, Pause, ChevronLeft, ChevronRight, Sparkles, CheckCircle2, Clock, Calendar, MapPin, Award, ArrowRight, AlertCircle, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { CourseHippique } from '../types/turf';
-import { shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus } from '../utils/raceCountdown';
+import { shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus, isPastDepartureTime } from '../utils/raceCountdown';
 import { getFriday02Meetings } from '../data/plrFriday02Data';
 import { getCuratedPmuMeetings } from '../data/pmuMeetingsData';
 import { getRaceHistory } from '../utils/favoritesStorage';
@@ -367,7 +367,7 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
                 !isPaused ? 'animate-ticker' : 'ticker-paused'
               }`}
               style={{
-                animationDuration: scrollSpeed === 'fast' ? '25s' : '45s',
+                animationDuration: scrollSpeed === 'fast' ? '25s' : '120s',
               }}
             >
               {[1, 2].map((cycle) => (
@@ -562,7 +562,7 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
               return (
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 uppercase flex items-center gap-1.5 shadow-sm">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>🏆 ARRIVÉE OFFICIELLE CONFIRMÉE (Audit 5 min validé ✓)</span>
+                  <span>🏆 ARRIVÉE CERTIFIÉE ET CONFIRMÉE (Audit validé ✓)</span>
                 </span>
               );
             }
@@ -570,14 +570,24 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
             return (
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 uppercase flex items-center gap-1.5 shadow-sm">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                <span>🏆 ARRIVÉE OFFICIELLE (Contrôle post-arrivée dans {auditStatus.remainingSeconds}s)</span>
+                <span>🏆 ARRIVÉE CERTIFIÉE ET CONFIRMÉE (Contrôle dans {auditStatus.remainingSeconds}s)</span>
               </span>
             );
           })() : (
-            <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase flex items-center gap-1">
-              <Clock className="w-3 h-3 text-amber-400" />
-              Départ {heure} · En attente de l'arrivée
-            </span>
+            isPastDepartureTime(currentCourse) || currentCourse.statutCourse === 'Course en cours' ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/60 uppercase flex items-center gap-1.5 animate-pulse">
+                <span className="relative flex h-2 w-2 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-rose-500" />
+                </span>
+                <span>🏇 COURSE EN COURS (Départ donné à {heure})</span>
+              </span>
+            ) : (
+              <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase flex items-center gap-1">
+                <Clock className="w-3 h-3 text-amber-400" />
+                Départ {heure} · En attente du départ
+              </span>
+            )
           )}
         </div>
 
@@ -621,9 +631,9 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
                 ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
                 : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
             }`}
-            title="Vitesse du bandeau défilant"
+            title="Vitesse du bandeau défilant (120s)"
           >
-            {scrollSpeed === 'fast' ? '⚡ Rapide' : '⏱️ Vitesse'}
+            {scrollSpeed === 'fast' ? '⚡ Rapide' : '⏱️ 120s'}
           </button>
 
           <button
@@ -681,7 +691,7 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
             !isPaused ? 'animate-ticker' : 'ticker-paused'
           }`}
           style={{
-            animationDuration: scrollSpeed === 'fast' ? '22s' : '40s',
+            animationDuration: scrollSpeed === 'fast' ? '22s' : '120s',
           }}
         >
           {/* Repeat sequence 3 times for a seamless infinite loop */}

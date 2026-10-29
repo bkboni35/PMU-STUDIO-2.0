@@ -2,6 +2,57 @@
 <html lang="fr" style="background-color: #020617; color: #f8fafc; margin: 0; padding: 0; height: 100%;">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Neutralisation du WebSocket HMR pour environnement sans WebSocket externe (AI Studio)
+      (function() {
+        if (typeof window === 'undefined') return;
+        var NativeWebSocket = window.WebSocket;
+        if (!NativeWebSocket) return;
+        function MockHmrWebSocket(url, protocols) {
+          var isHmr = protocols === 'vite-hmr' ||
+            (Array.isArray(protocols) && protocols.indexOf('vite-hmr') !== -1) ||
+            (typeof url === 'string' && (url.indexOf('token=') !== -1 || url.indexOf('vite') !== -1));
+          if (isHmr) {
+            this.readyState = 1; // WebSocket.OPEN
+            this.OPEN = 1;
+            this.CLOSED = 3;
+            this.CLOSING = 2;
+            this.CONNECTING = 0;
+            this.url = String(url);
+            this.protocol = 'vite-hmr';
+            this.listeners = {};
+            var self = this;
+            setTimeout(function() {
+              if (self.onopen) self.onopen({ type: 'open', target: self });
+              if (self.listeners['open']) {
+                self.listeners['open'].forEach(function(fn) { try { fn({ type: 'open', target: self }); } catch(e) {} });
+              }
+            }, 0);
+            return this;
+          }
+          return new NativeWebSocket(url, protocols);
+        }
+        MockHmrWebSocket.prototype.addEventListener = function(event, handler) {
+          if (!this.listeners) this.listeners = {};
+          if (!this.listeners[event]) this.listeners[event] = [];
+          this.listeners[event].push(handler);
+        };
+        MockHmrWebSocket.prototype.removeEventListener = function(event, handler) {
+          if (!this.listeners || !this.listeners[event]) return;
+          this.listeners[event] = this.listeners[event].filter(function(h) { return h !== handler; });
+        };
+        MockHmrWebSocket.prototype.send = function() {};
+        MockHmrWebSocket.prototype.close = function() {
+          this.readyState = 3;
+        };
+        MockHmrWebSocket.prototype.dispatchEvent = function() { return true; };
+        MockHmrWebSocket.OPEN = 1;
+        MockHmrWebSocket.CLOSED = 3;
+        MockHmrWebSocket.CLOSING = 2;
+        MockHmrWebSocket.CONNECTING = 0;
+        window.WebSocket = MockHmrWebSocket;
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <title>PMU-STUDIO 2.0 - Turf & Quinté+</title>
     <meta name="description" content="Application mobile Android et PC d'analyse de courses hippiques PMU, pronostics Quinté+ certifiés et propositions de jeux des IA." />
@@ -255,6 +306,25 @@
         // En cas d'erreur de script non gérée, retirer le splash pour ne pas masquer l'interface
         window.addEventListener('error', dismissSplash);
       })();
+    </script>
+    <script>
+      // Suppression proactive des erreurs WebSocket HMR (HMR désactivé dans l'environnement AI Studio)
+      window.addEventListener('error', function(e) {
+        if (e && (
+          (e.message && (e.message.indexOf('WebSocket') !== -1 || e.message.indexOf('ws://') !== -1 || e.message.indexOf('wss://') !== -1)) ||
+          (e.filename && e.filename.indexOf('@vite/client') !== -1)
+        )) {
+          e.preventDefault && e.preventDefault();
+          e.stopPropagation && e.stopPropagation();
+          return true;
+        }
+      }, true);
+      window.addEventListener('unhandledrejection', function(e) {
+        if (e && e.reason && String(e.reason).indexOf('WebSocket') !== -1) {
+          e.preventDefault && e.preventDefault();
+          return true;
+        }
+      });
     </script>
     <script type="module" src="/src/main.tsx"></script>
     <script>

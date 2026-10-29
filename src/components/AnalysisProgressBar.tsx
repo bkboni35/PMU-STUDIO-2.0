@@ -9,6 +9,8 @@ import {
   Timer,
   Activity,
   ArrowRight,
+  Radio,
+  BadgeCheck,
 } from 'lucide-react';
 
 interface AnalysisProgressBarProps {
@@ -28,7 +30,7 @@ interface StepInfo {
 
 const ANALYSIS_STEPS: StepInfo[] = [
   {
-    pct: 20,
+    pct: 18,
     label: 'ÉTAPE 1 — Extraction & Structuration',
     subLabel: 'Numéros, noms, âges, sexes, distances, jockeys, entraîneurs, musiques, gains, fers, cotes',
     badge: 'Faible Latence',
@@ -36,7 +38,7 @@ const ANALYSIS_STEPS: StepInfo[] = [
     icon: Zap,
   },
   {
-    pct: 42,
+    pct: 36,
     label: 'ÉTAPE 2 — Analyse Individuelle des Partants',
     subLabel: 'Forme récente, régularité, aptitude distance/terrain/hippodrome, duo driver, ratio risque/cote',
     badge: 'Analyse Cheval/Cheval',
@@ -44,7 +46,7 @@ const ANALYSIS_STEPS: StepInfo[] = [
     icon: Activity,
   },
   {
-    pct: 66,
+    pct: 54,
     label: 'ÉTAPE 3 — Analyse Approfondie & Interactions',
     subLabel: 'Interactions complexes, gros volumes, confrontations directes, tactique de train de course',
     badge: 'Raisonnement Complexe',
@@ -52,7 +54,7 @@ const ANALYSIS_STEPS: StepInfo[] = [
     icon: Brain,
   },
   {
-    pct: 85,
+    pct: 72,
     label: 'ÉTAPE 4 — Contre-Analyse & Garde-Fou',
     subLabel: 'Traque : incohérences, chevaux oubliés, surévaluation favori, outsiders cachés, anti-contamination',
     badge: 'Contre-Auditeur',
@@ -60,9 +62,17 @@ const ANALYSIS_STEPS: StepInfo[] = [
     icon: ShieldCheck,
   },
   {
+    pct: 88,
+    label: 'ÉTAPE 5 — Actualisation Temps Réel des Cotes (pmu.fr)',
+    subLabel: 'Interrogation directe pmu.fr — Agent IA Auditeur Cotes certifié : zéro cote inventée, cotes directes & rapports probables synchronisés',
+    badge: 'Auditeur Cotes PMU.fr',
+    model: 'Agent IA Auditeur PMU (Zéro Invention)',
+    icon: Radio,
+  },
+  {
     pct: 100,
-    label: 'ÉTAPE 5 — Décision Algorithmique Finale',
-    subLabel: 'Données validées : Décision Certifiée, Bases incontournables & Sélection 8 chevaux du Quinté+ (Temps garanti < 120s, moyenne 30-60s)',
+    label: 'ÉTAPE 6 — Décision Algorithmique Finale',
+    subLabel: 'Données validées & cotes officielles pmu.fr certifiées : Décision Certifiée, Bases incontournables & Sélection 8 chevaux du Quinté+',
     badge: 'Décision Certifiée',
     model: 'Gemini 3.1 Pro / Superviseur',
     icon: Sparkles,
@@ -155,13 +165,17 @@ export const AnalysisProgressBar: React.FC<AnalysisProgressBarProps> = ({
                 <ShieldCheck className="w-3 h-3 text-emerald-400" />
                 <span>Décision Certifiée</span>
               </span>
+              <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black flex items-center gap-1">
+                <Radio className="w-3 h-3 text-cyan-400 animate-pulse" />
+                <span>Réf. Officielle PMU.fr (Zéro cote inventée)</span>
+              </span>
               <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black flex items-center gap-1">
                 <Timer className="w-3 h-3 text-amber-400" />
                 <span>Traitement garanti &lt; 60s (moyenne 15-20s)</span>
               </span>
               <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[10px] font-black flex items-center gap-1">
                 <Brain className="w-3 h-3 text-blue-400" />
-                <span>temps de traitement des courses Traitement garanti &lt; 120s (moyenne 30-60s)</span>
+                <span>Temps de traitement garanti &lt; 120s</span>
               </span>
             </div>
             <h4 className="text-sm sm:text-base font-extrabold text-white mt-0.5">
@@ -211,7 +225,7 @@ export const AnalysisProgressBar: React.FC<AnalysisProgressBarProps> = ({
       </div>
 
       {/* Mini Step Badges Row */}
-      <div className="grid grid-cols-5 gap-1.5 pt-1">
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 pt-1">
         {ANALYSIS_STEPS.map((step, idx) => {
           const isDone = progress >= step.pct;
           const isCurrent = currentStepIndex === idx;

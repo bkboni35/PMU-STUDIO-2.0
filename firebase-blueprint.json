@@ -2,9 +2,14 @@
   "entities": {
     "Race": {
       "title": "Race",
-      "description": "Horse racing data and results",
+      "description": "Horse racing data, analysis syntheses and live odds",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
+        "reunion": { "type": "string" },
+        "course": { "type": "string" },
+        "arriveeOfficielle": { "type": "string" },
+        "statutArrivee": { "type": "string" },
         "courseData": {
           "type": "object",
           "description": "Full race data object"
@@ -17,14 +22,42 @@
     },
     "User": {
       "title": "User",
-      "description": "User profile and settings",
+      "description": "User profile, credentials and subscription status",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
         "displayName": { "type": "string" },
+        "nom": { "type": "string" },
         "email": { "type": "string" },
         "photoURL": { "type": "string" },
+        "avatar": { "type": "string" },
+        "telephone": { "type": "string" },
+        "pays": { "type": "string" },
         "isAdmin": { "type": "boolean" },
-        "analysesCount": { "type": "integer" }
+        "statutMembre": { "type": "string" },
+        "analysesCount": { "type": "integer" },
+        "analysesEffectuees": { "type": "integer" },
+        "estConnecte": { "type": "boolean" },
+        "derniereConnexion": { "type": "string" },
+        "dateInscription": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["email"]
+    },
+    "FavoriteRace": {
+      "title": "FavoriteRace",
+      "description": "User saved favorite races and personal notes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "raceId": { "type": "string" },
+        "nomCourse": { "type": "string" },
+        "reunion": { "type": "string" },
+        "courseNumero": { "type": "string" },
+        "date": { "type": "string" },
+        "savedAt": { "type": "string" },
+        "notes": { "type": "string" },
+        "updatedAt": { "type": "string" }
       }
     }
   },
@@ -35,7 +68,11 @@
     },
     "/users/{userId}": {
       "schema": "User",
-      "description": "User account data"
+      "description": "User account data and authentication record"
+    },
+    "/users/{userId}/favorites/{favoriteId}": {
+      "schema": "FavoriteRace",
+      "description": "User saved favorite races and bookmarked analyses"
     }
   }
 }

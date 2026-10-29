@@ -1,28 +1,106 @@
 import React, { useState } from 'react';
-import { ArrowUpDown, Calculator, TrendingUp } from 'lucide-react';
-import { CourseHippique } from '../types/turf';
-import { computeDisciplineGrid, computeV38Hierarchy, getHorseGenyOdds } from '../utils/v38Helper';
+import { ArrowUpDown, Calculator, TrendingUp, Sparkles, SlidersHorizontal, Flame, User, MapPin, Trophy } from 'lucide-react';
+import { CourseHippique, Partant } from '../types/turf';
+import { computeDisciplineGrid, computeV38Hierarchy, getHorseGenyOdds, getSysteme74TocardsAndSurprises, computeSysteme74TacticalGroups, TacticalGroupItem } from '../utils/v38Helper';
 import { computeTabularEnsembleAnalysis, recalibratePredictionsWithTemperature } from '../utils/tabularRankingEngine';
-import { calculerPerformance3Musiques, calculerPerformanceDriverJockey, calculerPerformanceTandem, getPartantDriverMusique } from '../utils/turfCalculations';
+import { calculerPerformance3Musiques, calculerPerformanceDriverJockey, calculerPerformanceTandem, getPartantDriverMusique, classerChevauxFormeEtPoints } from '../utils/turfCalculations';
 import { TandemDiagnosticModal } from './TandemDiagnosticModal';
+import { getHorseBadgeTheme } from '../utils/horseBadgeTheme';
+import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
+import { TableScrollWrapper } from './TableScrollWrapper';
+import { DriversRankingTable } from './DriversRankingTable';
+import { Systeme74RulesModal } from './Systeme74RulesModal';
+import { TableauSyntheseTactique } from './TableauSyntheseTactique';
+import { StrategieProprietairesCard } from './StrategieProprietairesCard';
+import { useSysteme74 } from '../utils/systeme74Store';
+import { Systeme74ThresholdControlBar } from './Systeme74ThresholdControlBar';
 
 interface DisciplineGridTableProps {
   course: CourseHippique;
   variant?: 'dark' | 'light';
+  onSelectHorseForTicket?: (numero: number) => void;
+  selectedHorseNumbers?: number[];
 }
 
 export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
   course,
   variant = 'dark',
+  onSelectHorseForTicket,
+  selectedHorseNumbers = [],
 }) => {
   // Permutation des positions des 2 tableaux (par défaut true : SYNTHÈSE DE JEU en 1er, TABLEAU DE RÉPARTITION en 2e)
   const [isDiagnosticOpen, setIsDiagnosticOpen] = useState<boolean>(false);
   const [showSynthesisTable, setShowSynthesisTable] = useState<boolean>(true);
   const [showSysteme74, setShowSysteme74] = useState<boolean>(false);
+  const [showStrategieProprietaires, setShowStrategieProprietaires] = useState<boolean>(true);
+  const [showSysteme74RulesModal, setShowSysteme74RulesModal] = useState<boolean>(false);
   const [showVariancePanel, setShowVariancePanel] = useState<boolean>(false);
   const [showFerrageTable, setShowFerrageTable] = useState<boolean>(false);
   const [showCordeTable, setShowCordeTable] = useState<boolean>(false);
   const [showPerformanceTable, setShowPerformanceTable] = useState<boolean>(false);
+  const [showDriversRanking, setShowDriversRanking] = useState<boolean>(true);
+  const {
+    threshold: minScoreXThreshold,
+    mode: diffXMode,
+    isActive: filterMinScoreX,
+    setThreshold: setMinScoreXThreshold,
+    setMode: setDiffXMode,
+  } = useSysteme74();
+  const [hoveredDriverNum, setHoveredDriverNum] = useState<number | null>(null);
+
+  // Filtre interactif par cote PMU pour le Tableau Secondaire Système 74
+  const [sys74CotePreset, setSys74CotePreset] = useState<'all' | 'favoris' | 'outsiders' | 'tocards' | 'custom'>('all');
+  const [sys74MinCote, setSys74MinCote] = useState<number>(0);
+  const [sys74MaxCote, setSys74MaxCote] = useState<number>(100);
+  const [sys74HideUndefinedCote, setSys74HideUndefinedCote] = useState<boolean>(false);
+
+  const getDriverHoverDetails = (p: Partant) => {
+    const driverName = p.driver || (p as any).jockey || 'Driver Non Renseigné';
+    const drvMusique = getPartantDriverMusique(p);
+    
+    // Extraction des 5 dernières musiques
+    const rawTokens = drvMusique.split(/\s+/).filter(Boolean);
+    const last5Musique = rawTokens.slice(0, 5);
+
+    // Taux de réussite sur l'hippodrome du jour
+    const hippoName = course?.hippodrome || 'Hippodrome du Jour';
+    const reussiteGlobal = p.driverReussite || 24;
+    let hippoRate = Math.min(95, Math.max(12, Math.round(reussiteGlobal * 1.15)));
+    const rawHippoRate = (p as any).driverReussiteHippodrome;
+    if (typeof rawHippoRate === 'number' && rawHippoRate > 0) {
+      hippoRate = rawHippoRate;
+    }
+
+    return {
+      driverName,
+      hippoName,
+      hippoRate,
+      last5Musique,
+      drvMusiqueRaw: drvMusique,
+    };
+  };
+
+  const hippoActivePartantsList = React.useMemo(() => {
+    return (course?.partants || []).filter((p) => !p.estNonPartant && p.statut !== 'Non-partant');
+  }, [course?.partants]);
+
+  const horsesWithScoreXBelowThresholdCount = React.useMemo(() => {
+    return hippoActivePartantsList.filter((p) => {
+      const num = Number(p.numero);
+      const cote = getHorseGenyOdds(p);
+      const scoreX = (73 + num) - cote;
+      return scoreX < minScoreXThreshold;
+    }).length;
+  }, [hippoActivePartantsList, minScoreXThreshold, course]);
+
+  const horsesMatchingMinScoreXCount = React.useMemo(() => {
+    return hippoActivePartantsList.filter((p) => {
+      const num = Number(p.numero);
+      const cote = getHorseGenyOdds(p);
+      const scoreX = (73 + num) - cote;
+      return scoreX >= minScoreXThreshold;
+    }).length;
+  }, [hippoActivePartantsList, minScoreXThreshold, course]);
 
   const grid = computeDisciplineGrid(course);
   const isDark = variant === 'dark';
@@ -44,49 +122,7 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
     return parts.slice(0, 5).join(' - ');
   };
 
-  const renderHorseBadge = (num: number, groupStyle: string = '', title?: string) => {
-    const p = course.partants?.find((p) => Number(p.numero) === num);
-    const cote = p ? getHorseGenyOdds(p) : 999;
-    const scoreX = (73 + num) - cote;
-    
-    // Extraction sécurisée de la variable de couleur de groupe
-    let groupRgb = '100, 116, 139'; // Slate-500 par défaut
-    if (groupStyle && typeof groupStyle === 'string' && groupStyle.includes('--group-rgb:')) {
-      const match = groupStyle.match(/--group-rgb:\s*([^;]+)/);
-      if (match && match[1]) {
-        groupRgb = match[1].trim();
-      }
-    } else if (groupStyle && typeof groupStyle === 'string' && groupStyle.includes('bg-[')) {
-      // Rétrocompatibilité avec les anciennes classes Tailwind hardcodées
-      if (groupStyle.includes('#059669')) groupRgb = '5, 150, 105';
-      if (groupStyle.includes('#f59e0b')) groupRgb = '245, 158, 11';
-      if (groupStyle.includes('#ea580c')) groupRgb = '234, 88, 12';
-      if (groupStyle.includes('#dc2626')) groupRgb = '220, 38, 38';
-    }
 
-    // Calcul de l'intensité du gradient (opacité) basé sur le Score X
-    // On normalise entre 0.3 (modéré) et 1.0 (intense) pour des scores allant de ~20 à ~85
-    const intensity = Math.max(0.3, Math.min(1.0, (scoreX - 20) / 60));
-    const bgColor = `rgba(${groupRgb}, ${intensity})`;
-    const borderColor = `rgba(${groupRgb}, ${Math.min(1, intensity + 0.2)})`;
-
-    return (
-      <div
-        className="w-9 sm:w-11 h-10 sm:h-12 rounded-lg font-mono font-black flex flex-col items-center justify-center text-center shadow-md border shrink-0 transition-transform hover:scale-110 cursor-pointer text-white"
-        style={{ 
-          backgroundColor: bgColor,
-          borderColor: borderColor,
-          textShadow: '0 1px 2px rgba(0,0,0,0.5)'
-        }}
-        title={title || `Cote: ${cote.toFixed(1)} | Score X: ${scoreX.toFixed(2)}`}
-      >
-        <span className="text-sm sm:text-base leading-none font-black">{num}</span>
-        <span className="text-[8px] sm:text-[9px] leading-none mt-0.5 opacity-90 font-bold">
-          {scoreX.toFixed(1).replace('.', ',')}
-        </span>
-      </div>
-    );
-  };
 
   // --- Données dynamiques de SYNTHÈSE DE JEU ---
   const v38 = computeV38Hierarchy(course);
@@ -301,7 +337,38 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
   });
   const surpriseNums = sortedSurprisesByOdds.slice(0, 4).map((item) => Number(item.numero));
 
-  // Alias for compatibility with tandem performance rows
+  // --- GRADIENTS DYNAMIQUES & DÉGRADÉS PROGRESSIFS BASÉS SUR LE SCORE X ---
+  // 🥇 Favoris : Dégradé émeraude intense (#059669), allant d'un vert forêt profond à un émeraude lumineux #34d399
+  // 🥈 Outsiders : Dégradé ambre progressif (#f59e0b), passant d'un ambre soutenu à des reflets dorés chauds
+  // 🥉 Tocards : Dégradé orange nuancé (#ea580c), combinant teintes cuivrées et orange corail éclatant
+  // ⚡ Surprises : Dégradé rouge vif (#dc2626), dont le rayonnement et le contraste s'intensifient selon la cote et le score
+  const getDynamicHorseBadgeGradient = (num: number, groupStyle: string = '') => {
+    return getHorseBadgeTheme(num, course, groupStyle);
+  };
+
+  const renderHorseBadge = (num: number, groupStyle: string = '', title?: string) => {
+    const styleInfo = getDynamicHorseBadgeGradient(num, groupStyle);
+
+    return (
+      <div
+        className={`w-9 sm:w-11 h-10 sm:h-12 rounded-xl font-mono font-black flex flex-col items-center justify-center text-center border-2 shrink-0 transition-all duration-200 hover:scale-110 hover:z-20 cursor-pointer ${styleInfo.textColor} select-none relative overflow-hidden group`}
+        style={{ 
+          background: styleInfo.background,
+          borderColor: styleInfo.borderColor,
+          boxShadow: styleInfo.boxShadow,
+        }}
+        title={title || `N°${num} | Catégorie: ${styleInfo.category.toUpperCase()} | Cote: ${styleInfo.cote.toFixed(1)} | Score X: ${styleInfo.scoreX.toFixed(2)} (${styleInfo.scoreFactor >= 0.7 ? 'X Élevé' : styleInfo.scoreFactor <= 0.3 ? 'X Faible' : 'X Modéré'})`}
+      >
+        {/* Reflet 3D spéculaire oblique supérieur net */}
+        <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none rounded-t-lg" />
+
+        <span className="text-sm sm:text-base leading-none font-black z-10 drop-shadow-none select-none">{num}</span>
+        <span className={`text-[8px] sm:text-[9px] leading-none mt-1 font-black tracking-tight z-10 drop-shadow-none select-none ${styleInfo.scoreX < minScoreXThreshold ? 'text-red-400 font-extrabold' : 'opacity-95'}`}>
+          {styleInfo.scoreX.toFixed(1).replace('.', ',')}
+        </span>
+      </div>
+    );
+  };
   const tandemEliteNums = horseEliteNums;
   const tandemRegulierNums = horseRegulierNums;
   const tandemCorrectNums = horseCorrectNums;
@@ -387,104 +454,326 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
   const renderSyntheseDeJeuTable = () => {
     const renderedTableNums = new Set<number>();
 
+    const matchesScoreXFilter = (num: number) => {
+      if (diffXMode === 'OFF' || diffXMode === 'GREY') return true;
+      const p = course.partants?.find(item => Number(item.numero) === num);
+      if (!p) return true;
+      const cote = getHorseGenyOdds(p);
+      const scoreX = (73 + Number(p.numero)) - cote;
+      return scoreX >= minScoreXThreshold;
+    };
+
     return (
       <div key="table-synthese-de-jeu" className="space-y-3 w-full flex flex-col items-center">
         <div className="w-full flex flex-col items-center justify-center gap-3 px-1 text-center">
-          <div>
-            <h3 className="text-lg sm:text-xl font-black text-white uppercase tracking-wider flex items-center justify-center gap-2">
-              <span>SYNTHÈSE DE JEU</span>
-            </h3>
-            <p className="text-xs text-slate-400">
+          
+          {/* BANDEAU INTERACTIF DYNAMIQUE DU SEUIL DIFF(X) SYSTÈME 74 (La 2e manière, unifiée) */}
+          <div className="w-full max-w-4xl mx-auto my-2">
+            <Systeme74ThresholdControlBar partants={hippoActivePartantsList} />
+          </div>
+
+          <div className="flex flex-col items-center justify-center gap-1.5">
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              <h3 className="text-lg sm:text-xl font-black text-white uppercase tracking-wider flex items-center justify-center gap-2">
+                <span>SYNTHÈSE DE JEU</span>
+              </h3>
+              
+              {/* Badge interactif Système 74 avec info-bulle au survol */}
+              <div 
+                className="relative group cursor-pointer inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold transition-all shadow-sm"
+                title="Règle du Système 74 : Tocards = chevaux classés 7e et + avec score X ≥ 25 (max 4 plus grands scores X). Les autres classés 7e et + sont des Surprises."
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                <span>Règle Système 74</span>
+                <span className="w-4 h-4 rounded-full bg-amber-400/20 text-amber-300 text-[10px] font-mono flex items-center justify-center font-black">?</span>
+
+                {/* Info-bulle interactive au survol (Tooltip card) */}
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block z-50 w-80 p-4 rounded-2xl bg-slate-900 border-2 border-amber-500/60 shadow-2xl text-left pointer-events-none animate-fadeIn">
+                  <div className="flex items-center gap-2 pb-2 border-b border-slate-800 text-amber-400 font-black text-xs uppercase tracking-wider">
+                    <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Règle de classification Système 74</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mt-2 leading-relaxed">
+                    Score de différence <strong className="text-cyan-300 font-mono">X = (73 + N°) - Cote</strong>. Les partants sont classés par score X décroissant :
+                  </p>
+                  <ul className="mt-2 space-y-1.5 text-[11px]">
+                    <li className="flex items-start gap-1.5 text-orange-300">
+                      <span className="font-bold shrink-0">🥉 TOCARDS :</span>
+                      <span>Chevaux classés <strong>7e et plus</strong> ayant un score <strong>X ≥ 25</strong> (sélection des <strong>4 plus grands scores X</strong> si plusieurs).</span>
+                    </li>
+                    <li className="flex items-start gap-1.5 text-rose-300">
+                      <span className="font-bold shrink-0">⚡ SURPRISES :</span>
+                      <span>Tous les autres chevaux classés <strong>7e et plus</strong> (score X &lt; 25).</span>
+                    </li>
+                  </ul>
+                  <div className="mt-2.5 pt-2 border-t border-slate-800 text-[10px] text-slate-400 italic">
+                    💡 Survolez pour consulter la règle à tout moment.
+                  </div>
+                </div>
+              </div>
+
+              {/* Toggle bouton */}
+              <button 
+                onClick={() => setShowSysteme74(!showSysteme74)}
+                className={`px-3 py-1 rounded-lg text-[11px] font-bold uppercase transition-colors ${showSysteme74 ? 'bg-cyan-500/20 text-cyan-300' : 'bg-slate-700/50 text-slate-400'}`}
+              >
+                {showSysteme74 ? 'Masquer Positionnement Tactique' : 'Afficher Positionnement Tactique'}
+              </button>
+            </div>
+
+            {showSysteme74 && (
+              <div className="w-full mt-4 p-4 rounded-xl bg-slate-900 border border-slate-700">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 pb-2 border-b border-slate-800">
+                  <h4 className="text-white font-black uppercase text-sm sm:text-base tracking-wide flex items-center gap-2">
+                    <span>⚡</span> Positionnement Tactique (Système 74)
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => setShowSysteme74RulesModal(true)}
+                    className="px-3 py-1.5 rounded-xl bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/40 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shrink-0 cursor-pointer"
+                    title="Consulter le résumé détaillé des règles du Système 74 (Groupes A, B, C, Cotes, Score X)"
+                  >
+                    <span className="text-sm">ℹ️</span>
+                    <span>Règles Système 74</span>
+                  </button>
+                </div>
+                
+                {(() => {
+                  const { groupA, groupB, groupC } = computeSysteme74TacticalGroups(
+                    course.partants || [],
+                    { filterMinScoreX, minScoreXThreshold }
+                  );
+
+                  const allPartantsWithX = (course.partants || [])
+                    .filter((p) => !p.estNonPartant && p.statut !== 'Non-partant')
+                    .map((p) => {
+                      const num = Number(p.numero);
+                      const cote = getHorseGenyOdds(p);
+                      const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+                      return { num, scoreX };
+                    });
+
+                  const renderCell = (item: any | undefined) => {
+                    if (!item) return <div className="w-10 h-10 sm:w-11 sm:h-11 bg-slate-950/60 border border-slate-800/50 rounded-lg flex items-center justify-center text-slate-700 font-bold text-xs">—</div>;
+                    
+                    const cat = item.classified?.categorie;
+                    let perfColor = 'bg-slate-700';
+                    let perfEmoji = '';
+                    
+                    if (cat === 'EN_FORME') { perfColor = 'bg-emerald-600'; perfEmoji = ''; }
+                    else if (cat === 'FORME_MOYENNE') { perfColor = 'bg-amber-500'; perfEmoji = '🟡'; }
+                    else if (cat === 'CAPABLE_EXPLOIT') { perfColor = 'bg-blue-600'; perfEmoji = '⚡'; }
+                    else if (cat === 'MEFORME') { perfColor = 'bg-rose-600'; perfEmoji = '🔴'; }
+
+                    // System 74 category colors for the border/position indicator
+                    // Rank 1-3: Favoris, 4-6: Outsiders, 7-10: Tocards, 11+: Surprises
+                    const globalRankX = [...allPartantsWithX].sort((a, b) => b.scoreX - a.scoreX).findIndex(h => h.num === item.num) + 1;
+                    let s74Color = 'border-slate-500';
+                    if (globalRankX <= 3) s74Color = 'border-emerald-400';
+                    else if (globalRankX <= 6) s74Color = 'border-amber-400';
+                    else if (globalRankX <= 10) s74Color = 'border-orange-500';
+                    else s74Color = 'border-rose-500';
+
+                    return (
+                      <div 
+                        className={`w-10 h-10 sm:w-11 sm:h-11 flex flex-col items-center justify-center rounded-lg border-2 ${s74Color} ${perfColor} relative overflow-hidden transition-transform hover:scale-110 cursor-help shadow-[0_4px_6px_rgba(0,0,0,0.5),inset_0_2px_4px_rgba(255,255,255,0.3)]`}
+                        title={`N°${item.num} | Score X: ${item.scoreX} | Performance: ${item.classified?.categorieLabel || 'N/A'}`}
+                      >
+                        {/* 3D Highlight */}
+                        <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
+                        
+                        <div className="flex items-center justify-center gap-0.5 z-10">
+                          <span className="text-[14px] sm:text-[15px] font-black text-white drop-shadow-[0_2px_2px_rgba(0,0,0,0.8)]">{item.num}</span>
+                          {perfEmoji && <span className="text-[8px] sm:text-[9px] drop-shadow-sm">{perfEmoji}</span>}
+                        </div>
+                        <span className={`text-[8px] sm:text-[9px] font-mono font-black z-10 drop-shadow-sm ${item.scoreX < minScoreXThreshold ? 'text-red-400 font-extrabold' : 'text-white/90'}`}>
+                          {item.scoreX.toFixed(1).replace('.', ',')}
+                        </span>
+                      </div>
+                    );
+                  };
+
+                  return (
+                    <div className="flex flex-col gap-6 w-full">
+                      <div className="flex flex-col md:flex-row items-center justify-center gap-4 lg:gap-8">
+                        {/* Groupe A : 3 colonnes x 2 rangées */}
+                        <div className="flex flex-col items-center p-3 border-2 border-white rounded-2xl bg-slate-950/40 shadow-xl w-fit">
+                          <span className="text-emerald-400 font-black mb-3 uppercase text-[11px] tracking-widest px-2 py-0.5 bg-slate-900/80 rounded-full border border-emerald-500/30">GROUPE A (1-6)</span>
+                          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                            {[...Array(6)].map((_, i) => <div key={`tact-a-${i}`}>{renderCell(groupA[i])}</div>)}
+                          </div>
+                        </div>
+
+                        {/* Groupe B : 3 colonnes x 2 rangées */}
+                        <div className="flex flex-col items-center p-3 border-2 border-white rounded-2xl bg-slate-950/40 shadow-xl w-fit">
+                          <span className="text-amber-400 font-black mb-3 uppercase text-[11px] tracking-widest px-2 py-0.5 bg-slate-900/80 rounded-full border border-amber-500/30">GROUPE B (7-10)</span>
+                          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                            {[...Array(6)].map((_, i) => <div key={`tact-b-${i}`}>{renderCell(groupB[i])}</div>)}
+                          </div>
+                        </div>
+
+                        {/* Groupe C : 3 colonnes x 2 rangées */}
+                        <div className="flex flex-col items-center p-3 border-2 border-white rounded-2xl bg-slate-950/40 shadow-xl w-fit">
+                          <span className="text-rose-400 font-black mb-3 uppercase text-[11px] tracking-widest px-2 py-0.5 bg-slate-900/80 rounded-full border border-rose-500/30">GROUPE C (11+)</span>
+                          <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                            {groupC && groupC.length > 0 ? (
+                              [...Array(6)].map((_, i) => <div key={`tact-c-${i}`}>{renderCell(groupC[i])}</div>)
+                            ) : (
+                              [...Array(6)].map((_, i) => <div key={`tact-c-empty-${i}`}>{renderCell(undefined)}</div>)
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* TABLEAU DE SYNTHÈSE TACTIQUE */}
+                      <TableauSyntheseTactique 
+                        course={course}
+                        filterMinScoreX={filterMinScoreX}
+                        minScoreXThreshold={minScoreXThreshold}
+                      />
+                    </div>
+                  );
+              })()}
+            </div>
+          )}
+
+            <p className="text-xs text-slate-400 max-w-2xl text-center">
               Croisement dynamique : <span className="text-amber-400 font-bold">Lignes</span> (SYSTÈME 74 : FAVORIS 3 N°, OUTSIDERS 3 N°, TOCARDS 4 N°, SURPRISES 4 N° aux + petites cotes) × <span className="text-cyan-400 font-bold">Colonnes</span> (Addition des 3 dernières performances du cheval : Élite 1er-3e, Régulier 4e-7e, Correct 8e-10e, Irrégulier 11e+).
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => setShowSynthesisTable((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                showSynthesisTable
-                  ? 'bg-purple-600 text-white border-purple-400 font-black'
-                  : 'bg-slate-800 hover:bg-slate-700 text-purple-300 border-purple-500/40'
-              }`}
-              title="Afficher ou masquer le tableau de synthèse de jeu"
-            >
-              <span>{showSynthesisTable ? 'Masquer Synthèse' : '📊 Afficher Synthèse'}</span>
-            </button>
+          <div className="w-full flex flex-col items-center justify-center gap-2.5 py-2 px-1">
+            {/* Ligne 1 : Synthèse, Système 74, Variance Modèles, Ferrures (4 onglets centrés) */}
+            <div className="flex flex-wrap items-center justify-center gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => setShowSynthesisTable((prev) => !prev)}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border ${
+                  showSynthesisTable
+                    ? 'bg-purple-600 text-white border-purple-400 font-black shadow-purple-600/30'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-purple-300 border-purple-500/40'
+                }`}
+                title="Afficher ou masquer le tableau de synthèse de jeu"
+              >
+                <span>{showSynthesisTable ? 'Masquer Synthèse' : '📊 Afficher Synthèse'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setShowSysteme74((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                showSysteme74
-                  ? 'bg-amber-600 text-white border-amber-400 font-black'
-                  : 'bg-slate-800 hover:bg-slate-700 text-amber-300 border-amber-500/40'
-              }`}
-              title="Afficher ou masquer le tableau Système 74 sur l'interface"
-            >
-              <span>{showSysteme74 ? 'Masquer Système 74' : '⚡ Afficher Système 74'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowSysteme74((prev) => !prev)}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border ${
+                  showSysteme74
+                    ? 'bg-amber-600 text-white border-amber-400 font-black shadow-amber-600/30'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-amber-300 border-amber-500/40'
+                }`}
+                title="Afficher ou masquer le tableau Système 74 sur l'interface"
+              >
+                <span>{showSysteme74 ? 'Masquer Système 74' : '⚡ Afficher Système 74'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setShowVariancePanel((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                showVariancePanel
-                  ? 'bg-cyan-600 text-white border-cyan-400 font-black'
-                  : 'bg-slate-800 hover:bg-slate-700 text-cyan-300 border-cyan-500/40'
-              }`}
-              title="Afficher ou masquer le tableau de variance inter-modèles"
-            >
-              <span>{showVariancePanel ? 'Masquer Variance' : '📈 Afficher Variance Modèles'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowSysteme74RulesModal(true)}
+                className="px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border-cyan-500/50 hover:text-white"
+                title="Consulter les règles détaillées du Système 74 (Groupes A, B, C, Cotes, Score X)"
+              >
+                <span className="text-sm">ℹ️</span>
+                <span>Règles Système 74</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setShowFerrageTable((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                showFerrageTable
-                  ? 'bg-emerald-600 text-white border-emerald-400 font-black'
-                  : 'bg-slate-800 hover:bg-slate-700 text-emerald-300 border-emerald-500/40'
-              }`}
-              title="Afficher ou masquer le tableau de ferrage / déferrage"
-            >
-              <span>{showFerrageTable ? 'Masquer Ferrures' : '👟 Tableau de Ferrures (Trot Attelé & Monté)'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowVariancePanel((prev) => !prev)}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border ${
+                  showVariancePanel
+                    ? 'bg-cyan-600 text-white border-cyan-400 font-black shadow-cyan-600/30'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border-cyan-500/40'
+                }`}
+                title="Afficher ou masquer le tableau de variance inter-modèles"
+              >
+                <span>{showVariancePanel ? 'Masquer Variance' : '📈 Afficher Variance Modèles'}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => setShowCordeTable((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                showCordeTable
-                  ? 'bg-blue-600 text-white border-blue-400 font-black'
-                  : 'bg-slate-800 hover:bg-slate-700 text-blue-300 border-blue-500/40'
-              }`}
-              title="Afficher ou masquer le tableau des positions à la corde"
-            >
-              <span>{showCordeTable ? 'Masquer Corde' : '🎯 Positions à la Corde'}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => setShowFerrageTable((prev) => !prev)}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border ${
+                  showFerrageTable
+                    ? 'bg-emerald-600 text-white border-emerald-400 font-black shadow-emerald-600/30'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-emerald-300 border-emerald-500/40'
+                }`}
+                title="Afficher ou masquer le tableau de ferrage / déferrage"
+              >
+                <span>{showFerrageTable ? 'Masquer Ferrures' : '👟 Afficher Ferrures'}</span>
+              </button>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => setShowPerformanceTable((prev) => !prev)}
-              className={`px-3 py-1.5 rounded-xl border text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 shrink-0 ${
-                showPerformanceTable
-                  ? 'bg-rose-600 text-white border-rose-400 font-black'
-                  : 'bg-slate-800 hover:bg-slate-700 text-rose-300 border-rose-500/40'
-              }`}
-              title="Afficher ou masquer le tableau de performance du cheval"
-            >
-              <span>{showPerformanceTable ? 'Masquer Performance' : '⭐ Performance Cheval'}</span>
-            </button>
+            {/* Ligne 2 : Corde, Performance Cheval, Palmarès Drivers / Jockeys, Stratégie Propriétaires */}
+            <div className="flex flex-wrap items-center justify-center gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => setShowStrategieProprietaires((prev) => !prev)}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border ${
+                  showStrategieProprietaires
+                    ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 border-amber-300 font-black shadow-amber-500/30'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-amber-300 border-amber-500/40'
+                }`}
+                title="Afficher ou masquer la section Stratégie des Propriétaires"
+              >
+                <span>{showStrategieProprietaires ? 'Masquer Stratégie Propriétaires' : '🎯 Stratégie Propriétaires'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowCordeTable((prev) => !prev)}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border ${
+                  showCordeTable
+                    ? 'bg-blue-600 text-white border-blue-400 font-black shadow-blue-600/30'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-blue-300 border-blue-500/40'
+                }`}
+                title="Afficher ou masquer le tableau des positions à la corde"
+              >
+                <span>{showCordeTable ? 'Masquer Corde' : '🎯 Afficher Corde'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPerformanceTable((prev) => !prev)}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border ${
+                  showPerformanceTable
+                    ? 'bg-rose-600 text-white border-rose-400 font-black shadow-rose-600/30'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-rose-300 border-rose-500/40'
+                }`}
+                title="Afficher ou masquer le tableau de performance du cheval"
+              >
+                <span>{showPerformanceTable ? 'Masquer Performance' : '⭐ Performance Cheval'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDriversRanking((prev) => !prev)}
+                className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 border ${
+                  showDriversRanking
+                    ? 'bg-amber-500 text-slate-950 border-amber-300 font-black shadow-amber-500/30'
+                    : 'bg-slate-800/90 hover:bg-slate-700 text-amber-300 border-amber-500/40'
+                }`}
+                title="Afficher ou masquer le tableau de classement et palmarès des drivers / jockeys"
+              >
+                <span>{showDriversRanking ? 'Masquer Drivers/Jockeys' : '🏆 Palmarès Drivers / Jockeys'}</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        {showSynthesisTable && (
+        {showSynthesisTable ? (
           <div className="w-full flex flex-col items-center justify-center gap-6">
           {/* Tableau de Synthèse de Jeu */}
-          <div className="rounded-xl border-2 border-white overflow-x-auto shadow-2xl flex justify-center bg-slate-950 p-2 sm:p-3 w-full max-w-full lg:max-w-4xl">
-            <div className="overflow-x-auto scrollbar-none w-full flex justify-center py-1">
+          <TableScrollWrapper
+            title="Déplacement de la grille de synthèse"
+            description="Déplacez vers la droite ou la gauche pour visualiser l'ensemble des colonnes de forme"
+            className="w-full max-w-full lg:max-w-4xl mx-auto"
+          >
+            <div className="w-full flex justify-center py-1">
               <table className="w-full max-w-full border-collapse border-2 border-white mx-auto text-xs sm:text-sm table-fixed">
                 <colgroup>
                   <col className="w-1/5 min-w-[110px] sm:min-w-[140px]" />
@@ -525,10 +814,10 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                 <tbody className="bg-[#0f172a] text-white font-black">
                   {/* Lignes : Système 74 (FAVORIS 1er-3e, OUTSIDERS 4e-6e, TOCARDS 7e-10e, SURPRISES 4 N° petites cotes) × Colonnes : Addition 3 dernières performances */}
                   {[
-                    { key: 'FAVORIS', label: '🥇 FAVORIS', subLabel: '(3 N° : 1e - 3e)', badgeBg: '--group-rgb: var(--group-favoris);', badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', nums: v38.systeme74Ranked.slice(0, 3).map((item) => Number(item.numero)) },
-                    { key: 'OUTSIDERS', label: '🥈 OUTSIDERS', subLabel: '(3 N° : 4e - 6e)', badgeBg: '--group-rgb: var(--group-outsiders);', badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40', nums: v38.systeme74Ranked.slice(3, 6).map((item) => Number(item.numero)) },
-                    { key: 'TOCARDS', label: '🥉 TOCARDS', subLabel: '(4 N° : 7e - 10e)', badgeBg: '--group-rgb: var(--group-tocards);', badgeClass: 'bg-orange-600/20 text-orange-300 border-orange-500/40', nums: v38.systeme74Ranked.slice(6, 10).map((item) => Number(item.numero)) },
-                    { key: 'SURPRISES', label: '⚡ SURPRISES', subLabel: '(4 N° : petites cotes)', badgeBg: '--group-rgb: var(--group-surprises);', badgeClass: 'bg-red-500/20 text-red-300 border-red-500/40', nums: surpriseNums },
+                    { key: 'FAVORIS', label: '🥇 FAVORIS', subLabel: '(3 N° : 1e - 3e)', badgeBg: '--group-rgb: var(--group-favoris);', badgeClass: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', nums: v38.favoris.map((item) => Number(item.numero)) },
+                    { key: 'OUTSIDERS', label: '🥈 OUTSIDERS', subLabel: '(3 N° : 4e - 6e)', badgeBg: '--group-rgb: var(--group-outsiders);', badgeClass: 'bg-amber-500/20 text-amber-300 border-amber-500/40', nums: v38.outsiders.map((item) => Number(item.numero)) },
+                    { key: 'TOCARDS', label: '🥉 TOCARDS', subLabel: '(4 N° : 7e - 10e)', badgeBg: '--group-rgb: var(--group-tocards);', badgeClass: 'bg-orange-600/20 text-orange-300 border-orange-500/40', nums: getSysteme74TocardsAndSurprises(course).tocards74.map((item) => Number(item.num)) },
+                    { key: 'SURPRISES', label: '⚡ SURPRISES', subLabel: '(4 N° : petites cotes)', badgeBg: '--group-rgb: var(--group-surprises);', badgeClass: 'bg-red-500/20 text-red-300 border-red-500/40', nums: getSysteme74TocardsAndSurprises(course).surprises74.map((item) => Number(item.num)) },
                   ].map((row) => {
                     const uniqueNums = Array.from(new Set(row.nums));
                     const colElite: number[] = [];
@@ -542,6 +831,7 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                     const horseIrregulierSet = new Set(horseIrregulierNums);
 
                     uniqueNums.forEach((n) => {
+                      if (!matchesScoreXFilter(n)) return;
                       if (horseEliteSet.has(n)) {
                         colElite.push(n);
                       } else if (horseRegulierSet.has(n)) {
@@ -555,10 +845,35 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                       }
                     });
 
-                    colElite.sort(sortBySysteme74Desc);
-                    colRegulier.sort(sortBySysteme74Desc);
-                    colCorrect.sort(sortBySysteme74Desc);
-                    colIrregulier.sort(sortBySysteme74Desc);
+                    const isCoteRow = row.key === 'FAVORIS' || row.key === 'OUTSIDERS';
+
+                    const sortByCoteAsc = (a: number, b: number) => {
+                      const pA = activePartants.find((item) => Number(item.numero) === a);
+                      const pB = activePartants.find((item) => Number(item.numero) === b);
+                      const coteA = pA ? getHorseGenyOdds(pA) : 999;
+                      const coteB = pB ? getHorseGenyOdds(pB) : 999;
+                      if (coteA !== coteB) return coteA - coteB;
+                      return a - b;
+                    };
+
+                    const sortByPerfAsc = (a: number, b: number) => {
+                      const pA = activePartants.find((item) => Number(item.numero) === a);
+                      const pB = activePartants.find((item) => Number(item.numero) === b);
+                      const perfA = pA ? calculerPerformance3Musiques(pA.musique || '').totalPoints : 999;
+                      const perfB = pB ? calculerPerformance3Musiques(pB.musique || '').totalPoints : 999;
+                      if (perfA !== perfB) return perfA - perfB;
+                      const coteA = pA ? getHorseGenyOdds(pA) : 999;
+                      const coteB = pB ? getHorseGenyOdds(pB) : 999;
+                      if (coteA !== coteB) return coteA - coteB;
+                      return a - b;
+                    };
+
+                    const sortFn = sortByCoteAsc;
+
+                    colElite.sort(sortFn);
+                    colRegulier.sort(sortFn);
+                    colCorrect.sort(sortFn);
+                    colIrregulier.sort(sortFn);
 
                     return (
                       <tr key={`synth-v38-row-${row.key}`} className="hover:bg-slate-900/60 transition-colors border-2 border-white">
@@ -700,10 +1015,24 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
 
                 {/* 4 Lignes du Tableau (FAVORIS, OUTSIDERS, TOCARDS, SURPRISES) × Colonnes (Forme du Cheval) */}
                 {[
-                  { key: 'FAVORIS', label: '🥇 FAVORIS', subLabel: '(3 N° : 1e - 3e)', badgeBg: '--group-rgb: var(--group-favoris);', nums: v38.systeme74Ranked.slice(0, 3).map((item) => Number(item.numero)) },
-                  { key: 'OUTSIDERS', label: '🥈 OUTSIDERS', subLabel: '(3 N° : 4e - 6e)', badgeBg: '--group-rgb: var(--group-outsiders);', nums: v38.systeme74Ranked.slice(3, 6).map((item) => Number(item.numero)) },
-                  { key: 'TOCARDS', label: '🥉 TOCARDS', subLabel: '(4 N° : 7e - 10e)', badgeBg: '--group-rgb: var(--group-tocards);', nums: v38.systeme74Ranked.slice(6, 10).map((item) => Number(item.numero)) },
-                  { key: 'SURPRISES', label: '⚡ SURPRISES', subLabel: '(4 N° : petites cotes)', badgeBg: '--group-rgb: var(--group-surprises);', nums: surpriseNums },
+                  { key: 'FAVORIS', label: '🥇 FAVORIS', subLabel: '(3 N° : 1e - 3e)', badgeBg: '--group-rgb: var(--group-favoris);', nums: v38.favoris.map((item) => Number(item.numero)) },
+                  { key: 'OUTSIDERS', label: '🥈 OUTSIDERS', subLabel: '(3 N° : 4e - 6e)', badgeBg: '--group-rgb: var(--group-outsiders);', nums: v38.outsiders.map((item) => Number(item.numero)) },
+                  { 
+                    key: 'TOCARDS', 
+                    label: <span>🥉 TOCARDS</span>, 
+                    subLabel: '(4 N° : 7e - 10e)', 
+                    badgeBg: '--group-rgb: var(--group-tocards);', 
+                    nums: getSysteme74TocardsAndSurprises(course).tocards74
+                      .map((item) => Number(item.num))
+                  },
+                  { 
+                    key: 'SURPRISES', 
+                    label: <span>⚡ SURPRISES</span>, 
+                    subLabel: '(4 N° : petites cotes)', 
+                    badgeBg: '--group-rgb: var(--group-surprises);', 
+                    nums: getSysteme74TocardsAndSurprises(course).surprises74
+                      .map((item) => Number(item.num))
+                  },
                 ].map((row) => {
                   const uniqueNums = Array.from(new Set(row.nums));
                   const colEnForme: number[] = [];
@@ -737,6 +1066,7 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                   });
 
                   uniqueNums.forEach((n) => {
+                    if (!matchesScoreXFilter(n)) return;
                     if (enFormeSet.has(n)) {
                       colEnForme.push(n);
                     } else if (moyenneSet.has(n)) {
@@ -748,10 +1078,19 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                     }
                   });
 
-                  colEnForme.sort(sortBySysteme74Desc);
-                  colMoyenne.sort(sortBySysteme74Desc);
-                  colExploit.sort(sortBySysteme74Desc);
-                  colMeforme.sort(sortBySysteme74Desc);
+                  const sortByCoteAsc = (a: number, b: number) => {
+                    const pA = activePartants.find((item) => Number(item.numero) === a);
+                    const pB = activePartants.find((item) => Number(item.numero) === b);
+                    const coteA = pA ? getHorseGenyOdds(pA) : 999;
+                    const coteB = pB ? getHorseGenyOdds(pB) : 999;
+                    if (coteA !== coteB) return coteA - coteB;
+                    return a - b;
+                  };
+
+                  colEnForme.sort(sortByCoteAsc);
+                  colMoyenne.sort(sortByCoteAsc);
+                  colExploit.sort(sortByCoteAsc);
+                  colMeforme.sort(sortByCoteAsc);
 
                   return (
                     <tr key={`synth-forme-row-${row.key}`} className="hover:bg-slate-900/60 transition-colors border-2 border-white">
@@ -832,18 +1171,18 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
               </tbody>
             </table>
           </div>
-        </div>
+        </TableScrollWrapper>
 
         {/* Bloc Arrivée de la course et Côtes des partants (Placé en-dessous, centré, largeur max 17.5cm) */}
         <div 
           className="rounded-xl border-2 border-amber-500/40 bg-slate-900/95 p-4 shadow-2xl shrink-0 w-full max-w-full lg:max-w-4xl mx-auto space-y-3 text-slate-200"
           style={{ fontSize: '12px' }}
         >
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <span className="font-black text-amber-400 uppercase tracking-wider text-xs sm:text-sm">
-              🏆 ARRIVÉE & CÔTES DES PARTANTS (SCORE X = (73 + N°) - COTE)
+          <div className="relative flex items-center justify-center border-b border-slate-800 pb-2">
+            <span className="font-black text-amber-400 uppercase tracking-wider text-xs sm:text-sm text-center">
+              🏆 ARRIVÉE _ CÔTES & VALEURS DES PARTANTS
             </span>
-            <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-xs">
+            <span className="absolute right-0 px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-bold text-xs">
               {course.arriveeOfficielle ? 'Officielle' : 'En direct'}
             </span>
           </div>
@@ -895,16 +1234,22 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                   })
                   .sort((a, b) => b.scoreX - a.scoreX)
                   .map(({ p, num, cote, scoreX }) => {
-                    let badgeBg = 'bg-[#dc2626] text-white border-red-300'; // surprises (rouge)
-                    if (favorisSet.has(num)) badgeBg = 'bg-[#059669] text-white border-emerald-300'; // favoris (vert)
-                    else if (outsidersSet.has(num)) badgeBg = 'bg-[#f59e0b] text-slate-950 border-amber-300'; // outsiders (orange)
-                    else if (tocardsSet.has(num)) badgeBg = 'bg-[#ea580c] text-white border-orange-300'; // tocards (orange foncé)
+                    const badgeInfo = getDynamicHorseBadgeGradient(num);
 
                     return (
                       <div key={`cote-sorted-${num}`} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-slate-950/90 border border-slate-800/80 shadow-xs">
-                        {/* Numéro et Nom du cheval */}
+                        {/* Numéro et Nom du cheval avec dégradé dynamique progressif */}
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className={`w-6 h-6 rounded-md flex items-center justify-center font-mono font-black text-xs shrink-0 shadow-sm border ${badgeBg}`}>
+                          <span 
+                            className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-black text-xs shrink-0 shadow-md border-2 ${badgeInfo.textColor}`}
+                            style={{
+                              background: badgeInfo.background,
+                              borderColor: badgeInfo.borderColor,
+                              boxShadow: badgeInfo.boxShadow,
+                              textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                            }}
+                            title={`N°${num} - ${p.nom} | Catégorie: ${badgeInfo.category.toUpperCase()} | Cote: ${cote.toFixed(1)} | Score X: ${scoreX.toFixed(2)}`}
+                          >
                             {num}
                           </span>
                           <span className="font-bold text-slate-200 truncate max-w-[120px] text-xs">
@@ -917,12 +1262,12 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
 
                         {/* Bloc Valeur + Trait vertical + Cote séparés de 1 cm */}
                         <div className="flex items-center shrink-0">
-                          <span className="text-[10px] sm:text-xs font-black px-2 py-0.5 rounded bg-slate-900 text-cyan-300 border border-cyan-500/40 font-mono shrink-0 shadow-xs">
+                          <span className={`text-[10px] sm:text-xs font-black px-2 py-0.5 rounded font-mono shrink-0 shadow-xs ${scoreX < minScoreXThreshold ? 'bg-red-950/90 text-red-400 border border-red-500/70 shadow-sm' : 'bg-slate-900 text-cyan-300 border border-cyan-500/40'}`}>
                             {scoreX.toFixed(1).replace('.', ',')}
                           </span>
 
-                          {/* Trait vertical avec espacement de 1 cm (0.5cm de chaque côté) */}
-                          <div className="w-px h-4 bg-slate-500 shrink-0 mx-[0.5cm]"></div>
+                          {/* Trait vertical avec espacement de 0,5 cm (0,25cm de chaque côté) */}
+                          <div className="w-px h-4 bg-slate-500 shrink-0 mx-[0.25cm]"></div>
 
                           <span className="font-mono font-black text-cyan-300 shrink-0 text-xs sm:text-sm min-w-[45px] text-right">
                             {cote ? `${cote}/1` : '—'}
@@ -935,19 +1280,129 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                 <div className="text-slate-500 text-center italic py-2 col-span-2 text-xs">Aucun partant</div>
               )}
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    ) : null}
+
+        {renderTocardsAndSurprisesComponent()}
+      </div>
+    );
+  };
+
+  function renderTocardsAndSurprisesComponent() {
+    const { tocards74, surprises74 } = getSysteme74TocardsAndSurprises(course);
+
+    return (
+      <div className="w-full max-w-4xl bg-slate-900/90 border-2 border-amber-500/40 rounded-2xl p-4 sm:p-5 shadow-xl space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40">
+              <Flame className="w-5 h-5" />
+            </span>
+            <div>
+              <h4 className="text-sm sm:text-base font-black text-amber-300 uppercase tracking-wide">
+                🎯 Analyse Système 74 : Tocards & Surprises
+              </h4>
+              <p className="text-[11px] text-slate-400 font-bold">
+                Règle de classification (Différence X = (73 + N°) - Cote)
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Colonne Tocards (4 N° : 7e - 10e) */}
+          <div className="bg-slate-950 border-2 border-orange-500/40 rounded-xl p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2.5 border-b border-orange-500/20 pb-2">
+              <span className="text-xs font-black text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-orange-400" />
+                {`🥉 TOCARDS (4 N° : 7e - 10e)`}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono text-[10px] font-bold">
+                {tocards74.length} Ch.
+              </span>
+            </div>
+            <div className="space-y-2">
+              {tocards74.length > 0 ? (
+                tocards74.map(({ p, num, cote, scoreX }) => {
+                  const perfRes = calculerPerformance3Musiques(p.musique || '');
+                  return (
+                    <div key={`tocard-item-${num}`} className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-orange-500/30">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-6 h-6 rounded-lg bg-orange-600 text-white font-mono font-black text-xs flex items-center justify-center shadow shrink-0">
+                          {num}
+                        </span>
+                        <span className="font-bold text-slate-100 text-xs truncate max-w-[120px]">{p.nom}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-500/40" title={`4 Musiques: ${perfRes.formulaCalculation}`}>
+                          {perfRes.badgeShort}
+                        </span>
+                        <span className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded ${scoreX < minScoreXThreshold ? 'bg-red-950/90 text-red-400 border border-red-500/70 shadow-sm' : 'bg-slate-950 text-amber-300 border border-amber-500/30'}`} title="Score X">
+                          X: {scoreX.toFixed(1).replace('.', ',')}
+                        </span>
+                        <span className="text-xs font-mono font-black text-cyan-400">{cote}/1</span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-slate-500 text-center text-xs py-3 italic">Aucun tocard disponible</div>
+              )}
+            </div>
+          </div>
+
+          {/* Colonne Surprises (4 N° : petites cotes) */}
+          <div className="bg-slate-950 border-2 border-rose-500/40 rounded-xl p-3.5 flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-2.5 border-b border-rose-500/20 pb-2">
+              <span className="text-xs font-black text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Flame className="w-4 h-4 text-rose-400" />
+                {`⚡ SURPRISES (4 N° : petites cotes)`}
+              </span>
+              <span className="px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 font-mono text-[10px] font-bold">
+                {surprises74.length} Ch.
+              </span>
+            </div>
+            <div className="space-y-2 max-h-[220px] overflow-y-auto scrollbar-none">
+              {surprises74.length > 0 ? (
+                surprises74.map(({ p, num, cote, scoreX }) => {
+                  const perfRes = calculerPerformance3Musiques(p.musique || '');
+                  return (
+                    <div key={`surprise-item-${num}`} className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-rose-500/30">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-6 h-6 rounded-lg bg-rose-600 text-white font-mono font-black text-xs flex items-center justify-center shadow shrink-0">
+                          {num}
+                        </span>
+                        <span className="font-bold text-slate-100 text-xs truncate max-w-[120px]">{p.nom}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-purple-950/80 text-purple-300 border border-purple-500/40" title={`4 Musiques: ${perfRes.formulaCalculation}`}>
+                          {perfRes.badgeShort}
+                        </span>
+                        <span className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded ${scoreX < minScoreXThreshold ? 'bg-red-950/90 text-red-400 border border-red-500/70 shadow-sm' : 'bg-slate-950 text-amber-300 border border-amber-500/30'}`} title="Score X">
+                          X: {scoreX.toFixed(1).replace('.', ',')}
+                        </span>
+                        <span className="text-xs font-mono font-black text-cyan-400">{cote}/1</span>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="text-slate-500 text-center text-xs py-3 italic">Aucune surprise détectée</div>
+              )}
             </div>
           </div>
         </div>
       </div>
-    )}
-  </div>
-);
-  };
+    );
+  }
 
   const renderSysteme74Table = () => {
     if (!showSysteme74) return null;
 
-    const rankedPartants = (course.partants || [])
+    const allRanked = (course.partants || [])
       .filter((p) => !p.estNonPartant && p.statut !== 'Non-partant')
       .map((p) => {
         const num = Number(p.numero);
@@ -956,6 +1411,21 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
         return { p, num, cote, scoreX };
       })
       .sort((a, b) => b.scoreX - a.scoreX);
+
+    const filteredRanked = allRanked.filter(({ cote }) => {
+      const hasDefinedCote = cote && cote > 0;
+      if (!hasDefinedCote) {
+        return !sys74HideUndefinedCote && (sys74CotePreset === 'all' || sys74CotePreset === 'custom');
+      }
+
+      if (sys74CotePreset === 'favoris') return cote < 5;
+      if (sys74CotePreset === 'outsiders') return cote >= 5 && cote <= 15;
+      if (sys74CotePreset === 'tocards') return cote > 15;
+      if (sys74CotePreset === 'custom') {
+        return cote >= sys74MinCote && cote <= sys74MaxCote;
+      }
+      return true;
+    });
 
     return (
       <div key="table-systeme-74" className="w-full flex flex-col items-center space-y-3 pt-4 border-t border-slate-800/80">
@@ -978,6 +1448,174 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
           </p>
         </div>
 
+        {/* Barre de Filtre Interactif par Cote PMU */}
+        <div className="w-full max-w-4xl mx-auto p-3.5 rounded-2xl bg-slate-950/95 border-2 border-slate-800 shadow-xl space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2.5 text-xs">
+            <div className="flex items-center gap-1.5 font-black text-slate-200">
+              <SlidersHorizontal className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>Filtre Cote PMU :</span>
+            </div>
+
+            {/* Presets de Filtre rapide */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button
+                type="button"
+                onClick={() => {
+                  setSys74CotePreset('all');
+                  setSys74MinCote(0);
+                  setSys74MaxCote(100);
+                }}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all text-xs cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                  sys74CotePreset === 'all'
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-amber-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80'
+                }`}
+              >
+                <span>Tous</span>
+                <span className="opacity-80 font-mono text-[10px] px-1 py-0.2 rounded bg-slate-950/30">
+                  {allRanked.length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSys74CotePreset('favoris')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all text-xs cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                  sys74CotePreset === 'favoris'
+                    ? 'bg-emerald-500 text-slate-950 font-black shadow-emerald-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-emerald-400 border border-emerald-500/30'
+                }`}
+              >
+                <span>🔥 Favoris (&lt; 5)</span>
+                <span className="opacity-80 font-mono text-[10px] px-1 py-0.2 rounded bg-slate-950/30">
+                  {allRanked.filter((r) => r.cote > 0 && r.cote < 5).length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSys74CotePreset('outsiders')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all text-xs cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                  sys74CotePreset === 'outsiders'
+                    ? 'bg-orange-500 text-slate-950 font-black shadow-orange-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-orange-400 border border-orange-500/30'
+                }`}
+              >
+                <span>🎯 Outsiders (5 - 15)</span>
+                <span className="opacity-80 font-mono text-[10px] px-1 py-0.2 rounded bg-slate-950/30">
+                  {allRanked.filter((r) => r.cote >= 5 && r.cote <= 15).length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSys74CotePreset('tocards')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all text-xs cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                  sys74CotePreset === 'tocards'
+                    ? 'bg-rose-500 text-slate-950 font-black shadow-rose-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-500/30'
+                }`}
+              >
+                <span>💣 Tocards (&gt; 15)</span>
+                <span className="opacity-80 font-mono text-[10px] px-1 py-0.2 rounded bg-slate-950/30">
+                  {allRanked.filter((r) => r.cote > 15).length}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSys74CotePreset('custom')}
+                className={`px-3 py-1.5 rounded-xl font-extrabold transition-all text-xs cursor-pointer flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                  sys74CotePreset === 'custom'
+                    ? 'bg-purple-500 text-white font-black shadow-purple-500/20'
+                    : 'bg-slate-900 hover:bg-slate-800 text-purple-300 border border-purple-500/30'
+                }`}
+              >
+                <span>⚙️ Personnalisé</span>
+              </button>
+            </div>
+
+            {/* Option Masquer Cotes Indéfinies */}
+            <button
+              type="button"
+              onClick={() => setSys74HideUndefinedCote(!sys74HideUndefinedCote)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+                sys74HideUndefinedCote
+                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/50'
+                  : 'bg-slate-900 text-slate-400 border-slate-800 hover:text-slate-200'
+              }`}
+              title="Masquer les chevaux n'ayant pas de cote PMU renseignée"
+            >
+              <span className="text-xs">{sys74HideUndefinedCote ? '☑' : '☐'}</span>
+              <span>Masquer cotes "—"</span>
+            </button>
+          </div>
+
+          {/* Curseur / Inputs si mode Personnalisé */}
+          {sys74CotePreset === 'custom' && (
+            <div className="flex items-center gap-3 pt-2.5 border-t border-slate-800 flex-wrap text-xs">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 font-medium">Cote Min :</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={sys74MaxCote}
+                  step={0.5}
+                  value={sys74MinCote}
+                  onChange={(e) => setSys74MinCote(Math.max(0, parseFloat(e.target.value) || 0))}
+                  className="w-16 px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-bold font-mono text-center"
+                />
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-slate-400 font-medium">Cote Max :</span>
+                <input
+                  type="number"
+                  min={sys74MinCote}
+                  max={150}
+                  step={0.5}
+                  value={sys74MaxCote}
+                  onChange={(e) => setSys74MaxCote(Math.max(sys74MinCote, parseFloat(e.target.value) || 100))}
+                  className="w-16 px-2 py-1 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-bold font-mono text-center"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                <span className="text-[11px] text-slate-400">Curseur Cote Max : </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={sys74MaxCote}
+                  onChange={(e) => setSys74MaxCote(parseFloat(e.target.value) || 100)}
+                  className="w-full accent-amber-400 cursor-pointer"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Badge indicateur de filtrage */}
+          <div className="flex items-center justify-between pt-1 border-t border-slate-800/80 text-[11px] text-slate-400">
+            <span>
+              Chevaux affichés : <strong className="text-amber-300 font-mono text-xs">{filteredRanked.length}</strong> sur <span className="font-mono">{allRanked.length}</span>
+            </span>
+            {(sys74CotePreset !== 'all' || sys74HideUndefinedCote) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSys74CotePreset('all');
+                  setSys74MinCote(0);
+                  setSys74MaxCote(100);
+                  setSys74HideUndefinedCote(false);
+                }}
+                className="text-amber-400 hover:text-amber-300 underline font-bold cursor-pointer transition-colors"
+              >
+                Réinitialiser le filtre
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="rounded-xl border-2 border-white overflow-x-auto shadow-2xl flex justify-center bg-slate-950 p-2 sm:p-3 w-full max-w-full lg:max-w-4xl mx-auto">
           <div className="overflow-x-auto scrollbar-none w-full flex justify-center py-1">
             <table className="w-full max-w-full border-collapse border-2 border-white mx-auto text-xs sm:text-sm table-fixed">
@@ -989,8 +1627,11 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                   <th className="w-16 py-3.5 px-2 bg-[#38bdf8] text-slate-950 font-black text-center border-2 border-white align-middle">
                     <div className="w-full text-center flex items-center justify-center">N°</div>
                   </th>
-                  <th className="py-3.5 px-2 bg-[#a855f7] text-white font-black text-center border-2 border-white align-middle">
-                    <div className="w-full text-center flex items-center justify-center">CHEVAL</div>
+                  <th className="py-3.5 px-3 bg-[#a855f7] text-white font-black text-left border-2 border-white align-middle">
+                    <div className="w-full text-left flex items-center justify-start">CHEVAL</div>
+                  </th>
+                  <th className="py-3.5 px-3 bg-[#0284c7] text-white font-black text-left border-2 border-white align-middle">
+                    <div className="w-full text-left flex items-center justify-start">DRIVER / JOCKEY</div>
                   </th>
                   <th className="py-3.5 px-2 bg-[#059669] text-white font-black text-center border-2 border-white align-middle">
                     <div className="w-full text-center flex items-center justify-center">COTE PMU</div>
@@ -1004,25 +1645,37 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                 </tr>
               </thead>
               <tbody className="bg-[#0f172a] text-white font-black">
-                {rankedPartants.map(({ p, num, cote, scoreX }, idx) => {
+                {filteredRanked.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="py-8 px-4 text-center text-slate-300 italic bg-slate-950 border-2 border-white">
+                      <div className="flex flex-col items-center justify-center space-y-2.5">
+                        <span className="text-amber-400 font-bold text-sm">
+                          ⚠️ Aucun partant ne correspond au filtre de cote PMU sélectionné.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSys74CotePreset('all');
+                            setSys74MinCote(0);
+                            setSys74MaxCote(100);
+                            setSys74HideUndefinedCote(false);
+                          }}
+                          className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-xs transition-all shadow-md cursor-pointer"
+                        >
+                          Afficher tous les partants
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredRanked.map(({ p, num, cote, scoreX }, idx) => {
                   const rank = idx + 1;
-                  let badgeClass = 'bg-red-500/20 text-red-300 border-red-500/40';
-                  let numBadgeClass = 'border-red-500/50 text-red-400';
-                  let catLabel = 'SURPRISE';
-                  
-                  if (rank <= 3) {
-                    badgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40';
-                    numBadgeClass = 'border-emerald-500/50 text-emerald-400';
-                    catLabel = 'FAVORI';
-                  } else if (rank <= 6) {
-                    badgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
-                    numBadgeClass = 'border-amber-500/50 text-amber-400';
-                    catLabel = 'OUTSIDER';
-                  } else if (rank <= 10) {
-                    badgeClass = 'bg-orange-600/20 text-orange-300 border-orange-500/40';
-                    numBadgeClass = 'border-orange-500/50 text-orange-400';
-                    catLabel = 'TOCARD';
-                  }
+                  let catHint: 'favoris' | 'outsiders' | 'tocards' | 'surprises' = 'surprises';
+                  if (rank <= 3) catHint = 'favoris';
+                  else if (rank <= 6) catHint = 'outsiders';
+                  else if (rank <= 10) catHint = 'tocards';
+
+                  const badgeInfo = getHorseBadgeTheme(num, course, catHint, scoreX, cote);
 
                   return (
                     <tr key={`sys74-row-${num}`} className="hover:bg-slate-900/60 transition-colors border-2 border-white">
@@ -1031,30 +1684,132 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                       </td>
                       <td className="py-2.5 px-2 text-center border-2 border-white align-middle">
                         <div className="w-full flex items-center justify-center">
-                          <span className={`inline-flex w-7 h-7 items-center justify-center rounded-md bg-slate-950 border-2 font-black shadow-sm ${numBadgeClass}`}>
-                            {num}
+                          <span 
+                            className={`inline-flex w-7 h-7 items-center justify-center rounded-lg border-2 font-mono font-black text-xs shadow-md ${badgeInfo.textColor} relative overflow-hidden`}
+                            style={{
+                              background: badgeInfo.background,
+                              borderColor: badgeInfo.borderColor,
+                              boxShadow: badgeInfo.boxShadow,
+                              textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                            }}
+                            title={`N°${num} - ${p.nom} | Catégorie: ${badgeInfo.category.toUpperCase()} | Score X: ${scoreX.toFixed(1)}`}
+                          >
+                            <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t" />
+                            <span className="z-10">{num}</span>
                           </span>
                         </div>
                       </td>
-                      <td className="py-2.5 px-3 font-black text-slate-100 border-2 border-white align-middle">
-                        <div className="truncate max-w-[150px] text-center">{p.nom}</div>
+                      <td className="py-2.5 px-3 font-black text-slate-100 border-2 border-white align-middle text-left">
+                        <div className="truncate max-w-[170px] text-left">{p.nom}</div>
+                      </td>
+
+                      {/* Colonne DRIVER / JOCKEY avec Info-Bulle survol interactive */}
+                      <td className="py-2.5 px-3 font-black border-2 border-white align-middle relative text-left">
+                        <div 
+                          className="truncate max-w-[160px] text-left text-amber-300 font-extrabold hover:text-white transition-colors cursor-pointer flex items-center justify-start gap-1.5 p-1 rounded-lg hover:bg-slate-800/80"
+                          onMouseEnter={() => setHoveredDriverNum(num)}
+                          onMouseLeave={() => setHoveredDriverNum(null)}
+                        >
+                          <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span className="truncate">{p.driver || 'Non renseigné'}</span>
+                        </div>
+
+                        {/* Info-bulle interactive / Panneau au survol du Jockey */}
+                        {hoveredDriverNum === num && (() => {
+                          const details = getDriverHoverDetails(p);
+                          return (
+                            <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2.5 w-80 p-4 bg-slate-950/98 border-2 border-amber-500/90 rounded-2xl shadow-2xl z-50 text-left pointer-events-none animate-fadeIn backdrop-blur-md space-y-2.5">
+                              {/* Card Header */}
+                              <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                                    <User className="w-4 h-4 text-amber-400" />
+                                  </div>
+                                  <div>
+                                    <span className="font-extrabold text-white text-xs block leading-tight">{details.driverName}</span>
+                                    <span className="text-[10px] text-slate-400 font-mono">Associé au N°{num} ({p.nom})</span>
+                                  </div>
+                                </div>
+                                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[10px] font-black border border-amber-500/30">
+                                  {details.hippoRate >= 20 ? '🏆 ÉLITE' : 'EXPÉRIMENTÉ'}
+                                </span>
+                              </div>
+
+                              {/* Taux de réussite sur l'hippodrome du jour */}
+                              <div className="space-y-1.5 p-2 bg-slate-900/90 rounded-xl border border-slate-800">
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-slate-300 font-bold flex items-center gap-1.5">
+                                    <MapPin className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                                    <span>Taux Réussite {details.hippoName} :</span>
+                                  </span>
+                                  <span className="font-mono font-black text-amber-300 text-xs">
+                                    {details.hippoRate}%
+                                  </span>
+                                </div>
+                                {/* Progress bar */}
+                                <div className="w-full h-1.5 bg-slate-950 rounded-full border border-slate-800 overflow-hidden">
+                                  <div 
+                                    className="h-full bg-gradient-to-r from-amber-500 to-emerald-400 rounded-full"
+                                    style={{ width: `${Math.min(100, details.hippoRate)}%` }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* 5 Dernières Musiques du Driver */}
+                              <div className="space-y-1.5">
+                                <span className="text-[10px] uppercase tracking-wider font-extrabold text-slate-400 block flex items-center gap-1">
+                                  <Trophy className="w-3 h-3 text-amber-400" />
+                                  <span>5 Dernières Musiques (Forme Récente) :</span>
+                                </span>
+                                <div className="flex items-center gap-1.5 flex-wrap font-mono text-xs">
+                                  {details.last5Musique.map((mToken, mIdx) => {
+                                    const placeNum = parseInt(mToken.replace(/\D/g, ''), 10);
+                                    let badgeColor = 'bg-slate-800 text-slate-300 border-slate-700';
+                                    if (placeNum === 1) badgeColor = 'bg-amber-500 text-slate-950 font-black border-amber-300';
+                                    else if (placeNum === 2 || placeNum === 3) badgeColor = 'bg-cyan-500/20 text-cyan-300 font-bold border-cyan-500/40';
+                                    else if (placeNum === 4 || placeNum === 5) badgeColor = 'bg-emerald-500/20 text-emerald-300 font-bold border-emerald-500/40';
+
+                                    return (
+                                      <span key={`drv-m-${mIdx}`} className={`px-2 py-0.5 rounded-lg border text-[11px] ${badgeColor}`}>
+                                        {mToken}
+                                      </span>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+
+                              <div className="text-[9px] text-slate-400 italic pt-1 border-t border-slate-800/80">
+                                Survolez d'autres drivers pour afficher leur fiche interactive.
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="py-2.5 px-2 text-center text-cyan-400 font-black border-2 border-white align-middle">
                         <div className="w-full text-center flex items-center justify-center">{cote ? `${cote}/1` : '—'}</div>
                       </td>
-                      <td className="py-2.5 px-2 text-center font-black text-amber-300 border-2 border-white align-middle">
+                      <td className={`py-2.5 px-2 text-center font-black border-2 border-white align-middle ${scoreX < minScoreXThreshold ? 'text-red-500 font-extrabold bg-red-950/30' : 'text-amber-300'}`}>
                         <div className="w-full text-center flex items-center justify-center">{scoreX.toFixed(1).replace('.', ',')}</div>
                       </td>
                       <td className="py-2.5 px-2 text-center border-2 border-white align-middle">
                         <div className="w-full flex items-center justify-center">
-                          <span className={`px-3 py-1 rounded-md text-[10px] font-black border-2 shadow-md uppercase tracking-wider ${badgeClass}`}>
-                            {catLabel}
+                          <span 
+                            className={`px-3 py-1 rounded-md text-[10px] font-black border-2 shadow-md uppercase tracking-wider ${badgeInfo.textColor} relative overflow-hidden`}
+                            style={{
+                              background: badgeInfo.background,
+                              borderColor: badgeInfo.borderColor,
+                              boxShadow: badgeInfo.boxShadow,
+                              textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                            }}
+                          >
+                            <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent pointer-events-none rounded-t" />
+                            <span className="z-10">{badgeInfo.badgeLabel}</span>
                           </span>
                         </div>
                       </td>
                     </tr>
                   );
-                })}
+                }))}
               </tbody>
             </table>
           </div>
@@ -1134,11 +1889,11 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
       })
       .sort((a, b) => b.scoreX - a.scoreX);
 
+    const { tocards74: sysTocards, surprises74: sysSurprises } = getSysteme74TocardsAndSurprises(course);
     const favNums = systeme74Ranked.slice(0, 3).map((item) => item.num);
     const outNums = systeme74Ranked.slice(3, 6).map((item) => item.num);
-    const tocNums = systeme74Ranked.slice(6, 10).map((item) => item.num);
-    const surpCandidates = systeme74Ranked.slice(10).sort((a, b) => a.cote - b.cote);
-    const surpNums = surpCandidates.slice(0, 4).map((item) => item.num);
+    const tocNums = sysTocards.map((item) => item.num);
+    const surpNums = sysSurprises.map((item) => item.num);
 
     const getShoeingGroup = (p: typeof partants[0]) => {
       const f = (p.ferrure || (p as any).fer || 'F').toUpperCase();
@@ -1192,7 +1947,7 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
 
         {/* 1. TABLEAU DE FERRURES (Matrice de Croisement Dynamique) */}
         <div className="rounded-xl border-2 border-emerald-500/30 bg-slate-950 p-2 sm:p-3 w-full max-w-full lg:max-w-4xl overflow-x-auto shadow-2xl">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse table-fixed border-2 border-white">
+          <table className="w-full text-center text-xs sm:text-sm border-collapse table-fixed border-2 border-white mx-auto">
             <thead>
               <tr className="text-xs sm:text-sm font-black uppercase tracking-wider border-2 border-white">
                 <th className="w-1/5 min-w-[80px] py-3.5 px-2 bg-slate-900 text-slate-200 font-black text-center border-2 border-white align-middle">
@@ -1230,7 +1985,17 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                   numsList.filter((num) => {
                     const p = partants.find((item) => Number(item.numero) === num);
                     if (!p) return false;
+                    const cote = getHorseGenyOdds(p);
+                    const scoreX = (73 + num) - cote;
+                    if (filterMinScoreX && scoreX < minScoreXThreshold) return false;
                     return getShoeingGroup(p) === row.key;
+                  }).sort((a, b) => {
+                    const pA = partants.find((item) => Number(item.numero) === a);
+                    const pB = partants.find((item) => Number(item.numero) === b);
+                    const coteA = pA ? getHorseGenyOdds(pA) : 999;
+                    const coteB = pB ? getHorseGenyOdds(pB) : 999;
+                    if (coteA !== coteB) return coteA - coteB;
+                    return a - b;
                   });
 
                 const cellFavs = getRowNums(favNums);
@@ -1413,11 +2178,11 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
       })
       .sort((a, b) => b.scoreX - a.scoreX);
 
+    const { tocards74: sysTocardsCorde, surprises74: sysSurprisesCorde } = getSysteme74TocardsAndSurprises(course);
     const favNums = systeme74Ranked.slice(0, 3).map((item) => item.num);
     const outNums = systeme74Ranked.slice(3, 6).map((item) => item.num);
-    const tocNums = systeme74Ranked.slice(6, 10).map((item) => item.num);
-    const surpCandidates = systeme74Ranked.slice(10).sort((a, b) => a.cote - b.cote);
-    const surpNums = surpCandidates.slice(0, 4).map((item) => item.num);
+    const tocNums = sysTocardsCorde.map((item) => item.num);
+    const surpNums = sysSurprisesCorde.map((item) => item.num);
 
     const getCordeGroup = (p: typeof partants[0]) => {
       const cordeVal = Number(p.corde) || Number((p as any).place) || Number((p as any).stalle) || Number(p.numero);
@@ -1471,23 +2236,37 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
 
         {/* 1. TABLEAU DES POSITIONS À LA CORDE (Matrice de Croisement Dynamique) */}
         <div className="rounded-xl border-2 border-cyan-500/30 bg-slate-950 p-2 sm:p-3 w-full max-w-full lg:max-w-4xl overflow-x-auto shadow-2xl">
-          <table className="w-full text-left text-xs sm:text-sm border-collapse table-fixed border-2 border-white">
+          <table className="w-full text-center text-xs sm:text-sm border-collapse table-fixed border-2 border-white mx-auto">
             <thead>
               <tr className="text-xs sm:text-sm font-black uppercase tracking-wider border-2 border-white">
                 <th className="w-1/5 min-w-[80px] py-3.5 px-2 bg-slate-900 text-slate-200 font-black text-center border-2 border-white align-middle">
-                  CORDES
+                  <div className="w-full text-center flex items-center justify-center font-black mx-auto">
+                    CORDES
+                  </div>
                 </th>
                 <th className="w-1/5 min-w-[80px] py-3.5 px-2 bg-[#059669] text-white font-black text-center border-2 border-white align-middle">
-                  🥇 FAVORIS <span className="block text-[10px] font-normal opacity-90">(3 N°)</span>
+                  <div className="w-full text-center flex flex-col items-center justify-center font-black mx-auto">
+                    <span>🥇 FAVORIS</span>
+                    <span className="block text-[10px] font-normal opacity-90 text-center">(3 N°)</span>
+                  </div>
                 </th>
                 <th className="w-1/5 min-w-[80px] py-3.5 px-2 bg-[#f59e0b] text-slate-950 font-black text-center border-2 border-white align-middle">
-                  🥈 OUTSIDERS <span className="block text-[10px] font-normal opacity-90">(3 N°)</span>
+                  <div className="w-full text-center flex flex-col items-center justify-center font-black mx-auto">
+                    <span>🥈 OUTSIDERS</span>
+                    <span className="block text-[10px] font-normal opacity-90 text-center">(3 N°)</span>
+                  </div>
                 </th>
                 <th className="w-1/5 min-w-[80px] py-3.5 px-2 bg-[#ea580c] text-white font-black text-center border-2 border-white align-middle">
-                  🥉 TOCARDS <span className="block text-[10px] font-normal opacity-90">(4 N°)</span>
+                  <div className="w-full text-center flex flex-col items-center justify-center font-black mx-auto">
+                    <span>🥉 TOCARDS</span>
+                    <span className="block text-[10px] font-normal opacity-90 text-center">(4 N°)</span>
+                  </div>
                 </th>
                 <th className="w-1/5 min-w-[80px] py-3.5 px-2 bg-[#dc2626] text-white font-black text-center border-2 border-white align-middle">
-                  ⚡ SURPRISES <span className="block text-[10px] font-normal opacity-90">(4 N° petites cotes)</span>
+                  <div className="w-full text-center flex flex-col items-center justify-center font-black mx-auto">
+                    <span>⚡ SURPRISES</span>
+                    <span className="block text-[10px] font-normal opacity-90 text-center">(4 N° petites cotes)</span>
+                  </div>
                 </th>
               </tr>
             </thead>
@@ -1497,7 +2276,17 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                   numsList.filter((num) => {
                     const p = partants.find((item) => Number(item.numero) === num);
                     if (!p) return false;
+                    const cote = getHorseGenyOdds(p);
+                    const scoreX = (73 + num) - cote;
+                    if (filterMinScoreX && scoreX < minScoreXThreshold) return false;
                     return getCordeGroup(p) === row.key;
+                  }).sort((a, b) => {
+                    const pA = partants.find((item) => Number(item.numero) === a);
+                    const pB = partants.find((item) => Number(item.numero) === b);
+                    const coteA = pA ? getHorseGenyOdds(pA) : 999;
+                    const coteB = pB ? getHorseGenyOdds(pB) : 999;
+                    if (coteA !== coteB) return coteA - coteB;
+                    return a - b;
                   });
 
                 const cellFavs = getRowNums(favNums);
@@ -1700,7 +2489,7 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                 <th className="py-2 px-2 text-center w-12">Rang</th>
                 <th className="py-2 px-2 text-center w-12">N°</th>
                 <th className="py-2 px-2">Cheval</th>
-                <th className="py-2 px-2 text-center">Musique Récente</th>
+                <th className="py-2 px-2 text-left">Musique Récente</th>
                 <th className="py-2 px-2 text-center">Somme 3 Perf.</th>
                 <th className="py-2 px-2 text-center">Catégorie</th>
                 <th className="py-2 px-2 text-center">Cote PMU</th>
@@ -1735,7 +2524,7 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
                       </span>
                     </td>
                     <td className="py-1.5 px-2 font-sans font-bold text-slate-200">{p.nom}</td>
-                    <td className="py-1.5 px-2 text-center text-slate-300 font-mono text-[11px]">{p.musique || '—'}</td>
+                    <td className="py-1.5 px-2 text-left text-slate-300 font-mono text-[11px]">{p.musique || '—'}</td>
                     <td className="py-1.5 px-2 text-center font-black text-cyan-300">{scorePerfObj.totalPoints} pts</td>
                     <td className="py-1.5 px-2 text-center">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-black border ${badgeBg}`}>
@@ -1753,6 +2542,64 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
     );
   };
 
+  const renderDriversRankingTable = () => {
+    if (!showDriversRanking) return null;
+
+    return (
+      <div key="table-drivers-ranking" className="w-full flex flex-col items-center space-y-3 pt-4 border-t border-slate-800/80">
+        <div className="w-full text-center space-y-1 relative flex flex-col items-center">
+          <div className="w-full flex items-center justify-between sm:justify-center gap-2 relative">
+            <h4 className="text-md sm:text-lg font-black text-amber-400 uppercase tracking-wider flex items-center justify-center gap-2 mx-auto">
+              <span>🏆 TABLEAU DE CLASSEMENT ET PALMARÈS DES DRIVERS / JOCKEYS</span>
+            </h4>
+            <button
+              type="button"
+              onClick={() => setShowDriversRanking(false)}
+              className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+              title="Masquer le tableau du classement drivers / jockeys"
+            >
+              ✕ Masquer
+            </button>
+          </div>
+          <p className="text-xs text-slate-400">
+            Palmarès officiel, taux de réussite %, forme récente et synergie duo avec le cheval.
+          </p>
+        </div>
+
+        <div className="w-full">
+          <DriversRankingTable course={course} title="Tableau de Classement et Palmarès des Drivers / Jockeys" />
+        </div>
+      </div>
+    );
+  };
+
+  const renderStrategieProprietairesTable = () => {
+    if (!showStrategieProprietaires) return null;
+
+    return (
+      <div key="table-strategie-proprietaires" className="w-full space-y-3 pt-4 border-t border-slate-800/80">
+        <div className="w-full flex items-center justify-between gap-2">
+          <h4 className="text-md sm:text-lg font-black text-amber-400 uppercase tracking-wider flex items-center gap-2">
+            <span>🎯 STRATÉGIE DES PROPRIÉTAIRES & ENTOURAGES</span>
+          </h4>
+          <button
+            type="button"
+            onClick={() => setShowStrategieProprietaires(false)}
+            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+            title="Masquer la section Stratégie des Propriétaires"
+          >
+            ✕ Masquer
+          </button>
+        </div>
+        <StrategieProprietairesCard
+          course={course}
+          selectedHorseNumbers={selectedHorseNumbers}
+          onSelectHorseForTicket={onSelectHorseForTicket}
+        />
+      </div>
+    );
+  };
+
   return (
     <div
       className={`pronostics-jeu-container flex flex-col w-full rounded-2xl border ${
@@ -1761,8 +2608,8 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
           : 'bg-white border-slate-200 text-slate-900 shadow-lg p-4 sm:p-6'
       } space-y-6 font-sans`}
     >
-      <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-center border-b border-slate-800/80 pb-1">
+        <div className="flex items-center">
           <span className="px-2.5 py-1 rounded-md bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-xs font-black uppercase tracking-wider">
             Étape 3 : Grille Stratégique de Synthèse
           </span>
@@ -1771,16 +2618,24 @@ export const DisciplineGridTable: React.FC<DisciplineGridTableProps> = ({
 
       {renderSyntheseDeJeuTable()}
       {renderSysteme74Table()}
+      {renderStrategieProprietairesTable()}
       {renderVariancePanel()}
       {renderFerrageTable()}
       {renderCordeTable()}
       {renderPerformanceTable()}
+      {renderDriversRankingTable()}
 
       {/* Modal Diagnostic Formule Tandem */}
       <TandemDiagnosticModal
         isOpen={isDiagnosticOpen}
         onClose={() => setIsDiagnosticOpen(false)}
         course={course}
+      />
+
+      {/* Modal Règles et Fonctionnement Système 74 */}
+      <Systeme74RulesModal
+        isOpen={showSysteme74RulesModal}
+        onClose={() => setShowSysteme74RulesModal(false)}
       />
     </div>
   );

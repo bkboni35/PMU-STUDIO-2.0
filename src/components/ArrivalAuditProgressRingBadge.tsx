@@ -47,17 +47,14 @@ export const ArrivalAuditProgressRingBadge: React.FC<ArrivalAuditProgressRingBad
   const formattedMMSS = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
 
   // Détermination de l'état d'alerte et de la couleur :
-  // 1. VERT (> 180s) : Début du délai de 5 minutes (contrôle serein)
+  // 1. VERT (> 180s) : Début du délai de 3 minutes (contrôle serein)
   // 2. ORANGE (60s à 180s) : Milieu du délai (attention requise)
-  // 3. ROUGE (< 60s) : Fin imminente du délai des 5 minutes (alerte critique)
-  // 4. VERT ÉMERAUDE : Audit complété et homologué (300s écoulées)
-  // 5. ROUGE ÉCARLATE : Modification constatée
-  type AlertLevel = 'green' | 'orange' | 'red' | 'completed' | 'modification';
+  // 3. ROUGE (< 60s) : Fin imminente du délai des 3 minutes (alerte critique)
+  // 4. VERT ÉMERAUDE : Audit complété et homologué (180s écoulées)
+  type AlertLevel = 'green' | 'orange' | 'red' | 'completed';
 
   let alertLevel: AlertLevel = 'green';
-  if (course.arrivalAuditModificationDetected) {
-    alertLevel = 'modification';
-  } else if (isAuditCompleted) {
+  if (isAuditCompleted || Boolean(course.arriveeOfficielle)) {
     alertLevel = 'completed';
   } else if (remainingSeconds <= 60) {
     alertLevel = 'red';
@@ -86,7 +83,7 @@ export const ArrivalAuditProgressRingBadge: React.FC<ArrivalAuditProgressRingBad
       badgeBg: 'bg-emerald-950/80 border-emerald-500/50 text-emerald-200 shadow-emerald-950/40',
       textColor: 'text-emerald-400',
       badgeTag: 'bg-emerald-500 text-slate-950',
-      label: 'Délai 5 min (Conforme)',
+      label: 'Délai 3 min (Conforme)',
       glow: 'shadow-[0_0_12px_rgba(16,185,129,0.25)]',
       pulse: '',
     },
@@ -139,7 +136,7 @@ export const ArrivalAuditProgressRingBadge: React.FC<ArrivalAuditProgressRingBad
     return (
       <div
         className={`inline-flex items-center gap-2.5 px-3 py-1.5 rounded-2xl border ${currentTheme.badgeBg} ${currentTheme.glow} transition-all duration-300`}
-        title="Contrôle des 5 minutes des commissaires complété et validé définitivement"
+        title="Contrôle des 3 minutes post-arrivée complété et validé définitivement"
       >
         <div className="relative flex items-center justify-center shrink-0">
           <svg width={dimension} height={dimension} className="transform -rotate-90">
@@ -172,14 +169,14 @@ export const ArrivalAuditProgressRingBadge: React.FC<ArrivalAuditProgressRingBad
           <div className="flex flex-col text-left">
             <div className="flex items-center gap-1.5">
               <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider ${currentTheme.badgeTag}`}>
-                Audit 5 min
+                Audit 3 min
               </span>
               <span className="text-[11px] font-bold text-emerald-300">
                 Certifié Conforme
               </span>
             </div>
             <span className="text-[10px] text-slate-400 font-mono">
-              300s écoulées · Homologation finale
+              180s écoulées · Homologation finale
             </span>
           </div>
         )}
@@ -187,38 +184,12 @@ export const ArrivalAuditProgressRingBadge: React.FC<ArrivalAuditProgressRingBad
     );
   }
 
-  if (alertLevel === 'modification') {
-    return (
-      <div
-        className={`inline-flex items-center gap-2.5 px-3 py-1.5 rounded-2xl border ${currentTheme.badgeBg} ${currentTheme.glow} ${currentTheme.pulse} transition-all duration-300`}
-        title="Modification d'arrivée constatée suite à réclamation/disqualification"
-      >
-        <div className="p-2 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0">
-          <AlertTriangle className="w-5 h-5 text-rose-400" />
-        </div>
-        {showLabel && (
-          <div className="flex flex-col text-left">
-            <div className="flex items-center gap-1.5">
-              <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider ${currentTheme.badgeTag}`}>
-                Commissaires
-              </span>
-              <span className="text-[11px] font-black text-rose-200">
-                Ordre Rectifié !
-              </span>
-            </div>
-            <span className="text-[10px] text-rose-300 font-mono">
-              Enquête / Allures modifiées
-            </span>
-          </div>
-        )}
-      </div>
-    );
-  }
+
 
   return (
     <div
       className={`inline-flex items-center gap-3 px-3 py-1.5 rounded-2xl border ${currentTheme.badgeBg} ${currentTheme.glow} ${currentTheme.pulse} transition-all duration-300 group`}
-      title={`Contrôle réglementaire des 5 minutes : ${remainingSeconds}s restantes avant homologation définitive`}
+      title={`Contrôle réglementaire des 3 minutes : ${remainingSeconds}s restantes avant homologation définitive`}
     >
       {/* SVG Circular Progress Ring */}
       <div className="relative flex items-center justify-center shrink-0">
@@ -271,7 +242,7 @@ export const ArrivalAuditProgressRingBadge: React.FC<ArrivalAuditProgressRingBad
         <div className="flex flex-col text-left">
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className={`px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider ${currentTheme.badgeTag}`}>
-              {alertLevel === 'red' ? '⚡ Alerte Fin' : alertLevel === 'orange' ? '⏳ 5 min' : 'Audit PMU'}
+              {alertLevel === 'red' ? '⚡ Alerte Fin' : alertLevel === 'orange' ? '⏳ 3 min' : 'Audit PMU'}
             </span>
             <span className={`text-[11px] font-black ${currentTheme.textColor} flex items-center gap-1`}>
               {alertLevel === 'red' && <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-ping" />}

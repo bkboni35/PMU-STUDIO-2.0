@@ -43,10 +43,93 @@ export function getMillisecondsUntilIvoryCoastMidnight(): number {
 }
 
 /**
- * Convertit une heure de départ officielle PMU / Geny France (ex: "18h58" ou "20h15")
+ * Analyse une chaîne de date française ou ISO pour obtenir un objet Date exploitable.
+ */
+export function parseFrenchOrIsoDate(dateStr?: string): Date {
+  if (!dateStr) return new Date();
+  const lower = dateStr.toLowerCase().trim();
+  if (lower.includes('aujourd') || lower.includes('maintenant')) return new Date();
+  if (lower.includes('demain')) return new Date(Date.now() + 86400000);
+  if (lower.includes('hier')) return new Date(Date.now() - 86400000);
+
+  // Format ISO : YYYY-MM-DD
+  const isoMatch = lower.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+  if (isoMatch) {
+    return new Date(Date.UTC(+isoMatch[1], +isoMatch[2] - 1, +isoMatch[3], 12, 0, 0));
+  }
+
+  // Format français numérique : DD/MM/YYYY ou DD-MM-YYYY
+  const numMatch = lower.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+  if (numMatch) {
+    return new Date(Date.UTC(+numMatch[3], +numMatch[2] - 1, +numMatch[1], 12, 0, 0));
+  }
+
+  // Format textuel : "27 octobre 2026", "mardi 27 octobre 2026", etc.
+  const textMatch = lower.match(/(\d{1,2})\s+([a-zàâäéèêëîïôöùûüç]+)(?:\s+(\d{4}))?/);
+  if (textMatch) {
+    const months: Record<string, number> = {
+      janvier: 0, fevrier: 1, février: 1, mars: 2, avril: 3, mai: 4, juin: 5,
+      juillet: 6, aout: 7, août: 7, septembre: 8, octobre: 9, novembre: 10, decembre: 11, décembre: 11,
+    };
+    const m = months[textMatch[2]];
+    if (m !== undefined) {
+      const year = textMatch[3] ? parseInt(textMatch[3], 10) : new Date().getFullYear();
+      return new Date(Date.UTC(year, m, parseInt(textMatch[1], 10), 12, 0, 0));
+    }
+  }
+
+  return new Date();
+}
+
+/**
+ * Calcule le décalage horaire officiel entre l'Heure de France (Europe/Paris)
+ * et le fuseau UTC/GMT (Côte d'Ivoire / Abidjan / UTC+0).
+ * - En heure d'hiver (CET, UTC+1, du dernier dimanche d'octobre au dernier dimanche de mars) : décalage de 1 heure (-1h).
+ * - En heure d'été (CEST, UTC+2, du dernier dimanche de mars au dernier dimanche d'octobre) : décalage de 2 heures (-2h).
+ */
+export function getParisToUtcShift(dateInput?: string | Date): number {
+  const d = typeof dateInput === 'string' ? parseFrenchOrIsoDate(dateInput) : (dateInput || new Date());
+  try {
+    const utcDate = new Date(d.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const parisDate = new Date(d.toLocaleString('en-US', { timeZone: 'Europe/Paris' }));
+    const offset = Math.round((parisDate.getTime() - utcDate.getTime()) / (1000 * 60 * 60));
+    if (offset === 1 || offset === 2) return offset;
+  } catch {}
+
+  // Algorithme européen officiel (dernier dimanche de mars -> dernier dimanche d'octobre)
+  const month = d.getUTCMonth();
+  if (month > 2 && month < 9) return 2; // Avril à Septembre : Heure d'été (UTC+2)
+  if (month < 2 || month > 9) return 1; // Novembre à Février : Heure d'hiver (UTC+1)
+  
+  const day = d.getUTCDate();
+  // En mars : passage à l'heure d'été le dernier dimanche
+  if (month === 2) {
+    const lastDayOfMonth = new Date(Date.UTC(d.getUTCFullYear(), 3, 0)).getUTCDate();
+    const lastSunday = lastDayOfMonth - new Date(Date.UTC(d.getUTCFullYear(), 2, lastDayOfMonth)).getUTCDay();
+    return day >= lastSunday ? 2 : 1;
+  }
+  // En octobre : passage à l'heure d'hiver le dernier dimanche
+  if (month === 9) {
+    const lastDayOfMonth = new Date(Date.UTC(d.getUTCFullYear(), 10, 0)).getUTCDate();
+    const lastSunday = lastDayOfMonth - new Date(Date.UTC(d.getUTCFullYear(), 9, lastDayOfMonth)).getUTCDay();
+    return day >= lastSunday ? 1 : 2;
+  }
+
+  return 1;
+}
+
+/**
+ * Indique si une date donnée est sous le régime officiel de l'heure d'hiver en France (CET / UTC+1).
+ */
+export function isFranceWinterTime(dateInput?: string | Date): boolean {
+  return getParisToUtcShift(dateInput) === 1;
+}
+
+/**
+ * Convertit une heure de départ officielle PMU / Geny France (ex: "13h55", "18h58" ou "20h15")
  * en heure locale GMT Abidjan (Côte d'Ivoire / UTC+0).
- * - En heure d'été française (CEST = UTC+2, d'avril à fin octobre) : -2 heures.
- * - En heure d'hiver française (CET = UTC+1, de fin octobre à fin mars) : -1 heure.
+ * - En heure d'hiver française (CET = UTC+1, fin octobre à fin mars) : -1 heure (ex: 13h55 FR -> 12h55 GMT).
+ * - En heure d'été française (CEST = UTC+2, fin mars à fin octobre) : -2 heures (ex: 13h55 FR -> 11h55 GMT).
  */
 export function convertToAbidjanGMT(heureStr: string, dateStr?: string): string {
   if (!heureStr) return "";
@@ -61,20 +144,8 @@ export function convertToAbidjanGMT(heureStr: string, dateStr?: string): string 
 
     if (isNaN(hours) || isNaN(minutes)) return heureStr;
 
-    let shiftHours = 2; // -2h pour l'heure d'été CEST (France UTC+2 -> GMT Abidjan UTC+0)
-
-    if (dateStr) {
-      const lowerDate = dateStr.toLowerCase();
-      if (
-        lowerDate.includes('novembre') ||
-        lowerDate.includes('décembre') ||
-        lowerDate.includes('janvier') ||
-        lowerDate.includes('février') ||
-        lowerDate.includes('mars')
-      ) {
-        shiftHours = 1; // -1h pour l'heure d'hiver CET
-      }
-    }
+    // Décalage dynamique avec détection automatique de l'heure d'hiver (CET: -1h) vs heure d'été (CEST: -2h)
+    const shiftHours = getParisToUtcShift(dateStr);
 
     hours = hours - shiftHours;
     if (hours < 0) hours += 24;
@@ -90,7 +161,7 @@ export function convertToAbidjanGMT(heureStr: string, dateStr?: string): string 
 }
 
 /**
- * Convertit et formate l'heure de départ en GMT Abidjan (ex: "16h58 GMT").
+ * Convertit et formate l'heure de départ en GMT Abidjan (ex: "12h55 GMT").
  */
 export function convertToUTC(heureStr: string, dateStr?: string): string {
   return convertToAbidjanGMT(heureStr, dateStr);

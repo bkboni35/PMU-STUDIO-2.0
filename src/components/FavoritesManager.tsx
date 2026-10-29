@@ -220,25 +220,7 @@ export const FavoritesManager: React.FC<FavoritesManagerProps> = ({
 
           {/* Bouton Toggle Favoris Intelligents & Notifications Arrivée */}
           <div className="flex items-center gap-2 self-start sm:self-center flex-wrap">
-            {/* Toggle Notifications Arrivée */}
-            <button
-              type="button"
-              onClick={() => {
-                const nextState = !getFavoriteNotificationsEnabled();
-                setFavoriteNotificationsEnabled(nextState);
-                // Force re-render via small dummy state if needed or let React handle
-                setIsSmartModeEnabled((prev) => prev); // trigger
-              }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-2xl border text-xs font-black transition-all shadow-md active:scale-95 ${
-                getFavoriteNotificationsEnabled()
-                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40'
-                  : 'bg-slate-950 text-slate-400 border-slate-800'
-              }`}
-              title="Alerte sonore et visuelle automatique quand l'arrivée officielle d'un favori est validée"
-            >
-              <Bell className={`w-3.5 h-3.5 ${getFavoriteNotificationsEnabled() ? 'fill-emerald-400 text-emerald-400' : 'text-slate-500'}`} />
-              <span>Alertes Arrivée : {getFavoriteNotificationsEnabled() ? 'Actives' : 'Muet'}</span>
-            </button>
+
 
             {/* Bouton Toggle Favoris Intelligents */}
             <button

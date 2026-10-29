@@ -1,36 +1,33 @@
 import { useState, useEffect } from 'react';
 import { CourseHippique } from '../types/turf';
+import { getParisToUtcShift, parseFrenchOrIsoDate, isFranceWinterTime } from './timeConversion';
 
 /**
- * Retourne à la fois l'heure officielle France (CEST/CET) et l'heure Côte d'Ivoire / GMT Abidjan (UTC+0)
- * Ex: 18h58 France ➔ 16h58 GMT Abidjan (-2h en été)
- * Ex: 20h15 France ➔ 18h15 GMT Abidjan (-2h en été)
+ * Retourne à la fois l'heure officielle France (CET/CEST) et l'heure Côte d'Ivoire / GMT Abidjan (UTC+0)
+ * Détection automatique avec ajustement heure d'hiver (CET = UTC+1, shift = 1h) et heure d'été (CEST = UTC+2, shift = 2h).
+ * Ex en hiver : 13h55 France ➔ 12h55 GMT Abidjan (-1h)
+ * Ex en été   : 13h55 France ➔ 11h55 GMT Abidjan (-2h)
  */
-export function getDualDepartureTimes(heureStr?: string, dateStr?: string): { franceTime: string; ciTime: string } {
-  if (!heureStr) return { franceTime: '14h00', ciTime: '12h00' };
+export function getDualDepartureTimes(heureStr?: string, dateStr?: string): { franceTime: string; ciTime: string; isWinter: boolean } {
+  if (!heureStr) {
+    const isW = isFranceWinterTime(dateStr);
+    return { franceTime: '14h00', ciTime: isW ? '13h00' : '12h00', isWinter: isW };
+  }
 
   const clean = heureStr.replace(':', 'h').trim();
   const match = clean.match(/(\d{1,2})h(\d{2})/i);
-  if (!match) return { franceTime: heureStr, ciTime: heureStr };
+  if (!match) {
+    const isW = isFranceWinterTime(dateStr);
+    return { franceTime: heureStr, ciTime: heureStr, isWinter: isW };
+  }
 
   const h = parseInt(match[1], 10);
   const m = parseInt(match[2], 10);
 
-  // L'heure officielle Geny/PMU (ex: 18h58) est en Heure de France.
-  // L'heure de Côte d'Ivoire / GMT Abidjan (UTC+0) est l'heure de France - 2h en été (CEST) ou - 1h en hiver (CET).
-  let shift = 2;
-  if (dateStr) {
-    const lower = dateStr.toLowerCase();
-    if (
-      lower.includes('novembre') ||
-      lower.includes('décembre') ||
-      lower.includes('janvier') ||
-      lower.includes('février') ||
-      lower.includes('mars')
-    ) {
-      shift = 1;
-    }
-  }
+  // L'heure officielle Geny/PMU (ex: 13h55) est en Heure de France.
+  // Décalage automatique heure d'hiver (CET: -1h) vs heure d'été (CEST: -2h) vers GMT Abidjan (UTC+0).
+  const shift = getParisToUtcShift(dateStr);
+  const isWinter = shift === 1;
 
   const franceH = h;
   let ciH = h - shift;
@@ -42,83 +39,29 @@ export function getDualDepartureTimes(heureStr?: string, dateStr?: string): { fr
   return {
     franceTime: formattedFrance,
     ciTime: formattedCI,
+    isWinter,
   };
 }
 
 /**
  * Construit un objet Date JS universel (en UTC/GMT) pour le compte à rebours précis.
- * Les heures du programme LONACI étant en GMT (UTC+0), l'heure fournie (ex: 10h17) est directement l'heure UTC.
+ * Prend en compte l'heure d'hiver en France (UTC+1, shift = 1h) et heure d'été (UTC+2, shift = 2h).
  */
 export function getRaceParisTargetTime(dateStr?: string, heureStr?: string): Date {
-  const now = new Date();
-  let year = now.getFullYear();
-  let month = now.getMonth();
-  let day = now.getDate();
-
-  const lowerDate = (dateStr || '').toLowerCase().trim();
-
-  if (lowerDate.includes('demain')) {
-    const tomorrow = new Date(now.getTime() + 86400000);
-    year = tomorrow.getFullYear();
-    month = tomorrow.getMonth();
-    day = tomorrow.getDate();
-  } else if (lowerDate.includes('hier')) {
-    const yesterday = new Date(now.getTime() - 86400000);
-    year = yesterday.getFullYear();
-    month = yesterday.getMonth();
-    day = yesterday.getDate();
-  } else if (lowerDate.includes('prochainement')) {
-    const nextDay = new Date(now.getTime() + 172800000);
-    year = nextDay.getFullYear();
-    month = nextDay.getMonth();
-    day = nextDay.getDate();
-  } else if (lowerDate.includes('/') || lowerDate.includes('-')) {
-    const parts = lowerDate.split(/[/.-]/).map((p) => parseInt(p.trim(), 10));
-    if (parts.length >= 3) {
-      if (parts[0] > 1000) {
-        year = parts[0];
-        month = parts[1] - 1;
-        day = parts[2];
-      } else {
-        day = parts[0];
-        month = parts[1] - 1;
-        year = parts[2] < 100 ? 2000 + parts[2] : parts[2];
-      }
-    }
-  } else {
-    // Ex: "mercredi 30 septembre 2026", "mardi 29 septembre 2026", etc.
-    const match = lowerDate.match(/(?:[a-zàâäéèêëîïôöùûüç]+\s+)?(\d{1,2})\s+([a-zàâäéèêëîïôöùûüç]+)\s+(\d{4})/);
-    if (match) {
-      day = parseInt(match[1], 10);
-      const monthName = match[2];
-      year = parseInt(match[3], 10);
-
-      const monthsMap: Record<string, number> = {
-        janvier: 0, fevrier: 1, février: 1, mars: 2, avril: 3, mai: 4, juin: 5,
-        juillet: 6, aout: 7, août: 7, septembre: 8, octobre: 9, novembre: 10, decembre: 11, décembre: 11,
-      };
-      if (monthsMap[monthName] !== undefined) {
-        month = monthsMap[monthName];
-      }
-    }
-  }
+  const parsedDate = parseFrenchOrIsoDate(dateStr);
+  const year = parsedDate.getUTCFullYear();
+  const month = parsedDate.getUTCMonth();
+  const day = parsedDate.getUTCDate();
 
   const rawHeure = (heureStr || '12h00').replace('h', ':').trim();
   const [hStr, mStr] = rawHeure.split(':');
   const hours = parseInt(hStr, 10) || 0;
   const minutes = parseInt(mStr, 10) || 0;
 
-  // L'heure de départ officielle Geny/PMU (ex: 18h58 France CEST) est convertie en GMT (UTC+0)
-  let shift = 2; // -2h heure d'été CEST
-  if (
-    lowerDate.includes('novembre') ||
-    lowerDate.includes('décembre') ||
-    lowerDate.includes('janvier') ||
-    lowerDate.includes('février') ||
-    lowerDate.includes('mars')
-  ) {
-    shift = 1;
-  }
+  // L'heure de départ officielle Geny/PMU France est convertie en UTC/GMT
+  // En heure d'hiver : shift = 1h (CET: UTC+1)
+  // En heure d'été   : shift = 2h (CEST: UTC+2)
+  const shift = getParisToUtcShift(dateStr);
 
   let utcH = hours - shift;
   if (utcH < 0) utcH += 24;
@@ -188,12 +131,35 @@ export function isCourseRunning(course: Partial<CourseHippique> | null | undefin
 }
 
 /**
- * Vérifie si une course hippique est terminée avec une arrivée officielle validée.
- * RÈGLE PMU : Une course ne peut être considérée terminée/officielle QUE si une arrivée officielle
- * est effectivement présente et homologuée. Si le départ est dépassé sans arrivée, la course est "COURSE EN COURS".
+ * Vérifie si une course hippique est terminée (arrivée officielle ou provisoire présente, statut terminé/clôturé, etc.).
+ * Dès qu'une course est terminée, les cotes sont définitives et ne varient plus.
  */
 export function isCourseFinished(course: Partial<CourseHippique> | null | undefined): boolean {
-  return isCourseArrivalOfficiallyConfirmed(course);
+  if (!course) return false;
+
+  if (isCourseArrivalOfficiallyConfirmed(course)) return true;
+
+  // Si une arrivée officielle ou provisoire est renseignée, la course est déjà courue et terminée
+  if (course.arriveeOfficielle && typeof course.arriveeOfficielle === 'string' && course.arriveeOfficielle.trim().length > 0) {
+    return true;
+  }
+
+  const statut = String(course.statutCourse || (course as any).statutArrivee || (course as any).statut || '').toLowerCase();
+  if (
+    statut.includes('termin') ||
+    statut.includes('officiel') ||
+    statut.includes('provisoire') ||
+    statut.includes('clotur') ||
+    statut.includes('definitive')
+  ) {
+    return true;
+  }
+
+  if (course.date && typeof course.date === 'string' && course.date.toLowerCase().includes('hier')) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -216,31 +182,17 @@ export function isPastDepartureTime(course: Partial<CourseHippique> | null | und
 
 /**
  * Calcule le temps restant en secondes avant l'heure de départ d'une course (format "HH:mm" ou "HHhMM")
+ * Prend en compte le décalage dynamique heure d'hiver (UTC+1) / heure d'été (UTC+2).
  */
-export function getSecondsUntilRace(heureStr: string): number {
+export function getSecondsUntilRace(heureStr: string, dateStr?: string): number {
   if (!heureStr) return 999999;
-  
-  const clean = heureStr.replace('h', ':').trim();
-  const parts = clean.split(':');
-  if (parts.length < 2) return 999999;
-  
-  const targetHour = parseInt(parts[0], 10);
-  const targetMin = parseInt(parts[1], 10);
-  if (isNaN(targetHour) || isNaN(targetMin)) return 999999;
-
-  const now = new Date();
-  const targetDate = new Date(Date.UTC(
-    now.getUTCFullYear(),
-    now.getUTCMonth(),
-    now.getUTCDate(),
-    targetHour,
-    targetMin,
-    0,
-    0
-  ));
-
-  const diffSeconds = Math.floor((targetDate.getTime() - now.getTime()) / 1000);
-  return diffSeconds;
+  try {
+    const target = getRaceParisTargetTime(dateStr, heureStr);
+    const now = new Date();
+    return Math.floor((target.getTime() - now.getTime()) / 1000);
+  } catch {
+    return 999999;
+  }
 }
 
 /**
@@ -327,18 +279,18 @@ export function shouldPromoteProvisionalToOfficial(
 
 /**
  * RÈGLE PMU COMMISSAIRES :
- * 5 minutes (300 secondes) après l'affichage de l'ARRIVÉE OFFICIELLE,
+ * 3 minutes (180 secondes) après l'affichage de l'ARRIVÉE OFFICIELLE,
  * actualiser automatiquement pour vérifier s'il n'y a pas de modification à l'arrivée
  * (rétrogradation suite à réclamation, disqualification après enquête tardive, etc.).
  */
-export const POST_OFFICIAL_AUDIT_DELAY_MS = 5 * 60 * 1000; // 5 minutes = 300 000 ms
+export const POST_OFFICIAL_AUDIT_DELAY_MS = 3 * 60 * 1000; // 3 minutes = 180 000 ms
 
 export interface OfficialArrivalAuditStatus {
-  isAuditPending: boolean; // Les 5 minutes sont en cours de décompte
-  isAuditDue: boolean; // Les 5 minutes sont écoulées, l'actualisation doit être exécutée
+  isAuditPending: boolean; // Les 3 minutes sont en cours de décompte
+  isAuditDue: boolean; // Les 3 minutes sont écoulées, l'actualisation doit être exécutée
   isAuditCompleted: boolean; // Le contrôle a déjà été exécuté avec succès
   remainingSeconds: number; // Secondes restantes avant le déclenchement du contrôle
-  totalDelaySeconds: number; // 300 secondes
+  totalDelaySeconds: number; // 180 secondes
   officialTimestamp: number | null;
 }
 
@@ -352,7 +304,7 @@ export function checkOfficialArrivalAuditStatus(
       isAuditDue: false,
       isAuditCompleted: true,
       remainingSeconds: 0,
-      totalDelaySeconds: 300,
+      totalDelaySeconds: 180,
       officialTimestamp: officialArrivalAt ? new Date(officialArrivalAt).getTime() : null,
     };
   }
@@ -362,8 +314,8 @@ export function checkOfficialArrivalAuditStatus(
       isAuditPending: false,
       isAuditDue: false,
       isAuditCompleted: false,
-      remainingSeconds: 300,
-      totalDelaySeconds: 300,
+      remainingSeconds: 180,
+      totalDelaySeconds: 180,
       officialTimestamp: null,
     };
   }
@@ -374,8 +326,8 @@ export function checkOfficialArrivalAuditStatus(
       isAuditPending: false,
       isAuditDue: false,
       isAuditCompleted: false,
-      remainingSeconds: 300,
-      totalDelaySeconds: 300,
+      remainingSeconds: 180,
+      totalDelaySeconds: 180,
       officialTimestamp: null,
     };
   }
@@ -389,7 +341,7 @@ export function checkOfficialArrivalAuditStatus(
       isAuditDue: true,
       isAuditCompleted: false,
       remainingSeconds: 0,
-      totalDelaySeconds: 300,
+      totalDelaySeconds: 180,
       officialTimestamp: startTime,
     };
   }
@@ -399,7 +351,7 @@ export function checkOfficialArrivalAuditStatus(
     isAuditDue: false,
     isAuditCompleted: false,
     remainingSeconds: Math.ceil(remainingMs / 1000),
-    totalDelaySeconds: 300,
+    totalDelaySeconds: 180,
     officialTimestamp: startTime,
   };
 }

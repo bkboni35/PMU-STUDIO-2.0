@@ -1,5 +1,5 @@
 import { UserProfile } from '../types/userAuth';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 import { doc, setDoc } from 'firebase/firestore';
 
 const STORAGE_KEY = 'hippoanalyse_user_session_v1';
@@ -8,9 +8,24 @@ const USERS_DB_KEY = 'hippoanalyse_registered_users_v1';
 export function getStoredUserSession(): UserProfile | null {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return null;
-    const user = JSON.parse(raw) as UserProfile;
-    return user.estConnecte ? user : null;
+    if (raw) {
+      const user = JSON.parse(raw) as UserProfile;
+      if (user && user.estConnecte && !user.id.startsWith('guest_')) {
+        return user;
+      }
+    }
+    // Fallback: chercher s'il existe un compte utilisateur inscrit actif dans la base local
+    const registered = getAllRegisteredUsers();
+    const active = registered.find((u) => u.estConnecte && !u.id.startsWith('guest_'));
+    if (active) {
+      saveUserSession(active);
+      return active;
+    }
+    if (raw) {
+      const user = JSON.parse(raw) as UserProfile;
+      return user.estConnecte ? user : null;
+    }
+    return null;
   } catch (err) {
     console.error('Erreur lecture session utilisateur:', err);
     return null;
@@ -28,6 +43,9 @@ export function saveUserSession(user: UserProfile): void {
 export function clearUserSession(): void {
   try {
     localStorage.removeItem(STORAGE_KEY);
+    const users = getAllRegisteredUsers();
+    users.forEach((u) => { u.estConnecte = false; });
+    saveRegisteredUsers(users);
   } catch (err) {
     console.error('Erreur suppression session utilisateur:', err);
   }
@@ -56,10 +74,17 @@ export function loginWithEmail(
     minute: '2-digit',
   });
 
+  // Déconnecter tous les autres comptes pour basculer la session
+  existingUsers.forEach((u) => {
+    u.estConnecte = (u.email || '').toLowerCase() === cleanEmail;
+  });
+
   let user = existingUsers.find(u => (u.email || '').toLowerCase() === cleanEmail);
 
   if (user) {
     user.estConnecte = true;
+    user.emailVerifie = true;
+    user.dateVerificationEmail = user.dateVerificationEmail || nowStr;
     user.derniereConnexion = nowStr;
     if (nom && nom.trim()) user.nom = nom.trim();
     if (telephone && telephone.trim()) user.telephone = telephone.trim();
@@ -77,6 +102,8 @@ export function loginWithEmail(
       nom: defaultNom,
       telephone: telephone?.trim() || (isSpecialAdmin ? '+225 01 01 24 61 06' : ''),
       estConnecte: true,
+      emailVerifie: true,
+      dateVerificationEmail: nowStr,
       dateInscription: nowStr,
       derniereConnexion: nowStr,
       statutMembre: statutMembre || (isSpecialAdmin ? 'Membre Administrateur / VIP' : 'Turfiste Certifié'),
@@ -90,12 +117,14 @@ export function loginWithEmail(
   saveRegisteredUsers(existingUsers);
   saveUserSession(user);
 
-  // Synchronisation Firestore asynchrone (arrière-plan)
+  // Synchronisation Firestore asynchrone (arrière-plan uniquement si connecté)
   try {
-    const docRef = doc(db, 'users', user.id);
-    setDoc(docRef, user, { merge: true }).catch(err => console.error("Erreur d'écriture Firestore sur connexion:", err));
+    if (auth?.currentUser && (auth.currentUser.uid === user.id || auth.currentUser.email === 'bkboni35@gmail.com')) {
+      const docRef = doc(db, 'users', user.id);
+      setDoc(docRef, user, { merge: true }).catch((err) => console.warn("Notice écriture Firestore sur connexion:", err?.message || err));
+    }
   } catch (e) {
-    console.error("Erreur d'initialisation Firestore sur connexion:", e);
+    console.warn("Notice d'initialisation Firestore sur connexion:", e);
   }
 
   return user;
@@ -123,6 +152,9 @@ export function registerNewUser(params: {
   }
 
   const existingUsers = getAllRegisteredUsers();
+  existingUsers.forEach((u) => {
+    u.estConnecte = (u.email || '').toLowerCase() === cleanEmail;
+  });
   const existing = existingUsers.find(u => (u.email || '').toLowerCase() === cleanEmail);
 
   const nowStr = new Date().toLocaleDateString('fr-FR', {
@@ -146,8 +178,10 @@ export function registerNewUser(params: {
     saveUserSession(existing);
 
     try {
-      const docRef = doc(db, 'users', existing.id);
-      setDoc(docRef, existing, { merge: true }).catch(() => {});
+      if (auth?.currentUser && (auth.currentUser.uid === existing.id || auth.currentUser.email === 'bkboni35@gmail.com')) {
+        const docRef = doc(db, 'users', existing.id);
+        setDoc(docRef, existing, { merge: true }).catch(() => {});
+      }
     } catch {}
 
     return existing;
@@ -171,8 +205,10 @@ export function registerNewUser(params: {
   saveUserSession(newUser);
 
   try {
-    const docRef = doc(db, 'users', newUser.id);
-    setDoc(docRef, newUser, { merge: true }).catch(() => {});
+    if (auth?.currentUser && (auth.currentUser.uid === newUser.id || auth.currentUser.email === 'bkboni35@gmail.com')) {
+      const docRef = doc(db, 'users', newUser.id);
+      setDoc(docRef, newUser, { merge: true }).catch(() => {});
+    }
   } catch {}
 
   return newUser;
@@ -237,14 +273,21 @@ export async function loginWithFirebaseUser(firebaseUser: { uid: string; email?:
     minute: '2-digit',
   });
 
+  existingUsers.forEach((u) => {
+    u.estConnecte = u.id === firebaseUser.uid || Boolean(cleanEmail && (u.email || '').toLowerCase() === cleanEmail);
+  });
+
   let user = existingUsers.find(u => u.id === firebaseUser.uid || (cleanEmail && (u.email || '').toLowerCase() === cleanEmail));
 
   if (user) {
+    user.id = firebaseUser.uid;
+    if (cleanEmail) user.email = cleanEmail;
     user.estConnecte = true;
     user.derniereConnexion = nowStr;
     if (firebaseUser.displayName) user.nom = firebaseUser.displayName;
     if (firebaseUser.photoURL) user.avatar = firebaseUser.photoURL;
     if (firebaseUser.phoneNumber) user.telephone = firebaseUser.phoneNumber;
+    saveRegisteredUsers(existingUsers);
   } else {
     let defaultNom = firebaseUser.displayName || (cleanEmail ? cleanEmail.split('@')[0] : 'Turfiste Google');
     if (cleanEmail === 'bkboni35@gmail.com') {
@@ -270,12 +313,32 @@ export async function loginWithFirebaseUser(firebaseUser: { uid: string; email?:
 
   saveUserSession(user);
 
-  // Synchronisation avec Firestore
+  // Synchronisation avec Firestore (uniquement avec l'UID correspondant à l'utilisateur authentifié)
   try {
-    const docRef = doc(db, 'users', user.id);
-    await setDoc(docRef, user, { merge: true });
-  } catch (err) {
-    console.error('Erreur persistance Firestore:', err);
+    const currentUid = auth?.currentUser?.uid || firebaseUser.uid;
+    if (auth?.currentUser && (auth.currentUser.uid === currentUid || auth.currentUser.email === 'bkboni35@gmail.com')) {
+      const docRef = doc(db, 'users', currentUid);
+      const firestorePayload = {
+        id: currentUid,
+        email: cleanEmail || user.email || auth.currentUser.email || '',
+        displayName: user.nom || firebaseUser.displayName || '',
+        nom: user.nom || firebaseUser.displayName || '',
+        photoURL: user.avatar || firebaseUser.photoURL || '',
+        avatar: user.avatar || firebaseUser.photoURL || '',
+        telephone: user.telephone || '',
+        statutMembre: user.statutMembre || 'Turfiste Certifié',
+        analysesCount: user.analysesEffectuees || 1,
+        analysesEffectuees: user.analysesEffectuees || 1,
+        pays: user.pays || '',
+        derniereConnexion: nowStr,
+        updatedAt: new Date().toISOString(),
+      };
+      await setDoc(docRef, firestorePayload, { merge: true });
+    }
+  } catch (err: any) {
+    if (err?.code !== 'permission-denied') {
+      console.warn('Notice persistance Firestore profil utilisateur:', err?.message || err);
+    }
   }
 
   return user;
@@ -296,11 +359,13 @@ export function incrementUserAnalysesCount(userId?: string): void {
       saveRegisteredUsers(users);
     }
 
-    // Synchronisation Firestore asynchrone (arrière-plan)
+    // Synchronisation Firestore asynchrone (arrière-plan uniquement si connecté)
     try {
-      const docRef = doc(db, 'users', current.id);
-      setDoc(docRef, { ...current, analysesEffectuees: current.analysesEffectuees }, { merge: true })
-        .catch(err => console.warn("Notice synchronisation analyses sur Firestore:", err?.message || err));
+      if (auth?.currentUser && (auth.currentUser.uid === current.id || auth.currentUser.email === 'bkboni35@gmail.com')) {
+        const docRef = doc(db, 'users', current.id);
+        setDoc(docRef, { ...current, analysesEffectuees: current.analysesEffectuees }, { merge: true })
+          .catch(err => console.warn("Notice synchronisation analyses sur Firestore:", err?.message || err));
+      }
     } catch (e) {
       console.warn("Erreur d'accès Firestore pour les analyses:", e);
     }
@@ -330,11 +395,13 @@ export function disconnectUser(userId: string): void {
       saveRegisteredUsers(users);
     }
     
-    // Synchronisation Firestore asynchrone (arrière-plan)
+    // Synchronisation Firestore asynchrone (arrière-plan uniquement si connecté)
     try {
-      const docRef = doc(db, 'users', userId);
-      setDoc(docRef, { estConnecte: false }, { merge: true })
-        .catch(err => console.warn("Notice déconnexion sur Firestore:", err?.message || err));
+      if (auth?.currentUser && (auth.currentUser.uid === userId || auth.currentUser.email === 'bkboni35@gmail.com')) {
+        const docRef = doc(db, 'users', userId);
+        setDoc(docRef, { estConnecte: false }, { merge: true })
+          .catch(err => console.warn("Notice déconnexion sur Firestore:", err?.message || err));
+      }
     } catch (e) {
       console.warn("Erreur d'accès Firestore pour la déconnexion:", e);
     }

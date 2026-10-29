@@ -75,7 +75,7 @@ export const CountdownTimer: React.FC<CountdownTimerProps> = ({
     };
   }, [date, heure]);
 
-  const { franceTime, ciTime } = getDualDepartureTimes(heure);
+  const { franceTime, ciTime } = getDualDepartureTimes(heure, date);
   const displayDepartureHour = timezoneMode === 'ivory_coast' ? ciTime : franceTime;
 
   useEffect(() => {

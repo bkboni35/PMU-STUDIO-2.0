@@ -26,6 +26,8 @@ import {
   Filter,
   X,
   ArrowRight,
+  CheckSquare,
+  Square,
 } from 'lucide-react';
 import { CourseHippique } from '../types/turf';
 import { CountdownTimer } from './CountdownTimer';
@@ -37,6 +39,7 @@ import {
   updateCourseInHistory,
   getRaceHistory,
   purgePastRacesFromHistory,
+  removeRaceFromHistory,
 } from '../utils/favoritesStorage';
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
 import { TrackWeatherAnalysisCard } from './TrackWeatherAnalysisCard';
@@ -74,6 +77,12 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isBacktestModalOpen, setIsBacktestModalOpen] = useState(false);
+
+  // Onglet principal de l'historique : vue grille des courses ou onglet de suppression individuelle
+  const [activeHistoryTab, setActiveHistoryTab] = useState<'courses' | 'suppression'>('courses');
+  const [courseToDelete, setCourseToDelete] = useState<{ id: string; titre: string } | null>(null);
+  const [selectedDeleteIds, setSelectedDeleteIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirm, setShowBulkDeleteConfirm] = useState(false);
 
   useLayoutEffect(() => {
     scrollToTopInstant();
@@ -508,7 +517,52 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
 
   const handleDelete = (id: string, titre: string) => {
     onRemoveItem(id);
+    const updated = removeRaceFromHistory(id);
+    if (onUpdateHistory) {
+      onUpdateHistory(updated);
+    }
+    setSelectedDeleteIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     showToast(`Course "${titre}" supprimée de l'historique.`);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedDeleteIds.size === 0) return;
+    const count = selectedDeleteIds.size;
+    let updated = getRaceHistory();
+    selectedDeleteIds.forEach((id) => {
+      onRemoveItem(id);
+      updated = removeRaceFromHistory(id);
+    });
+    if (onUpdateHistory) {
+      onUpdateHistory(updated);
+    }
+    setSelectedDeleteIds(new Set());
+    setShowBulkDeleteConfirm(false);
+    showToast(`${count} course(s) supprimée(s) de l'historique.`);
+  };
+
+  const handleToggleSelectAll = () => {
+    if (selectedDeleteIds.size === filteredHistory.length && filteredHistory.length > 0) {
+      setSelectedDeleteIds(new Set());
+    } else {
+      setSelectedDeleteIds(new Set(filteredHistory.map((item) => item.id)));
+    }
+  };
+
+  const handleToggleSelectCourse = (id: string) => {
+    setSelectedDeleteIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
   };
 
   const handleClearAllConfirm = () => {
@@ -652,69 +706,67 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
   };
 
   return (
-    <div className="space-y-6">
-      {/* Header with stats, Live Status Indicator and Actions */}
-      <div className="p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="p-3 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
-              <History className="w-6 h-6" />
+    <div className="space-y-3 sm:space-y-3.5">
+      {/* Header with stats, Live Status Indicator and Actions (Centré & Interlignes Réduits) */}
+      <div className="p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-2">
+        <div className="flex flex-col items-center justify-center text-center space-y-1.5">
+          {/* Ligne 1 : Titre + Badge Nombre de courses + Badge Temps Réel (Centrés) */}
+          <div className="flex items-center justify-center gap-2 flex-wrap text-center">
+            <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
+              <History className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-xl font-black text-white">
-                  Historique des Courses Analysées
-                </h2>
-                <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black">
-                  {history.length} {history.length > 1 ? 'courses' : 'course'}
-                </span>
+            <h2 className="text-base sm:text-lg md:text-xl font-black text-white tracking-tight">
+              Historique des Courses Analysées
+            </h2>
+            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-xs font-black">
+              {history.length} {history.length > 1 ? 'courses' : 'course'}
+            </span>
 
-                {/* Badge Temps Réel Actif */}
-                <span className="px-3 py-1 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 text-[11px] font-extrabold flex items-center gap-1.5 animate-pulse">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
-                  <Radio className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>En Direct — Synchro Temps Réel Active</span>
-                </span>
-              </div>
-
-              <p className="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
-                <span>Horodatage précis des analyses + Mise à jour continue des arrivées et cotes en direct.</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-slate-300 font-mono">Dernier contrôle live : <strong>{lastSyncedAt}</strong></span>
-              </p>
-            </div>
+            {/* Badge Temps Réel Actif */}
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-500/40 text-[11px] font-extrabold flex items-center gap-1.5 animate-pulse">
+              <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+              <Radio className="w-3.5 h-3.5 text-emerald-400" />
+              <span>En Direct — Synchro Temps Réel Active</span>
+            </span>
           </div>
 
-          {/* Action Buttons Header */}
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {/* Ligne 2 : Sous-titre et Horodatage (Interlignes réduits, Texte centré) */}
+          <p className="text-xs text-slate-400 leading-tight flex items-center justify-center gap-2 flex-wrap text-center max-w-4xl mx-auto">
+            <span>Horodatage précis des analyses + Mise à jour continue des arrivées et cotes en direct.</span>
+            <span className="text-slate-600 hidden sm:inline">•</span>
+            <span className="text-slate-300 font-mono">Dernier contrôle live : <strong className="text-amber-400">{lastSyncedAt}</strong></span>
+          </p>
+
+          {/* Ligne 3 : Boutons d'actions (Centrés et interligne compact) */}
+          <div className="flex items-center justify-center gap-2 flex-wrap pt-0.5">
             <button
               type="button"
               onClick={handleRefreshAllLive}
               disabled={isRefreshingAll || history.length === 0}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 text-xs font-black transition-all shadow-md disabled:opacity-50"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-400 hover:from-amber-400 hover:to-amber-300 text-slate-950 text-xs font-black transition-all shadow-md disabled:opacity-50"
               title="Interroger le Web PMU et synchroniser toutes les courses de l'historique en temps réel"
             >
               {isRefreshingAll ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Synchronisation en cours...</span>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Synchronisation...</span>
                 </>
               ) : (
                 <>
-                  <Zap className="w-4 h-4 fill-slate-950" />
+                  <Zap className="w-3.5 h-3.5 fill-slate-950" />
                   <span>⚡ Actualiser tout en temps réel</span>
                 </>
               )}
             </button>
 
-            {/* Bouton d'Extraction des Arrivées en Direct (Google Search Grounding) */}
+            {/* Bouton d'Extraction des Arrivées en Direct */}
             <button
               type="button"
               onClick={() => setIsArrivalsModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
               title="🏁 Extraction en temps réel des arrivées provisoires et officielles depuis paristurf.com ou pmu.fr via Google Search Grounding"
             >
-              <Trophy className="w-4 h-4 text-amber-300 fill-amber-300" />
+              <Trophy className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />
               <span>🏁 Arrivées Live Grounding</span>
             </button>
 
@@ -722,10 +774,10 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
             <button
               type="button"
               onClick={() => setIsBacktestModalOpen(true)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-600 hover:from-teal-400 hover:to-emerald-500 text-slate-950 text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
               title="🎯 Lancer le Backtest Stratégique et simuler vos règles mécaniques de jeu (Trio, Simple, Couplé)"
             >
-              <BarChart3 className="w-4 h-4 text-slate-950" />
+              <BarChart3 className="w-3.5 h-3.5 text-slate-950" />
               <span>🎯 Backtest & Simulateur IA</span>
             </button>
 
@@ -734,10 +786,10 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
               <button
                 type="button"
                 onClick={handlePurgePastRaces}
-                className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-amber-950/60 hover:text-amber-300 text-slate-300 border border-slate-700/60 hover:border-amber-500/40 text-xs font-bold transition-all shadow-sm shrink-0"
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-slate-800 hover:bg-amber-950/60 hover:text-amber-300 text-slate-300 border border-slate-700/60 hover:border-amber-500/40 text-xs font-bold transition-all shadow-sm shrink-0"
                 title="Purger automatiquement les anciennes courses ou courses passées de l'historique"
               >
-                <Sparkles className="w-4 h-4 text-amber-400" />
+                <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                 <span>🧹 Purger les courses passées</span>
               </button>
             )}
@@ -745,19 +797,19 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
             {history.length > 0 && (
               <>
                 {showClearConfirm ? (
-                  <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-rose-950/80 border border-rose-500/50">
-                    <span className="text-xs text-rose-200 font-bold pl-1">Confirmer ?</span>
+                  <div className="flex items-center gap-1.5 p-1 rounded-xl bg-rose-950/80 border border-rose-500/50">
+                    <span className="text-[11px] text-rose-200 font-bold pl-1">Confirmer ?</span>
                     <button
                       type="button"
                       onClick={handleClearAllConfirm}
-                      className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black transition-all shadow"
+                      className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-black transition-all shadow"
                     >
                       Oui, tout effacer
                     </button>
                     <button
                       type="button"
                       onClick={() => setShowClearConfirm(false)}
-                      className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all"
+                      className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all"
                     >
                       Annuler
                     </button>
@@ -766,10 +818,10 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                   <button
                     type="button"
                     onClick={() => setShowClearConfirm(true)}
-                    className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 text-slate-400 border border-slate-700/60 hover:border-rose-500/40 text-xs font-bold transition-all"
+                    className="flex items-center justify-center gap-1.5 px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 text-slate-400 border border-slate-700/60 hover:border-rose-500/40 text-xs font-bold transition-all"
                     title="Vider l'historique"
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash2 className="w-3.5 h-3.5" />
                     <span className="hidden sm:inline">Vider</span>
                   </button>
                 )}
@@ -779,83 +831,331 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
         </div>
       </div>
 
+      {/* Onglets Principaux de l'Historique : Courses Analysées vs Suppression Individuelle */}
+      {history.length > 0 && (
+        <div className="flex items-center justify-center gap-2 p-1.5 rounded-2xl bg-slate-900 border border-slate-800 shadow-lg">
+          <button
+            type="button"
+            onClick={() => setActiveHistoryTab('courses')}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+              activeHistoryTab === 'courses'
+                ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+                : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+            }`}
+          >
+            <History className="w-4 h-4" />
+            <span>Courses Analysées ({history.length})</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveHistoryTab('suppression')}
+            className={`flex items-center justify-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition-all cursor-pointer ${
+              activeHistoryTab === 'suppression'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                : 'text-rose-400 hover:text-rose-300 hover:bg-rose-950/40'
+            }`}
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Onglet Suppression Individuelle</span>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-black ${
+              activeHistoryTab === 'suppression' ? 'bg-rose-800 text-white' : 'bg-rose-950/80 text-rose-300 border border-rose-500/30'
+            }`}>
+              {history.length}
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="p-3.5 rounded-2xl bg-amber-950/90 border border-amber-500/50 text-amber-200 text-xs flex items-center gap-2 animate-fadeIn shadow-lg">
+        <div className="p-2.5 rounded-xl bg-amber-950/90 border border-amber-500/50 text-amber-200 text-xs flex items-center justify-center gap-2 animate-fadeIn shadow-lg text-center">
           <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
           <span className="font-semibold">{toastMessage}</span>
         </div>
       )}
 
-      {/* FILTRAGE PAR CALENDRIER & PLAGE DE DATES */}
-      {history.length > 0 && (
-        <div className="p-4 sm:p-5 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
-                <Calendar className="w-5 h-5" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="text-sm font-black text-white">
-                    Filtrage par Calendrier & Plage de Dates
-                  </h3>
-                  {(startDate || endDate) && (
-                    <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black animate-pulse flex items-center gap-1">
-                      <Filter className="w-3 h-3 text-amber-400" />
-                      Filtre actif : {startDate ? formatDateFR(startDate) : 'Début'} {endDate ? `➔ ${formatDateFR(endDate)}` : ''}
-                    </span>
-                  )}
+      {/* Onglet Dédié de Suppression Individuelle vs Vue Normale de l'Historique */}
+      {activeHistoryTab === 'suppression' ? (
+        <div className="space-y-3 animate-fadeIn">
+          {/* En-tête et Outils de Suppression Individuelle */}
+          <div className="p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-slate-900 border border-rose-500/40 shadow-xl space-y-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 shrink-0">
+                  <Trash2 className="w-5 h-5" />
                 </div>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Retrouvez vos analyses passées par date d'analyse ou date de la course ({filteredHistory.length} sur {history.length} affichée{filteredHistory.length > 1 ? 's' : ''}).
-                </p>
+                <div>
+                  <h3 className="text-sm sm:text-base font-black text-white flex items-center gap-2 flex-wrap">
+                    <span>Onglet de Suppression Individuelle des Courses</span>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                      {filteredHistory.length} course{filteredHistory.length > 1 ? 's' : ''} analysée{filteredHistory.length > 1 ? 's' : ''}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Supprimez chaque course individuellement en un clic ou cochez plusieurs courses pour un nettoyage groupé.
+                  </p>
+                </div>
+              </div>
+
+              {/* Boutons d'actions groupées */}
+              <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto justify-end">
+                {filteredHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAll}
+                    className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all border border-slate-700 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                  >
+                    {selectedDeleteIds.size === filteredHistory.length && filteredHistory.length > 0 ? (
+                      <>
+                        <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Tout désélectionner</span>
+                      </>
+                    ) : (
+                      <>
+                        <Square className="w-3.5 h-3.5 text-slate-400" />
+                        <span>Tout sélectionner</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {selectedDeleteIds.size > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkDeleteConfirm(true)}
+                    className="px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black transition-all shadow-md shadow-rose-600/30 flex items-center gap-1.5 animate-pulse cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Supprimer la sélection ({selectedDeleteIds.size})</span>
+                  </button>
+                )}
               </div>
             </div>
 
-            {/* Mode Cible : Date d'Analyse vs Date de la Course */}
-            <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-2xl border border-slate-800 shrink-0 self-start sm:self-auto">
-              <button
-                type="button"
-                onClick={() => setDateTargetMode('analyzedAt')}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
-                  dateTargetMode === 'analyzedAt'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Filtrer selon la date à laquelle la course a été analysée"
-              >
-                Date d'Analyse
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateTargetMode('raceDate')}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
-                  dateTargetMode === 'raceDate'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Filtrer selon la date programmée de la course"
-              >
-                Date de Course
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateTargetMode('both')}
-                className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
-                  dateTargetMode === 'both'
-                    ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Filtrer si la date d'analyse OU la date de course correspond"
-              >
-                Les Deux
-              </button>
+            {/* Barre de Recherche rapide */}
+            <div className="relative pt-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Rechercher une course à supprimer par hippodrome, R1C1, titre, date, cheval..."
+                className="w-full pl-10 pr-10 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs sm:text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-rose-500/60 transition-all font-mono shadow-inner"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-white p-1"
+                >
+                  ✕
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Presets rapides (Aujourd'hui, Hier, 7j, 30j, Ce mois-ci, Tout) */}
-          <div className="flex items-center gap-1.5 flex-wrap pt-1">
+          {/* Liste détaillée des courses analysées avec suppression individuelle */}
+          {filteredHistory.length === 0 ? (
+            <div className="text-center py-14 px-4 bg-slate-900/60 rounded-3xl border border-slate-800/80 space-y-3">
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-slate-800 flex items-center justify-center text-slate-500">
+                <Trash2 className="w-7 h-7 text-slate-400" />
+              </div>
+              <h4 className="text-base font-bold text-slate-200">
+                {searchQuery ? 'Aucune course ne correspond à votre recherche' : 'Aucune course dans l\'historique'}
+              </h4>
+              <p className="text-xs text-slate-400 max-w-md mx-auto">
+                {searchQuery
+                  ? 'Essayez de modifier votre mot-clé de recherche.'
+                  : 'Toutes les courses analysées apparaîtront ici pour gestion et suppression.'}
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filteredHistory.map((item) => {
+                const course = item.course;
+                const isSelected = selectedDeleteIds.has(item.id);
+                const hasArrival = Boolean(course.arriveeOfficielle);
+                const arrivalNums = (course.arriveeOfficielle || '')
+                  .split(/[-,\s]+/)
+                  .map((s) => parseInt(s.trim(), 10))
+                  .filter((n) => !isNaN(n) && n > 0);
+                const top5Nums = arrivalNums.slice(0, 5);
+
+                return (
+                  <div
+                    key={`del-course-${item.id}`}
+                    className={`p-3 sm:p-3.5 rounded-2xl border transition-all flex flex-col md:flex-row items-start md:items-center justify-between gap-3 ${
+                      isSelected
+                        ? 'bg-rose-950/25 border-rose-500/60 shadow-lg shadow-rose-950/20'
+                        : 'bg-slate-900/95 border-slate-800/90 hover:border-slate-700 hover:bg-slate-900'
+                    }`}
+                  >
+                    {/* Colonne gauche : Case à cocher + R1C1 + Informations */}
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <button
+                        type="button"
+                        onClick={() => handleToggleSelectCourse(item.id)}
+                        className="p-1 text-slate-400 hover:text-white cursor-pointer shrink-0"
+                        title={isSelected ? 'Désélectionner' : 'Sélectionner pour suppression groupée'}
+                      >
+                        {isSelected ? (
+                          <CheckSquare className="w-5 h-5 text-rose-400" />
+                        ) : (
+                          <Square className="w-5 h-5 text-slate-500" />
+                        )}
+                      </button>
+
+                      {/* Badge R1C1 & Heure */}
+                      <div className="flex flex-col items-center justify-center px-2.5 py-1.5 rounded-xl bg-slate-950 border border-orange-500/40 shrink-0 text-center min-w-[54px]">
+                        <span className="text-xs font-black text-orange-400 leading-none">
+                          {course.reunion || 'R?'}{course.course || 'C?'}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-400 mt-1 leading-none">
+                          {course.heure || '--h--'}
+                        </span>
+                      </div>
+
+                      {/* Titre, Hippodrome, Discipline, Date */}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-xs font-black text-amber-400 font-mono">
+                            {course.date || '--/--/----'}
+                          </span>
+                          <span className="text-xs sm:text-sm font-black text-white uppercase tracking-tight truncate">
+                            {course.hippodrome}
+                          </span>
+                          {course.discipline && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                              {course.discipline}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-xs font-semibold text-slate-200 truncate mt-0.5">
+                          {course.titre || course.prixNom || 'Sans titre'}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-0.5 flex-wrap">
+                          <span>{course.partants?.length || 0} partants</span>
+                          {course.distance && <span>• {course.distance}m</span>}
+                          <span>• Analysée {formatRelativeTime(item.analyzedAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Colonne droite : Arrivée + Bouton Supprimer Individuel */}
+                    <div className="flex items-center gap-3 self-end md:self-center shrink-0 w-full md:w-auto justify-between md:justify-end pt-2 md:pt-0 border-t md:border-t-0 border-slate-800">
+                      {/* Arrivée */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Arrivée :</span>
+                        {hasArrival ? (
+                          <div className="flex gap-1">
+                            {top5Nums.map((num, idx) => (
+                              <span
+                                key={idx}
+                                className="w-5 h-5 rounded-sm bg-slate-950 flex items-center justify-center text-[11px] font-black text-amber-400 border border-slate-800"
+                              >
+                                {num}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-slate-600 italic">En attente</span>
+                        )}
+                      </div>
+
+                      {/* Bouton de Suppression Individuelle */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setCourseToDelete({
+                            id: item.id,
+                            titre: `${course.reunion || ''}${course.course || ''} ${course.hippodrome || ''} (${course.date || ''}) : ${course.titre || ''}`,
+                          })
+                        }
+                        className="px-3.5 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 hover:border-rose-500 text-xs font-black transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                        title="Supprimer individuellement cette course de l'historique"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Supprimer</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* FILTRAGE PAR CALENDRIER & PLAGE DE DATES (Centré & Interlignes Réduits) */}
+          {history.length > 0 && (
+            <div className="p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl bg-slate-900 border border-slate-800 shadow-xl space-y-2">
+          {/* Ligne 1 : En-tête centré, Titre, Filtre actif & Mode Cible */}
+          <div className="flex flex-col items-center justify-center text-center gap-1">
+            <div className="flex items-center justify-center gap-2 flex-wrap text-center">
+              <div className="p-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <h3 className="text-sm sm:text-base font-black text-white">
+                Filtrage par Calendrier & Plage de Dates
+              </h3>
+              {(startDate || endDate) && (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black animate-pulse flex items-center gap-1">
+                  <Filter className="w-3 h-3 text-amber-400" />
+                  Filtre actif : {startDate ? formatDateFR(startDate) : 'Début'} {endDate ? `➔ ${formatDateFR(endDate)}` : ''}
+                </span>
+              )}
+
+              {/* Mode Cible : Date d'Analyse vs Date de la Course */}
+              <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-xl border border-slate-800 shrink-0 ml-1">
+                <button
+                  type="button"
+                  onClick={() => setDateTargetMode('analyzedAt')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all ${
+                    dateTargetMode === 'analyzedAt'
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Filtrer selon la date à laquelle la course a été analysée"
+                >
+                  Date d'Analyse
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDateTargetMode('raceDate')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all ${
+                    dateTargetMode === 'raceDate'
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Filtrer selon la date programmée de la course"
+                >
+                  Date de Course
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDateTargetMode('both')}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all ${
+                    dateTargetMode === 'both'
+                      ? 'bg-amber-500 text-slate-950 font-black shadow-sm'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Filtrer si la date d'analyse OU la date de course correspond"
+                >
+                  Les Deux
+                </button>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-400 text-center leading-tight">
+              Retrouvez vos analyses passées par date d'analyse ou date de la course ({filteredHistory.length} sur {history.length} affichée{filteredHistory.length > 1 ? 's' : ''}).
+            </p>
+          </div>
+
+          {/* Ligne 2 : Accès rapide (Centré avec interligne compact) */}
+          <div className="flex items-center justify-center gap-1.5 flex-wrap pt-0.5">
             <span className="text-[11px] font-bold text-slate-400 mr-1 flex items-center gap-1">
               <CalendarDays className="w-3.5 h-3.5 text-amber-400" />
               Accès rapide :
@@ -876,7 +1176,7 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                   key={p.id}
                   type="button"
                   onClick={() => handleSelectDatePreset(p.id as any)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                  className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all border ${
                     isActive
                       ? 'bg-gradient-to-r from-amber-500 to-amber-400 text-slate-950 border-amber-300 font-black shadow-sm'
                       : 'bg-slate-800/80 hover:bg-slate-800 text-slate-300 border-slate-700/80 hover:border-amber-500/30'
@@ -891,19 +1191,19 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
               <button
                 type="button"
                 onClick={handleClearDateFilter}
-                className="px-2.5 py-1.5 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-500/40 text-xs font-black transition-all flex items-center gap-1 ml-auto"
+                className="px-2 py-1 rounded-xl bg-rose-950/60 hover:bg-rose-900/80 text-rose-300 border border-rose-500/40 text-[11px] font-black transition-all flex items-center gap-1"
                 title="Effacer le filtre calendrier"
               >
-                <X className="w-3.5 h-3.5" />
+                <X className="w-3 h-3" />
                 <span>Réinitialiser</span>
               </button>
             )}
           </div>
 
-          {/* Formulaire Sélection de Dates Personnalisée */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 pt-2 border-t border-slate-800/80">
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+          {/* Ligne 3 : Formulaire Sélection de Dates Personnalisée (Centré et interlignes resserrés) */}
+          <div className="flex items-end justify-center gap-2.5 pt-1 border-t border-slate-800/80 flex-wrap max-w-3xl mx-auto w-full">
+            <div className="space-y-0.5 min-w-[150px] flex-1 max-w-[210px]">
+              <label className="text-[10px] font-bold text-slate-400 flex items-center justify-center gap-1 text-center">
                 <span>Date de début (du) :</span>
               </label>
               <div className="relative">
@@ -914,7 +1214,7 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                     setStartDate(e.target.value);
                     setDatePreset('custom');
                   }}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-500/60 transition-all font-mono"
+                  className="w-full px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 text-center focus:outline-none focus:border-amber-500/60 transition-all font-mono"
                 />
                 {startDate && (
                   <button
@@ -931,8 +1231,8 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+            <div className="space-y-0.5 min-w-[150px] flex-1 max-w-[210px]">
+              <label className="text-[10px] font-bold text-slate-400 flex items-center justify-center gap-1 text-center">
                 <span>Date de fin (au) :</span>
               </label>
               <div className="relative">
@@ -943,7 +1243,7 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                     setEndDate(e.target.value);
                     setDatePreset('custom');
                   }}
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 focus:outline-none focus:border-amber-500/60 transition-all font-mono"
+                  className="w-full px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-200 text-center focus:outline-none focus:border-amber-500/60 transition-all font-mono"
                 />
                 {endDate && (
                   <button
@@ -961,10 +1261,10 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
             </div>
 
             {/* Information résumé du filtre de dates */}
-            <div className="space-y-1 flex flex-col justify-end">
-              <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 flex items-center justify-between">
-                <span className="text-slate-400 text-[11px]">Analyses dans la plage :</span>
-                <span className="font-mono font-extrabold text-amber-400 text-sm">
+            <div className="space-y-0.5 min-w-[170px] max-w-[210px]">
+              <div className="p-1 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 flex items-center justify-between gap-2 px-3">
+                <span className="text-slate-400 text-[10px]">Analyses dans la plage :</span>
+                <span className="font-mono font-extrabold text-amber-400 text-xs">
                   {filteredHistory.length} / {history.length}
                 </span>
               </div>
@@ -1054,46 +1354,63 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                 <React.Fragment key={item.id}>
                   <div
                     onClick={() => onSelectCourse(course)}
-                    className={`w-[5cm] h-[3.2cm] border-2 border-orange-500 bg-slate-950 rounded-lg p-3 flex flex-col items-center justify-center text-center shadow-lg cursor-pointer transition-all hover:scale-105 hover:bg-slate-900 group relative overflow-hidden ${
+                    className={`w-[5cm] h-[3.2cm] border-2 border-orange-500 bg-slate-950 rounded-lg p-2 flex flex-col items-center justify-center gap-0.5 text-center shadow-lg cursor-pointer transition-all hover:scale-105 hover:bg-slate-900 group relative overflow-hidden ${
                       isCurrent ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-950' : ''
                     }`}
                     title={`${course.titre} - Cliquez pour charger`}
                   >
+                    {/* Onglet de suppression individuel dans chaque rectangle */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCourseToDelete({
+                          id: item.id,
+                          titre: `${course.reunion || ''}${course.course || ''} ${course.hippodrome || ''} (${course.date || ''}) : ${course.titre || ''}`,
+                        });
+                      }}
+                      className="absolute top-0 right-0 px-2 py-0.5 rounded-bl-lg bg-rose-600 hover:bg-rose-500 text-white font-black text-[10px] flex items-center gap-1 shadow-md hover:scale-105 active:scale-95 transition-all z-20 border-b border-l border-rose-300/80 cursor-pointer"
+                      title="Supprimer cette course de l'historique"
+                    >
+                      <Trash2 className="w-3 h-3 text-white" />
+                      <span>Suppr</span>
+                    </button>
+
                     {/* Références de la course (Date + R1C1 + Hippodrome) */}
-                    <div className="flex flex-col items-center space-y-0.5">
-                      <div className="text-[13px] font-black text-amber-500/90 mb-0.5">
+                    <div className="flex flex-col items-center leading-none">
+                      <div className="text-[13px] font-black text-amber-500/90 leading-none mb-0.5">
                         {course.date || '--/--/----'}
                       </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[14px] font-black text-orange-400 truncate">
+                      <div className="flex items-center gap-1.5 leading-none">
+                        <span className="text-[14px] font-black text-orange-400 truncate leading-none">
                           {course.reunion || 'R?'}{course.course || 'C?'}
                         </span>
-                        <span className="text-[14px] font-mono text-slate-400 group-hover:text-amber-300">
+                        <span className="text-[14px] font-mono text-slate-400 group-hover:text-amber-300 leading-none">
                           {course.heure || '--h--'}
                         </span>
                       </div>
-                      <div className="text-[14px] font-bold text-white truncate uppercase tracking-tight">
+                      <div className="text-[14px] font-bold text-white truncate uppercase tracking-tight leading-none mt-0.5">
                         {course.hippodrome}
                       </div>
                     </div>
 
-                    {/* Arrivée */}
-                    <div className="mt-2 w-full flex flex-col items-center border-t border-slate-800/50 pt-2">
-                      <div className="text-[14px] text-slate-500 uppercase font-black mb-1 flex items-center gap-1.5">
-                        <span>Arrivée</span>
+                    {/* Arrivée avec interligne ultra réduit par rapport à l'hippodrome */}
+                    <div className="mt-0.5 w-full flex flex-col items-center border-t border-slate-800/60 pt-0.5 leading-none">
+                      <div className="text-[12px] sm:text-[13px] text-slate-300 uppercase font-black mb-0.5 flex items-center gap-1 leading-none">
+                        <span>ARRIVÉE</span>
                         {hasArrival && <Trophy className="w-3.5 h-3.5 text-amber-500" />}
                       </div>
                       <div className="flex items-center justify-center gap-1">
                         {hasArrival ? (
                           <div className="flex gap-1 flex-wrap justify-center">
                             {top5Nums.map((num, idx) => (
-                              <span key={idx} className="w-5 h-5 rounded-sm bg-slate-800 flex items-center justify-center text-[14px] font-black text-amber-400 border border-slate-700 shadow-sm">
+                              <span key={idx} className="w-5 h-5 rounded-sm bg-slate-800 flex items-center justify-center text-[13px] font-black text-amber-400 border border-slate-700 shadow-sm leading-none">
                                 {num}
                               </span>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-[14px] text-slate-600 italic">En attente...</span>
+                          <span className="text-[13px] text-slate-600 italic leading-none">En attente...</span>
                         )}
                       </div>
                     </div>
@@ -1438,6 +1755,85 @@ export const HistoryManager: React.FC<HistoryManagerProps> = ({
                 </React.Fragment>
               );
             })}
+        </div>
+      )}
+        </>
+      )}
+
+      {/* Modale de Confirmation de Suppression Individuelle */}
+      {courseToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border-2 border-rose-500/60 rounded-2xl max-w-md w-full p-5 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-base font-black text-white">Supprimer cette course de l'historique ?</h4>
+              <p className="text-xs text-amber-300 mt-2 font-bold bg-slate-950 p-2.5 rounded-xl border border-slate-800">
+                {courseToDelete.titre}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-2">
+                Cette analyse sera définitivement retirée de votre historique local.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setCourseToDelete(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleDelete(courseToDelete.id, courseToDelete.titre);
+                  setCourseToDelete(null);
+                }}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black transition-all shadow-lg shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Oui, supprimer</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modale de Confirmation de Suppression Groupée */}
+      {showBulkDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-slate-900 border-2 border-rose-500/60 rounded-2xl max-w-md w-full p-5 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 mx-auto rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/40 flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-base font-black text-white">Supprimer les courses sélectionnées ?</h4>
+              <p className="text-sm text-rose-400 mt-2 font-black">
+                {selectedDeleteIds.size} course{selectedDeleteIds.size > 1 ? 's' : ''} sélectionnée{selectedDeleteIds.size > 1 ? 's' : ''}
+              </p>
+              <p className="text-[11px] text-slate-400 mt-1">
+                Toutes les courses sélectionnées seront définitivement supprimées de l'historique.
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkDeleteConfirm(false)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition-all cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkDelete}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-black transition-all shadow-lg shadow-rose-600/30 flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Supprimer la sélection</span>
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

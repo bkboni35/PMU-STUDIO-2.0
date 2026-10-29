@@ -152,7 +152,7 @@ export const RaceHeroLiveTimerCard: React.FC<RaceHeroLiveTimerCardProps> = ({ co
     return () => clearInterval(timer);
   }, [course, delayMinutes, simCountdownSecs]);
 
-  const { franceTime, ciTime } = getDualDepartureTimes(course.heure || '13h55', course.date);
+  const { franceTime, ciTime, isWinter } = getDualDepartureTimes(course.heure || '13h55', course.date);
 
   // RÈGLE COMMISSAIRES & CYCLE DE VIE DE L'ÉPREUVE :
   // 1. Compte à rebours avant le départ (timeLeft.isPast === false && !hasArrival)
@@ -312,7 +312,7 @@ export const RaceHeroLiveTimerCard: React.FC<RaceHeroLiveTimerCardProps> = ({ co
               {isOfficial
                 ? 'Arrivée Certifiée & Confirmée'
                 : isProvisional
-                ? 'Arrivée Provisoire des Commissaires'
+                ? 'Arrivée Provisoire'
                 : isRunning
                 ? 'Épreuve en Direct'
                 : 'Minuteur de Départ en Direct'}
@@ -490,7 +490,7 @@ export const RaceHeroLiveTimerCard: React.FC<RaceHeroLiveTimerCardProps> = ({ co
                   </div>
                   <div className="text-xs text-slate-300 font-medium mt-0.5">
                     {course.hasEnquete ? (
-                      <span className="text-rose-300 font-bold">⚠️ Enquête des commissaires en cours... Reste ARRIVÉE PROVISOIRE</span>
+                      <span className="text-amber-200 font-medium">Arrivée provisoire en cours de validation</span>
                     ) : (
                       <span className="text-amber-200">
                         ⏳ Homologation officielle automatique dans <strong className="text-amber-300 font-mono text-sm underline">{promotionCheck.remainingSeconds}s</strong> ({promotionCheck.delayMinutes} min {promotionCheck.delayMinutes === 3 ? 'Trot' : 'Galop'})
@@ -654,8 +654,10 @@ export const RaceHeroLiveTimerCard: React.FC<RaceHeroLiveTimerCardProps> = ({ co
 
           {/* Footer note inside card */}
           <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between font-medium">
-            <span>Départ prévu : <strong className="text-amber-300">{ciTime} CI</strong> ({franceTime} FR)</span>
-            <span className="text-slate-500">Heure de Paris/LONACI</span>
+            <span>Départ prévu : <strong className="text-amber-300">{ciTime} CI/GMT</strong> ({franceTime} FR)</span>
+            <span className="text-slate-500 flex items-center gap-1 font-mono text-[10px]">
+              {isWinter ? '❄️ Heure d’hiver (CET UTC+1)' : '☀️ Heure d’été (CEST UTC+2)'}
+            </span>
           </div>
         </div>
       </div>

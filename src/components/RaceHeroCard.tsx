@@ -21,6 +21,10 @@ import { toggleFavoriteRace, isCourseFavorite } from '../utils/favoritesStorage'
 import { ArrivalAuditCountdownWidget } from './ArrivalAuditCountdownWidget';
 import { ArrivalAuditProgressRingBadge } from './ArrivalAuditProgressRingBadge';
 import { RaceHeroLiveTimerCard } from './RaceHeroLiveTimerCard';
+import { RaceDisciplineImage } from './RaceDisciplineImage';
+import { getHorseBadgeTheme } from '../utils/horseBadgeTheme';
+import { classerChevauxFormeEtPoints } from '../utils/turfCalculations';
+import { TableauHierarchieGroupes } from './TableauHierarchieGroupes';
 
 interface RaceHeroCardProps {
   course: CourseHippique;
@@ -32,6 +36,7 @@ interface RaceHeroCardProps {
   onTriggerArrivalAudit?: () => void;
   isAuditingArrival?: boolean;
   onClearArrival?: () => void;
+  onValidateArrival?: () => void;
   onNavigateTab?: (tab: 'synthese' | 'propositions-ia' | 'partants' | 'ticket' | 'college-gemini' | 'stats' | 'advisor' | 'favoris' | 'calendrier' | 'fiche-pdf-v38' | 'trace-facteurs' | 'pronostics-jeu') => void;
   selectedHorsesCount?: number;
   onResetSelection?: () => void;
@@ -42,11 +47,12 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
   isFavorite = false,
   onToggleFavorite,
   onRefreshOdds,
-  nextOddsSec = 30,
+  nextOddsSec = 5,
   isRefreshingOdds = false,
   onTriggerArrivalAudit,
   isAuditingArrival = false,
   onClearArrival,
+  onValidateArrival,
   onNavigateTab,
   selectedHorsesCount = 0,
   onResetSelection,
@@ -155,63 +161,85 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
       {/* Background ambient turf glow */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-amber-500/5 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Références de la course et prix en rectangle orange et écriture noire (Demandé) */}
-      <div className="mb-4 inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-amber-500 text-slate-950 font-black text-sm sm:text-base shadow-lg border border-amber-400">
-        <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
-        <span>
-          {course.prixNom || 'Prix Austria'} ({course.reunion || 'R1'} {course.course || 'C4'}) - {course.hippodrome || 'Vincennes'} {course.allocation ? `- ${course.allocation.toLocaleString('fr-FR')} €` : '- 53 000 €'}
-        </span>
-      </div>
+      {/* Ligne supérieure : Références de la course et Badges à gauche (avec interligne réduit), Image de la Discipline à l'extrême droite */}
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-3 w-full">
+        <div className="flex-1 min-w-0 space-y-1.5">
+          {/* Références de la course et prix en rectangle orange et écriture noire (Demandé) */}
+          <div>
+            <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-2xl bg-amber-500 text-slate-950 font-black text-sm sm:text-base shadow-lg border border-amber-400">
+              <Trophy className="w-4 h-4 text-slate-950 shrink-0" />
+              <span>
+                {course.prixNom || 'Prix Austria'} ({course.reunion || 'R1'} {course.course || 'C4'}) - {course.hippodrome || 'Vincennes'} {course.allocation ? `- ${course.allocation.toLocaleString('fr-FR')} €` : '- 53 000 €'}
+              </span>
+            </div>
+          </div>
 
-
-
-      {/* Top badges bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Réunion & Course Badge */}
-          <span className="px-3 py-1 rounded-xl bg-amber-500 text-slate-950 font-black text-xs sm:text-sm tracking-wide shadow-md">
-            {course.reunion} {course.course}
-          </span>
-
-          {/* Quinté+ Badge */}
-          {course.estQuinte && (
-            <span className="px-3 py-1 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-xs tracking-wide shadow-md flex items-center gap-1.5 animate-pulse">
-              <Trophy className="w-3.5 h-3.5" />
-              <span>ÉVÉNEMENT QUINTÉ+</span>
+          {/* Badges de la course placés directement sous le bandeau orange avec interligne ultra réduit */}
+          <div className="flex flex-wrap items-center gap-2 pt-0.5">
+            {/* Réunion & Course Badge */}
+            <span className="px-3 py-1 rounded-xl bg-amber-500 text-slate-950 font-black text-xs sm:text-sm tracking-wide shadow-md">
+              {course.reunion} {course.course}
             </span>
-          )}
 
-          {/* Discipline Badge */}
-          <span className="px-2.5 py-1 rounded-xl bg-slate-800 text-slate-200 font-semibold text-xs border border-slate-700">
-            {course.discipline}
-          </span>
-          
-          {/* Prix Badge */}
-          <span className="px-2.5 py-1 rounded-xl bg-indigo-950/60 text-indigo-300 font-semibold text-xs border border-indigo-500/30">
-            {course.prixNom || 'Course'}
-          </span>
-
-          {/* Allocation */}
-          <span className="px-2.5 py-1 rounded-xl bg-emerald-950/60 text-emerald-400 font-semibold text-xs border border-emerald-500/30">
-            {course.allocation ? course.allocation.toLocaleString('fr-FR') : '0'} € d'allocation
-          </span>
-
-          {/* Partants & NP sur la même ligne en gras 14px */}
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-slate-700 shadow-sm">
-            <span className="text-emerald-400 font-bold text-[14px]">
-              Partants : {course.partants?.length || 0}
-            </span>
-            {course.partants?.some((p) => p.estNonPartant || p.statut === 'Non-partant') && (
-              <span className="text-rose-400 font-bold text-[14px] bg-rose-950/60 px-2 py-0.5 rounded-lg border border-rose-500/50">
-                NP : {course.partants.filter((p) => p.estNonPartant || p.statut === 'Non-partant').map((p) => p.numero).join(', ')}
+            {/* Quinté+ Badge */}
+            {course.estQuinte && (
+              <span className="px-3 py-1 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 text-white font-extrabold text-xs tracking-wide shadow-md flex items-center gap-1.5 animate-pulse">
+                <Trophy className="w-3.5 h-3.5" />
+                <span>ÉVÉNEMENT QUINTÉ+</span>
               </span>
             )}
+
+            {/* Discipline Badge / Type de course bien visible en capitales */}
+            <span className="px-3 py-1 rounded-xl bg-amber-500/20 text-amber-300 font-black text-xs sm:text-sm border border-amber-500/40 uppercase tracking-wide shadow-sm">
+              {course.discipline ? course.discipline.toUpperCase() : 'TROT ATTELÉ'}
+            </span>
+
+            {/* Badge Organisme Officiel : France Galop (Plat / Obstacles) / LeTROT SETF (Trot) */}
+            {((course.discipline || '').toLowerCase().includes('trot')) ? (
+              <span className="px-3 py-1 rounded-xl bg-cyan-950/90 text-cyan-300 font-black text-xs sm:text-sm border border-cyan-500/50 tracking-wide shadow-md flex items-center gap-1.5" title="Réglementation et agrément officiel SECF / LeTROT">
+                <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+                <span>LeTROT (SETF)</span>
+              </span>
+            ) : (
+              <span className="px-3 py-1 rounded-xl bg-emerald-950/90 text-emerald-300 font-black text-xs sm:text-sm border border-emerald-500/50 tracking-wide shadow-md flex items-center gap-1.5" title="Réglementation et agrément officiel France Galop">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>France Galop</span>
+              </span>
+            )}
+            
+            {/* Prix Badge */}
+            <span className="px-2.5 py-1 rounded-xl bg-indigo-950/60 text-indigo-300 font-semibold text-xs border border-indigo-500/30">
+              {course.prixNom || 'Course'}
+            </span>
+
+            {/* Allocation */}
+            <span className="px-2.5 py-1 rounded-xl bg-emerald-950/60 text-emerald-400 font-semibold text-xs border border-emerald-500/30">
+              {course.allocation ? course.allocation.toLocaleString('fr-FR') : '0'} € d'allocation
+            </span>
+
+            {/* Partants & NP sur la même ligne en gras 14px */}
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-slate-700 shadow-sm">
+              <span className="text-emerald-400 font-bold text-[14px]">
+                Partants : {course.partants?.length || 0}
+              </span>
+              {course.partants?.some((p) => p.estNonPartant || p.statut === 'Non-partant') && (
+                <span className="text-rose-400 font-bold text-[14px] bg-rose-950/60 px-2 py-0.5 rounded-lg border border-rose-500/50">
+                  NP : {course.partants.filter((p) => p.estNonPartant || p.statut === 'Non-partant').map((p) => p.numero).join(', ')}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Action bar: Live Odds + Favorite toggle + Source link badge */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Live Odds Real-Time Status & Button */}
+        {/* Composant dédié RaceDisciplineImage positionné à l'extrême droite de l'en-tête */}
+        <div className="self-center sm:self-end lg:self-center shrink-0">
+          <RaceDisciplineImage course={course} />
+        </div>
+      </div>
+
+      {/* Action bar: Live Odds + Favorite toggle + Source link badge */}
+      <div className="flex flex-wrap items-center justify-end gap-2 mb-3">
+        {/* Live Odds Real-Time Status & Button */}
           {isCourseFinished(course) ? (
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-900 border border-slate-700 text-xs shadow-inner">
               <span className="font-bold text-[11px] text-slate-400">
@@ -321,7 +349,6 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
             <ExternalLink className="w-3 h-3 text-slate-400" />
           </a>
         </div>
-      </div>
 
       {/* Race Main Title & Hippodrome */}
       <div className="mb-4">
@@ -357,16 +384,6 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
             <span>PRONOSTICS DE JEU</span>
           </button>
 
-          {/* Bouton Tracé & Facteurs */}
-          <button
-            type="button"
-            onClick={() => onNavigateTab && onNavigateTab('trace-facteurs')}
-            className="flex items-center gap-1.5 font-black text-slate-950 bg-gradient-to-r from-amber-400 via-amber-500 to-amber-400 hover:from-amber-300 hover:to-amber-400 px-3.5 py-1.5 rounded-xl shadow-md shadow-amber-500/25 transition-all text-xs active:scale-95 border border-amber-300 shrink-0 cursor-pointer"
-            title="Consulter l'analyse du tracé, de la météo, du terrain et le classement des numéros par cote"
-          >
-            <span className="text-sm">🏛️</span>
-            <span>Tracé & Facteurs</span>
-          </button>
 
           {/* Bouton Exporter Hiérarchie V38 */}
           <button
@@ -487,19 +504,17 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     <span className="text-[10px] font-bold text-amber-300 bg-amber-950/90 px-2.5 py-0.5 rounded-md border border-amber-500/40 flex items-center gap-1">
                       <Clock className="w-3 h-3 text-amber-400" />
                       {course.hasEnquete ? (
-                        <span className="text-rose-300">⚠️ Enquête des commissaires en cours... Reste ARRIVÉE PROVISOIRE</span>
+                        <span className="text-amber-200">Arrivée provisoire en cours de validation</span>
                       ) : (
                         <span>Homologation officielle automatique dans {promotionCheck.remainingSeconds}s ({promotionCheck.delayMinutes} min {promotionCheck.delayMinutes === 3 ? 'Trot' : 'Plat/Obstacle'})</span>
                       )}
                     </span>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-1">
-                    <span className="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center gap-1.5 shadow-md">
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow-md w-fit">
                       <CheckCircle2 className="w-4 h-4 text-slate-950" />
                       <span>ARRIVÉE CERTIFIÉE ET CONFIRMÉE {course.reunion}{course.course}:</span>
-                    </span>
-                  </div>
+                    </div>
                 )}
                 <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
                   {course.arriveeOfficielle.split(/[-,\s]+/).filter(n => n.trim()).slice(0, 5).map((numStr, idx) => {
@@ -517,7 +532,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                             {numStr.trim()}
                           </span>
                           {horse && (
-                            <span className="text-[10px] sm:text-[11px] font-extrabold text-slate-200 truncate max-w-[75px] mt-1 text-center">
+                            <span className="text-[11px] font-extrabold text-slate-200 truncate max-w-[85px] mt-1 text-center">
                               {horse.nom}
                             </span>
                           )}
@@ -670,6 +685,29 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
           sortDelaisses: delaissesSortMode,
           customSurprisesNums: customSurprisesNums.length > 0 ? customSurprisesNums : undefined,
         });
+
+        const classificationForme = classerChevauxFormeEtPoints(course.partants || []);
+        const formMap = new Map<number, { icon: string; label: string; badgeClass: string }>();
+        classificationForme.allClassified.forEach(item => {
+          let icon = '🟢';
+          let label = 'EN FORME';
+          let badgeClass = 'bg-emerald-950/90 text-emerald-300 border-emerald-500/50 shadow-xs';
+          if (item.categorie === 'FORME_MOYENNE') {
+            icon = '🟡';
+            label = 'MOYENNE';
+            badgeClass = 'bg-amber-950/90 text-amber-300 border-amber-500/50 shadow-xs';
+          } else if (item.categorie === 'CAPABLE_EXPLOIT') {
+            icon = '⚡';
+            label = 'EXPLOIT';
+            badgeClass = 'bg-cyan-950/90 text-cyan-300 border-cyan-400/50 shadow-xs';
+          } else if (item.categorie === 'MEFORME') {
+            icon = '🔴';
+            label = 'MÉFORME';
+            badgeClass = 'bg-rose-950/90 text-rose-300 border-rose-500/50 shadow-xs';
+          }
+          formMap.set(Number(item.partant.numero), { icon, label, badgeClass });
+        });
+
         return (
           <div className="mt-4 pt-4 border-t border-slate-800/90 space-y-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -702,7 +740,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
               {/* 1. FAVORIS */}
               <div className="p-3 rounded-2xl bg-slate-950/90 border border-emerald-500/40 flex flex-col justify-between shadow-md">
                 <div>
@@ -717,24 +755,45 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     {v38.favoris
                       .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
                       .sort((a, b) => b.scoreX - a.scoreX)
-                      .map(({ p, scoreX }, idx) => (
-                      <div key={`hero-base-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-emerald-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
-                            {p.numero}
-                          </span>
-                          <span className="font-bold text-white truncate text-[11px]">{p.nom}</span>
-                          <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-cyan-400 border border-cyan-500/30 font-mono">
-                            {scoreX.toFixed(1).replace('.', ',')}
-                          </span>
-                        </div>
-                        {p.coteProbable !== undefined && (
-                          <span className="text-[10px] font-mono font-bold text-emerald-300 shrink-0">
-                            {p.coteProbable}/1
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                      .map(({ p, scoreX }, idx) => {
+                        const badge = getHorseBadgeTheme(Number(p.numero), course, 'favoris', scoreX);
+                        const formInfo = formMap.get(Number(p.numero));
+                        return (
+                          <div key={`hero-base-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                            <div className="flex items-center gap-1.5 min-w-0 mr-[0.50cm]">
+                              <span 
+                                className={`w-6 h-6 rounded-lg font-mono font-black text-xs flex items-center justify-center shrink-0 border-2 ${badge.textColor} relative overflow-hidden`}
+                                style={{
+                                  background: badge.background,
+                                  borderColor: badge.borderColor,
+                                  boxShadow: badge.boxShadow,
+                                  textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                                }}
+                              >
+                                <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t" />
+                                <span className="z-10">{p.numero}</span>
+                              </span>
+                              {formInfo && (
+                                <span className="text-xs shrink-0 leading-none" title={`Forme: ${formInfo.label}`}>
+                                  {formInfo.icon}
+                                </span>
+                              )}
+                              <span className="font-bold text-white truncate text-[11px] min-w-0">{p.nom}</span>
+                            </div>
+                            <div className="flex items-center shrink-0">
+                              <span className={`text-[9px] font-mono shrink-0 px-1.5 py-0.5 rounded font-black ${scoreX < 20 ? 'bg-red-950/90 text-red-400 border border-red-500/70 shadow-sm' : 'bg-slate-950 text-cyan-400 border border-cyan-500/30'}`}>
+                                {scoreX.toFixed(1).replace('.', ',')}
+                              </span>
+                              <div className="w-px h-3.5 bg-slate-600/80 shrink-0 mx-[0.25cm]"></div>
+                              {p.coteProbable !== undefined && (
+                                <span className="text-[10px] font-mono font-bold text-emerald-300 shrink-0 min-w-[32px] text-right">
+                                  {p.coteProbable}/1
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
@@ -753,24 +812,45 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     {v38.outsiders
                       .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
                       .sort((a, b) => b.scoreX - a.scoreX)
-                      .map(({ p, scoreX }, idx) => (
-                      <div key={`hero-chance-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-amber-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
-                            {p.numero}
-                          </span>
-                          <span className="font-bold text-white truncate text-[11px]">{p.nom}</span>
-                          <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-amber-400 border border-amber-500/30 font-mono">
-                            {scoreX.toFixed(1).replace('.', ',')}
-                          </span>
-                        </div>
-                        {p.coteProbable !== undefined && (
-                          <span className="text-[10px] font-mono font-bold text-amber-300 shrink-0">
-                            {p.coteProbable}/1
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                      .map(({ p, scoreX }, idx) => {
+                        const badge = getHorseBadgeTheme(Number(p.numero), course, 'outsiders', scoreX);
+                        const formInfo = formMap.get(Number(p.numero));
+                        return (
+                          <div key={`hero-chance-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                            <div className="flex items-center gap-1.5 min-w-0 mr-[0.50cm]">
+                              <span 
+                                className={`w-6 h-6 rounded-lg font-mono font-black text-xs flex items-center justify-center shrink-0 border-2 ${badge.textColor} relative overflow-hidden`}
+                                style={{
+                                  background: badge.background,
+                                  borderColor: badge.borderColor,
+                                  boxShadow: badge.boxShadow,
+                                  textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                                }}
+                              >
+                                <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t" />
+                                <span className="z-10">{p.numero}</span>
+                              </span>
+                              {formInfo && (
+                                <span className="text-xs shrink-0 leading-none" title={`Forme: ${formInfo.label}`}>
+                                  {formInfo.icon}
+                                </span>
+                              )}
+                              <span className="font-bold text-white truncate text-[11px] min-w-0">{p.nom}</span>
+                            </div>
+                            <div className="flex items-center shrink-0">
+                              <span className={`text-[9px] font-mono shrink-0 px-1.5 py-0.5 rounded font-black ${scoreX < 20 ? 'bg-red-950/90 text-red-400 border border-red-500/70 shadow-sm' : 'bg-slate-950 text-amber-400 border border-amber-500/30'}`}>
+                                {scoreX.toFixed(1).replace('.', ',')}
+                              </span>
+                              <div className="w-px h-3.5 bg-slate-600/80 shrink-0 mx-[0.25cm]"></div>
+                              {p.coteProbable !== undefined && (
+                                <span className="text-[10px] font-mono font-bold text-amber-300 shrink-0 min-w-[32px] text-right">
+                                  {p.coteProbable}/1
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
@@ -789,32 +869,53 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     {v38.tocardsSpeculatifs
                       .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
                       .sort((a, b) => b.scoreX - a.scoreX)
-                      .map(({ p, scoreX }, idx) => (
-                      <div key={`hero-tocard-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-orange-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
-                            {p.numero}
-                          </span>
-                          <span className="font-bold text-white truncate text-[11px]">{p.nom}</span>
-                          <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-orange-400 border border-orange-500/30 font-mono">
-                            {scoreX.toFixed(1).replace('.', ',')}
-                          </span>
-                        </div>
-                        {p.coteProbable !== undefined && (
-                          <span className="text-[10px] font-mono font-bold text-orange-300 shrink-0">
-                            {p.coteProbable}/1
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                      .map(({ p, scoreX }, idx) => {
+                        const badge = getHorseBadgeTheme(Number(p.numero), course, 'tocards', scoreX);
+                        const formInfo = formMap.get(Number(p.numero));
+                        return (
+                          <div key={`hero-tocard-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                            <div className="flex items-center gap-1.5 min-w-0 mr-[0.50cm]">
+                              <span 
+                                className={`w-6 h-6 rounded-lg font-mono font-black text-xs flex items-center justify-center shrink-0 border-2 ${badge.textColor} relative overflow-hidden`}
+                                style={{
+                                  background: badge.background,
+                                  borderColor: badge.borderColor,
+                                  boxShadow: badge.boxShadow,
+                                  textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                                }}
+                              >
+                                <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t" />
+                                <span className="z-10">{p.numero}</span>
+                              </span>
+                              {formInfo && (
+                                <span className="text-xs shrink-0 leading-none" title={`Forme: ${formInfo.label}`}>
+                                  {formInfo.icon}
+                                </span>
+                              )}
+                              <span className="font-bold text-white truncate text-[11px] min-w-0">{p.nom}</span>
+                            </div>
+                            <div className="flex items-center shrink-0">
+                              <span className={`text-[9px] font-mono shrink-0 px-1.5 py-0.5 rounded font-black ${scoreX < 20 ? 'bg-red-950/90 text-red-400 border border-red-500/70 shadow-sm' : 'bg-slate-950 text-orange-400 border border-orange-500/30'}`}>
+                                {scoreX.toFixed(1).replace('.', ',')}
+                              </span>
+                              <div className="w-px h-3.5 bg-slate-600/80 shrink-0 mx-[0.25cm]"></div>
+                              {p.coteProbable !== undefined && (
+                                <span className="text-[10px] font-mono font-bold text-orange-300 shrink-0 min-w-[32px] text-right">
+                                  {p.coteProbable}/1
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
 
               {/* 4. SURPRISES */}
-              <div className="p-3 rounded-2xl bg-slate-950/90 border border-purple-500/40 flex flex-col justify-between shadow-md">
+              <div className="p-3 rounded-2xl bg-slate-950/90 border border-rose-500/40 flex flex-col justify-between shadow-md">
                 <div>
-                  <div className="flex items-center justify-between text-purple-400 text-xs font-black uppercase mb-2 pb-1 border-b border-purple-500/20">
+                  <div className="flex items-center justify-between text-rose-400 text-xs font-black uppercase mb-2 pb-1 border-b border-rose-500/20">
                     <div className="flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5" />
                       <span>SURPRISES ({v38.surprises.length} N°)</span>
@@ -822,7 +923,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     <button
                       type="button"
                       onClick={() => setIsSurprisesModalOpen(true)}
-                      className="px-1.5 py-0.5 rounded-md bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
+                      className="px-1.5 py-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
                       title="Modifier la sélection des SUR"
                     >
                       <SlidersHorizontal className="w-2.5 h-2.5" />
@@ -833,84 +934,54 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                     {v38.surprises
                       .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
                       .sort((a, b) => b.scoreX - a.scoreX)
-                      .map(({ p, scoreX }, idx) => (
-                      <div key={`hero-surprise-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-purple-500 text-slate-950 font-black text-xs flex items-center justify-center shrink-0">
-                            {p.numero}
-                          </span>
-                          <span className="font-bold text-white truncate text-[11px]">{p.nom}</span>
-                          <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-purple-400 border border-purple-500/30 font-mono">
-                            {scoreX.toFixed(1).replace('.', ',')}
-                          </span>
-                        </div>
-                        {p.coteProbable !== undefined && (
-                          <span className="text-[10px] font-mono font-bold text-purple-300 shrink-0">
-                            {p.coteProbable}/1
-                          </span>
-                        )}
-                      </div>
-                    ))}
+                      .map(({ p, scoreX }, idx) => {
+                        const badge = getHorseBadgeTheme(Number(p.numero), course, 'surprises', scoreX);
+                        const formInfo = formMap.get(Number(p.numero));
+                        return (
+                          <div key={`hero-surprise-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900 border border-slate-800">
+                            <div className="flex items-center gap-1.5 min-w-0 mr-[0.50cm]">
+                              <span 
+                                className={`w-6 h-6 rounded-lg font-mono font-black text-xs flex items-center justify-center shrink-0 border-2 ${badge.textColor} relative overflow-hidden`}
+                                style={{
+                                  background: badge.background,
+                                  borderColor: badge.borderColor,
+                                  boxShadow: badge.boxShadow,
+                                  textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                                }}
+                              >
+                                <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t" />
+                                <span className="z-10">{p.numero}</span>
+                              </span>
+                              {formInfo && (
+                                <span className="text-xs shrink-0 leading-none" title={`Forme: ${formInfo.label}`}>
+                                  {formInfo.icon}
+                                </span>
+                              )}
+                              <span className="font-bold text-white truncate text-[11px] min-w-0">{p.nom}</span>
+                            </div>
+                            <div className="flex items-center shrink-0">
+                              <span className={`text-[9px] font-mono shrink-0 px-1.5 py-0.5 rounded font-black ${scoreX < 20 ? 'bg-red-950/90 text-red-400 border border-red-500/70 shadow-sm' : 'bg-slate-950 text-rose-400 border border-rose-500/30'}`}>
+                                {scoreX.toFixed(1).replace('.', ',')}
+                              </span>
+                              <div className="w-px h-3.5 bg-slate-600/80 shrink-0 mx-[0.25cm]"></div>
+                              {p.coteProbable !== undefined && (
+                                <span className="text-[10px] font-mono font-bold text-rose-300 shrink-0 min-w-[32px] text-right">
+                                  {p.coteProbable}/1
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               </div>
 
-              {/* 5. LES DÉLAISSÉS */}
-              <div className="p-3 rounded-2xl bg-slate-950/90 border border-slate-700/60 flex flex-col justify-between shadow-md">
-                <div>
-                  <div className="flex items-center justify-between text-slate-400 text-xs font-black uppercase mb-2 pb-1 border-b border-slate-800">
-                    <div className="flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-                      <span className="text-orange-300">CAPABLES D'EXPLOITS</span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const nextSort: DelaissesSortMode = delaissesSortMode === 'desc_number' ? 'asc_number' : delaissesSortMode === 'asc_number' ? 'asc_odds' : 'desc_number';
-                        setDelaissesSortMode(nextSort);
-                        if (typeof window !== 'undefined') {
-                          localStorage.setItem(V38_DELAISSES_SORT_STORAGE_KEY, nextSort);
-                        }
-                      }}
-                      className="px-1.5 py-0.5 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 text-[9px] font-bold flex items-center gap-1 cursor-pointer transition-colors"
-                      title="Changer le tri des délaissés (du plus grand numéro au plus petit, etc.)"
-                    >
-                      <ArrowDownUp className="w-2.5 h-2.5 text-slate-400" />
-                      <span>
-                        {delaissesSortMode === 'desc_number' ? '↓ N° (Grand → Petit)' : delaissesSortMode === 'asc_number' ? '↑ N° (Petit → Grand)' : 'Cote'}
-                      </span>
-                    </button>
-                  </div>
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-0.5">
-                    {v38.delaisses.length === 0 ? (
-                      <span className="text-[10px] text-slate-500 italic block p-1">Aucun délaissé</span>
-                    ) : (
-                      v38.delaisses
-                        .map(p => ({ p, scoreX: (73 + Number(p.numero)) - getHorseGenyOdds(p) }))
-                        .sort((a, b) => b.scoreX - a.scoreX)
-                        .map(({ p, scoreX }, idx) => (
-                        <div key={`hero-delaisse-${p.numero}-${idx}`} className="flex items-center justify-between text-xs p-1.5 rounded-xl bg-slate-900/60 border border-slate-800/80">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-6 h-6 rounded-lg bg-slate-800 text-slate-300 font-bold text-xs flex items-center justify-center shrink-0">
-                              {p.numero}
-                            </span>
-                            <span className="font-medium text-slate-300 truncate text-[11px]">{p.nom}</span>
-                            <span className="text-[9px] font-black px-1 rounded bg-slate-950 text-slate-400 border border-slate-700/30 font-mono">
-                              {scoreX.toFixed(1).replace('.', ',')}
-                            </span>
-                          </div>
-                          {p.coteProbable !== undefined && (
-                            <span className="text-[10px] font-mono text-slate-400 shrink-0">
-                              {p.coteProbable}/1
-                            </span>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              </div>
+
             </div>
+
+            {/* Tableau de Hiérarchie des Groupes (Exactement selon le visuel image_c63d2142.png) */}
+            <TableauHierarchieGroupes course={course} />
 
             {/* Tableau des Critères d'attribution des lignes (Grille V38 Discipline) */}
             <div className="mt-4 pt-3 border-t border-slate-800/80">
@@ -1015,7 +1086,7 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                 </div>
               ) : (
                 <p className="text-xs text-slate-400 text-center py-2">
-                  En attente de la publication des rapports et de l'arrivée officielle définitive par les commissaires.
+                  En attente de la publication des rapports et de l'arrivée officielle définitive.
                 </p>
               )}
             </div>
@@ -1030,9 +1101,9 @@ export const RaceHeroCard: React.FC<RaceHeroCardProps> = ({
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                 <span>Certification anti-hallucination V38 active</span>
               </div>
-              <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950/70 border border-slate-800/80 text-amber-300">
-                <CheckCircle2 className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                <span>Contrôle réglementaire 5 minutes commissaires opérationnel</span>
+              <div className="flex items-center gap-2 p-2 rounded-xl bg-slate-950/70 border border-slate-800/80 text-emerald-300">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Contrôle réglementaire 3 minutes d'homologation opérationnel</span>
               </div>
             </div>
 

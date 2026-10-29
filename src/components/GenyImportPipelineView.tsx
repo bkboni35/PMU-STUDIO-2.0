@@ -18,6 +18,11 @@ import { computeTabularEnsembleAnalysis } from '../utils/tabularRankingEngine';
 import { TabularEnsembleModelView } from './TabularEnsembleModelView';
 import { NameNormalizationAuditorView } from './NameNormalizationAuditorView';
 import {
+  GenyActorRecord,
+  SAMPLE_GENY_ACTORS_REGISTRY,
+  generateGenyActorsCsv
+} from '../utils/genyJockeyRegistry';
+import {
   FileText,
   Upload,
   CheckCircle2,
@@ -34,7 +39,10 @@ import {
   Info,
   Database,
   Layers,
-  Cpu
+  Cpu,
+  UserCheck,
+  Download,
+  Terminal
 } from 'lucide-react';
 
 interface GenyImportPipelineViewProps {
@@ -42,9 +50,12 @@ interface GenyImportPipelineViewProps {
 }
 
 export const GenyImportPipelineView: React.FC<GenyImportPipelineViewProps> = ({ onRaceAnalyzed }) => {
-  // Mode d'importation
+  // Mode d'affichage et d'importation
+  const [activeTab, setActiveTab] = useState<'race_import' | 'jockeys_scraper'>('race_import');
   const [importMode, setImportMode] = useState<GenyImportSourceMode>('copier_coller');
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  const [actorsRegistry, setActorsRegistry] = useState<GenyActorRecord[]>(SAMPLE_GENY_ACTORS_REGISTRY);
+  const [actorSearch, setActorSearch] = useState<string>('');
 
   // Méta-données de la course
   const [discipline, setDiscipline] = useState<Discipline>('Plat');
@@ -169,25 +180,46 @@ export const GenyImportPipelineView: React.FC<GenyImportPipelineViewProps> = ({ 
       <div className="bg-gradient-to-r from-slate-950 via-indigo-950/80 to-slate-950 border border-indigo-500/30 rounded-xl p-5 relative overflow-hidden space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 inline-flex items-center gap-1.5">
-              <Database className="w-3.5 h-3.5 text-indigo-400" />
-              Pipeline d'Intégration Structurée Geny / Genybet
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/40 inline-flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5 text-indigo-400" />
+                Pipeline d'Intégration Structurée Geny / Genybet
+              </span>
+            </div>
             <h2 className="text-xl md:text-2xl font-black text-white">
-              Saisie → Normalisation JSON → Feature Engineering → Modèle ML
+              {activeTab === 'race_import'
+                ? "Saisie → Normalisation JSON → Feature Engineering → Modèle ML"
+                : "Extractions Jockeys / Drivers Geny & Référentiel Canonique Multi-Jours"}
             </h2>
             <p className="text-xs text-slate-300 max-w-2xl">
-              Convertit les tableaux ou captures de partants Geny en schéma JSON universel avant d'alimenter les modèles CatBoost et LightGBM LambdaRank.
+              {activeTab === 'race_import'
+                ? "Convertit les tableaux ou captures de partants Geny en schéma JSON universel avant d'alimenter les modèles CatBoost et LightGBM LambdaRank."
+                : "Extrait et déduplique les jockeys/drivers du jour et multi-jours depuis www.geny.com/jockeys avec clé d'identité canonique unique."}
             </p>
           </div>
 
           <div className="flex items-center gap-2">
             <button
-              onClick={handleLoadSample}
-              className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-lg border border-indigo-400/30 transition flex items-center gap-1.5 shadow"
+              onClick={() => setActiveTab('race_import')}
+              className={`px-3 py-2 text-xs font-bold rounded-lg border transition flex items-center gap-1.5 ${
+                activeTab === 'race_import'
+                  ? 'bg-indigo-600 text-white border-indigo-400 shadow'
+                  : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+              }`}
             >
-              <Sparkles className="w-4 h-4 text-amber-300" />
-              Charger l'Exemple Geny (Arturo, Bluff, Iffrocta Fal...)
+              <FileText className="w-4 h-4 text-indigo-300" />
+              Partants Course
+            </button>
+            <button
+              onClick={() => setActiveTab('jockeys_scraper')}
+              className={`px-3 py-2 text-xs font-bold rounded-lg border transition flex items-center gap-1.5 ${
+                activeTab === 'jockeys_scraper'
+                  ? 'bg-indigo-600 text-white border-indigo-400 shadow'
+                  : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+              }`}
+            >
+              <UserCheck className="w-4 h-4 text-amber-300" />
+              Extraction Jockeys Geny
             </button>
           </div>
         </div>
@@ -475,7 +507,7 @@ export const GenyImportPipelineView: React.FC<GenyImportPipelineViewProps> = ({ 
                   <th className="p-2 text-center">Poids (kg)</th>
                   <th className="p-2">Jockey</th>
                   <th className="p-2">Entraîneur</th>
-                  <th className="p-2 text-center">Musique</th>
+                  <th className="p-2 text-left">Musique</th>
                   <th className="p-2 text-center">Valeur</th>
                   <th className="p-2 text-center">Cote PMU</th>
                   <th className="p-2 text-right">Actions</th>
@@ -545,12 +577,12 @@ export const GenyImportPipelineView: React.FC<GenyImportPipelineViewProps> = ({ 
                         className="w-full bg-slate-900 border border-slate-700 rounded p-1 text-slate-400"
                       />
                     </td>
-                    <td className="p-1.5 text-center font-sans">
+                    <td className="p-1.5 text-left font-sans">
                       <input
                         type="text"
                         value={runner.musique || ''}
                         onChange={(e) => handleUpdateRunner(idx, 'musique', e.target.value)}
-                        className="w-24 bg-slate-900 border border-slate-700 rounded text-center p-1 text-emerald-400 font-bold"
+                        className="w-24 bg-slate-900 border border-slate-700 rounded text-left p-1 text-emerald-400 font-bold"
                       />
                     </td>
                     <td className="p-1.5 text-center">
@@ -722,6 +754,155 @@ export const GenyImportPipelineView: React.FC<GenyImportPipelineViewProps> = ({ 
 
           {/* COMPOSANT VISUEL D'ANALYSE TABULAIRE COMPLET */}
           <TabularEnsembleModelView course={analyzedCourse} />
+        </div>
+      )}
+
+      {/* ONGLET EXTRACTION JOCKEYS & RÉFÉRENTEL CANONIQUE GENY */}
+      {activeTab === 'jockeys_scraper' && (
+        <div className="space-y-5">
+          {/* CARTE STATISTIQUES ET SEARCH */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <UserCheck className="w-5 h-5 text-indigo-400" />
+                  Référentiel Canonique des Jockeys & Drivers Geny (Deduplicated)
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Base consolidée des professionnels du jour et multi-jours extraite de www.geny.com/jockeys
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    const csvData = generateGenyActorsCsv(actorsRegistry);
+                    const blob = new Blob([csvData], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.setAttribute('href', url);
+                    link.setAttribute('download', 'geny_jockeys_deduplicated.csv');
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                  }}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg border border-emerald-400/30 transition flex items-center gap-1.5 shadow"
+                >
+                  <Download className="w-4 h-4 text-emerald-200" />
+                  Exporter CSV (geny_jockeys_deduplicated.csv)
+                </button>
+              </div>
+            </div>
+
+            {/* RECHERCHE ET BADGES */}
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-900">
+              <div className="w-full sm:w-80 relative">
+                <input
+                  type="text"
+                  value={actorSearch}
+                  onChange={(e) => setActorSearch(e.target.value)}
+                  placeholder="Rechercher par nom, discipline, réunion..."
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 text-xs font-mono">
+                <span className="px-2.5 py-1 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                  Total : <strong>{actorsRegistry.length}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20">
+                  Drivers : <strong>{actorsRegistry.filter(a => a.type_actor === 'driver').length}</strong>
+                </span>
+                <span className="px-2.5 py-1 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20">
+                  Jockeys : <strong>{actorsRegistry.filter(a => a.type_actor === 'jockey').length}</strong>
+                </span>
+              </div>
+            </div>
+
+            {/* TABLEAU DES PROFESSIONNELS DÉDUPLIQUÉS */}
+            <div className="overflow-x-auto max-h-96 overflow-y-auto rounded-lg border border-slate-800">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-900 text-slate-400 border-b border-slate-800 sticky top-0 font-semibold">
+                    <th className="py-2.5 px-3">ID Canonique Geny</th>
+                    <th className="py-2.5 px-3">Nom Affiché</th>
+                    <th className="py-2.5 px-3">Nom Normalisé</th>
+                    <th className="py-2.5 px-3">Rôle / Discipline</th>
+                    <th className="py-2.5 px-3">Réunion</th>
+                    <th className="py-2.5 px-3">Première / Dernière Vu</th>
+                    <th className="py-2.5 px-3 text-right">Source</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800/60 font-mono">
+                  {actorsRegistry
+                    .filter(a =>
+                      !actorSearch ||
+                      a.nom_affiche.toLowerCase().includes(actorSearch.toLowerCase()) ||
+                      a.nom_normalise.toLowerCase().includes(actorSearch.toLowerCase()) ||
+                      a.discipline.toLowerCase().includes(actorSearch.toLowerCase()) ||
+                      a.meeting?.toLowerCase().includes(actorSearch.toLowerCase())
+                    )
+                    .map((actor, idx) => (
+                      <tr key={idx} className="hover:bg-slate-900/60 transition-colors">
+                        <td className="py-2 px-3 text-amber-300 font-bold">{actor.actor_id_geny}</td>
+                        <td className="py-2 px-3 font-sans font-semibold text-white">{actor.nom_affiche}</td>
+                        <td className="py-2 px-3 text-indigo-300">{actor.nom_normalise}</td>
+                        <td className="py-2 px-3 font-sans">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            actor.type_actor === 'driver'
+                              ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                          }`}>
+                            {actor.type_actor.toUpperCase()} ({actor.discipline})
+                          </span>
+                        </td>
+                        <td className="py-2 px-3 text-slate-300">{actor.meeting || 'R1'}</td>
+                        <td className="py-2 px-3 text-slate-400 text-[11px] font-sans">
+                          {actor.first_seen} → {actor.last_seen}
+                        </td>
+                        <td className="py-2 px-3 text-right">
+                          <a
+                            href={actor.url_source}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-indigo-400 hover:text-indigo-300 text-[11px] underline font-sans"
+                          >
+                            Geny.com 🔗
+                          </a>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* SCRIPT PYTHON DE COLLECTE PLAYWRIGHT DÉDUPLIQUÉE */}
+          <div className="bg-slate-950 border border-slate-800 rounded-xl p-5 space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <Terminal className="w-4 h-4 text-emerald-400" />
+                Script Python de Collecte Automatisée Multi-Jours (Playwright)
+              </h4>
+
+              <span className="text-xs text-slate-400 font-mono">
+                scripts/deduplicate_geny_jockeys.py
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Ce script Python s'exécute en ligne de commande pour parcourir les pages Geny du jour (<code className="text-indigo-300 bg-slate-900 px-1 py-0.5 rounded">https://www.geny.com/jockeys/YYYY-MM-DD</code>) via Chromium Playwright, normaliser les noms et générer le fichier CSV unique dédupliqué.
+            </p>
+
+            <pre className="bg-slate-900 border border-slate-800 rounded-lg p-3.5 font-mono text-xs text-emerald-300 overflow-x-auto max-h-60 leading-relaxed">
+{`# Commande d'installation et d'exécution :
+pip install playwright
+playwright install chromium
+
+# Extrait les 14 derniers jours et crée geny_jockeys_deduplicated.csv
+python scripts/deduplicate_geny_jockeys.py 14`}
+            </pre>
+          </div>
         </div>
       )}
     </div>

@@ -50,7 +50,9 @@ export function extractMetadataFromTurfUrl(url: string, source: TurfSource): Url
   ];
 
   let matchedHippo = hippodromes.find((h) => cleanUrl.includes(h.key));
-  if (cleanUrl.includes('meilhan') || cleanUrl.includes('1689686') || cleanUrl.includes('bouscat')) {
+  if (cleanUrl.includes('cinglais') || cleanUrl.includes('foret-de-cinglais')) {
+    matchedHippo = { key: 'deauville', name: 'Deauville', corde: 'Droite', distance: 1900, disc: 'Plat' };
+  } else if (cleanUrl.includes('meilhan') || cleanUrl.includes('1689686') || cleanUrl.includes('bouscat')) {
     matchedHippo = { key: 'bordeaux', name: 'Bordeaux-Le Bouscat', corde: 'Droite', distance: 1900, disc: 'Plat' };
   } else if (cleanUrl.includes('daphne') || cleanUrl.includes('1689006')) {
     matchedHippo = { key: 'saint-cloud', name: 'Saint-Cloud', corde: 'Gauche', distance: 2100, disc: 'Plat' };
@@ -59,10 +61,13 @@ export function extractMetadataFromTurfUrl(url: string, source: TurfSource): Url
   }
 
   // Détection Réunion / Course (ex: r1c1, r1-c4, -c3_c1483120, etc.)
-  let reunion = 'R1';
-  let course = 'C1';
+  let reunion = '';
+  let course = '';
 
-  if (cleanUrl.includes('daphne') || cleanUrl.includes('1689006')) {
+  if (cleanUrl.includes('cinglais') || cleanUrl.includes('foret-de-cinglais')) {
+    reunion = 'R1';
+    course = 'C5';
+  } else if (cleanUrl.includes('daphne') || cleanUrl.includes('1689006')) {
     reunion = 'R4';
     course = 'C4';
   } else if (cleanUrl.includes('arc-de-triomphe') || cleanUrl.includes('1688800')) {
@@ -93,15 +98,19 @@ export function extractMetadataFromTurfUrl(url: string, source: TurfSource): Url
 
   // Détection du nom du prix
   let prixNom = 'Grand Prix Quinté+';
-  const prixMatch = cleanUrl.match(/prix[-_ ]([a-z0-9-_]+)/i);
-  if (prixMatch && prixMatch[1]) {
-    const rawPrix = prixMatch[1].split('_')[0].split('?')[0];
-    prixNom = 'Prix ' + rawPrix
-      .split('-')
-      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-      .join(' ')
-      .replace(/Pmu/gi, 'PMU')
-      .replace(/X/gi, '&');
+  if (cleanUrl.includes('cinglais') || cleanUrl.includes('foret-de-cinglais')) {
+    prixNom = 'Prix de la Forêt de Cinglais';
+  } else {
+    const prixMatch = cleanUrl.match(/prix[-_ ]([a-z0-9-_]+)/i);
+    if (prixMatch && prixMatch[1]) {
+      const rawPrix = prixMatch[1].split('_')[0].split('?')[0];
+      prixNom = 'Prix ' + rawPrix
+        .split('-')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ')
+        .replace(/Pmu/gi, 'PMU')
+        .replace(/X/gi, '&');
+    }
   }
 
   // Date
@@ -208,8 +217,8 @@ export function buildFallbackRace(
     const distanceVal = extractedData.distance || meta.distance;
     const cordeVal = extractedData.corde || meta.corde;
     const prixNomVal = extractedData.prixNom || meta.prixNom;
-    const reunionVal = extractedData.reunion || meta.reunion;
-    const courseVal = extractedData.course || meta.course;
+    const reunionVal = extractedData.reunion || meta.reunion || 'R1';
+    const courseVal = extractedData.course || meta.course || 'C1';
 
     const synthese: PronosticSynthese = {
       baseIncontournable: realV38.baseIncontournable,
@@ -316,11 +325,11 @@ export function buildFallbackRace(
     id: `course-${Date.now()}`,
     sourceUrl: url,
     sourceType: source,
-    titre: meta.titre,
+    titre: meta.titre || `${meta.prixNom} (${meta.reunion || 'R1'} ${meta.course || 'C1'}) - ${meta.hippodrome}`,
     prixNom: meta.prixNom,
     hippodrome: meta.hippodrome,
-    reunion: meta.reunion,
-    course: meta.course,
+    reunion: meta.reunion || 'R1',
+    course: meta.course || 'C1',
     estQuinte: true,
     estPick5: false,
     discipline: meta.discipline,

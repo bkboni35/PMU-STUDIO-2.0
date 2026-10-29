@@ -1,7 +1,9 @@
 import React from 'react';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { CourseHippique } from '../types/turf';
-import { computeV38Hierarchy } from '../utils/v38Helper';
+import { computeV38Hierarchy, formatCote } from '../utils/v38Helper';
+import { getHorseBadgeTheme } from '../utils/horseBadgeTheme';
+import { isCourseFinished } from '../utils/raceCountdown';
 
 interface HierarchieQuinteV38BannerProps {
   course: CourseHippique;
@@ -44,53 +46,61 @@ export const HierarchieQuinteV38Banner: React.FC<HierarchieQuinteV38BannerProps>
     const evolution = partant?.evolutionCote;
     const prevCote = partant?.cotePrecedente;
 
-    let isBaisse = evolution === 'baisse';
-    let isHausse = evolution === 'hausse';
+    const isFinished = Boolean(
+      isCourseFinished(course) ||
+      course?.arriveeOfficielle ||
+      course?.statutCourse === 'Arrivée officielle' ||
+      course?.statutCourse === 'Course terminée' ||
+      (course as any)?.cotesScellees
+    );
 
-    if (!evolution && cote !== undefined && prevCote !== undefined) {
+    let isBaisse = !isFinished && evolution === 'baisse';
+    let isHausse = !isFinished && evolution === 'hausse';
+
+    if (!isFinished && !evolution && cote !== undefined && prevCote !== undefined) {
       if (Number(cote) < Number(prevCote)) isBaisse = true;
       if (Number(cote) > Number(prevCote)) isHausse = true;
     }
 
-    const themeStyles = {
-      emerald: {
-        numBg: 'bg-emerald-500 text-slate-950 border-emerald-400 font-black',
-        text: 'text-emerald-300',
-      },
-      sky: {
-        numBg: 'bg-sky-500 text-slate-950 border-sky-400 font-black',
-        text: 'text-sky-300',
-      },
-      yellow: {
-        numBg: 'bg-yellow-400 text-slate-950 border-yellow-300 font-black',
-        text: 'text-yellow-300',
-      },
-      orange: {
-        numBg: 'bg-orange-500 text-slate-950 border-orange-400 font-black',
-        text: 'text-orange-300',
-      },
-      purple: {
-        numBg: 'bg-purple-500 text-white border-purple-400 font-black',
-        text: 'text-purple-300',
-      },
-      rose: {
-        numBg: 'bg-rose-500 text-white border-rose-400 font-black',
-        text: 'text-rose-300',
-      },
-    }[theme];
-
     const effectiveOdds = cote && cote > 0 ? Number(cote) : 99;
     const scoreX = Math.round(((73 + Number(num)) - effectiveOdds) * 10) / 10;
 
+    let catHint: 'favoris' | 'outsiders' | 'tocards' | 'surprises' = 'outsiders';
+    if (theme === 'emerald') catHint = 'favoris';
+    else if (theme === 'yellow' || theme === 'sky') catHint = 'outsiders';
+    else if (theme === 'orange') catHint = 'tocards';
+    else if (theme === 'purple' || theme === 'rose') catHint = 'surprises';
+
+    const badgeTheme = getHorseBadgeTheme(Number(num), course, catHint, scoreX, effectiveOdds);
+
+    const themeStyles = {
+      emerald: { text: 'text-emerald-300' },
+      sky: { text: 'text-sky-300' },
+      yellow: { text: 'text-yellow-300' },
+      orange: { text: 'text-orange-300' },
+      purple: { text: 'text-rose-300' },
+      rose: { text: 'text-rose-300' },
+    }[theme];
+
     return (
       <div key={uniqueKey} className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-xl bg-slate-950/90 border border-slate-800 shadow-xs shrink-0">
-        {/* Numéro du cheval */}
-        <span className={`px-2 py-0.2 rounded-md font-mono text-xs sm:text-sm font-black border shadow-xs ${themeStyles.numBg}`}>
-          {num}
+        {/* Numéro du cheval avec dégradé progressif 3D modulé par Score X */}
+        <span 
+          className={`px-2 py-0.5 rounded-md font-mono text-xs sm:text-sm font-black border-2 shadow-sm ${badgeTheme.textColor} relative overflow-hidden`}
+          style={{
+            background: badgeTheme.background,
+            borderColor: badgeTheme.borderColor,
+            boxShadow: badgeTheme.boxShadow,
+            textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+          }}
+          title={`N°${num} | Catégorie: ${badgeTheme.category.toUpperCase()} | Cote: ${effectiveOdds.toFixed(1)} | Score X: ${scoreX.toFixed(1)}`}
+        >
+          <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t" />
+          <span className="z-10 relative">{num}</span>
         </span>
 
         {/* Badge Score X (73 + N° - Cote) */}
-        <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-slate-900 text-cyan-300 border border-cyan-500/30 font-mono shrink-0" title={`Score X = (73 + ${num}) - ${effectiveOdds.toFixed(1)} = ${scoreX.toFixed(1)}`}>
+        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded font-mono shrink-0 ${scoreX < 20 ? 'bg-red-950/90 text-red-400 border border-red-500/70 shadow-sm' : 'bg-slate-900 text-cyan-300 border border-cyan-500/30'}`} title={`Score X = (73 + ${num}) - ${effectiveOdds.toFixed(1)} = ${scoreX.toFixed(1)}`}>
           X={scoreX.toFixed(1).replace('.', ',')}
         </span>
 
@@ -98,7 +108,7 @@ export const HierarchieQuinteV38Banner: React.FC<HierarchieQuinteV38BannerProps>
         {cote !== undefined && cote > 0 ? (
           <div className="flex items-center gap-1 font-mono text-xs font-bold">
             <span className={`text-[11px] font-black ${themeStyles.text}`}>
-              {cote}/1
+              {formatCote(cote)}
             </span>
 
             {/* Flèche verte dirigée vers le bas pour les cotes qui baissent */}
@@ -133,6 +143,16 @@ export const HierarchieQuinteV38Banner: React.FC<HierarchieQuinteV38BannerProps>
           <span className="text-amber-400 font-black tracking-wider uppercase text-[11px] sm:text-xs">
             QUINTE + V38 :
           </span>
+          {/* Organisme officiel */}
+          {((course.discipline || '').toLowerCase().includes('trot')) ? (
+            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-cyan-950 text-cyan-300 border border-cyan-500/40 uppercase tracking-wider" title="Source Réglementaire : LeTROT (SETF)">
+              LeTROT (SETF)
+            </span>
+          ) : (
+            <span className="px-2 py-0.5 rounded text-[10px] font-black bg-emerald-950 text-emerald-300 border border-emerald-500/40 uppercase tracking-wider" title="Source Réglementaire : France Galop">
+              France Galop
+            </span>
+          )}
           {nonPartantsNums.length > 0 && (
             <span
               className="px-2 py-0.5 rounded-md font-mono text-[14px] font-bold bg-rose-500 text-white border border-rose-300 shadow-sm animate-pulse tracking-wide"

@@ -2,54 +2,52 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     
-    // Global Safety Net
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
     // Helper Primitives
-    function isSignedIn() { return request.auth != null; }
-    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
-    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
-    
-    // Validation Blueprints
-    function isValidRace(data) {
-      return (data.keys().hasAll(['courseData']) && data.courseData is map)
-        || (data.keys().hasAll(['id']) && data.id is string)
-        || (data.keys().hasAll(['arriveeOfficielle']) && data.arriveeOfficielle is string)
-        || (data.keys().hasAll(['reunion', 'course']) && data.reunion is string && data.course is string);
+    function isSignedIn() { 
+      return request.auth != null; 
     }
-
-    function isValidUser(data) {
-      return data.keys().hasAll(['email'])
-        && data.email is string
-        && (!data.keys().hasAny(['isAdmin']) || data.isAdmin is bool);
+    
+    function isOwner(userId) { 
+      return isSignedIn() && request.auth.uid == userId; 
+    }
+    
+    function isAdmin() { 
+      return (
+        isSignedIn() && (
+          (request.auth.token.email == 'bkboni35@gmail.com' && request.auth.token.email_verified == true) ||
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        )
+      ); 
     }
 
     // Ping / Connection health check
     match /_connection_test_/{docId} {
-      allow read: if true;
-      allow write: if isSignedIn();
+      allow read, write: if true;
     }
 
     match /test/{docId} {
-      allow read: if true;
-      allow write: if isSignedIn();
+      allow read, write: if true;
     }
 
-    // Match Blocks
+    // Live races and archives (real-time synchronization)
     match /live_races/{raceId} {
-      allow read: if true;
-      allow create, update: if isSignedIn() && isValidId(raceId) && isValidRace(incoming());
-      allow delete: if isSignedIn();
+      allow read, write: if true;
     }
 
+    // User profiles & settings (allows app-level authentication and admin supervision)
     match /users/{userId} {
-      allow read: if isOwner(userId);
-      allow create, update: if isOwner(userId) && isValidId(userId) && isValidUser(incoming());
-      allow delete: if isOwner(userId);
+      allow read, write: if true;
+
+      // User favorites subcollection
+      match /favorites/{favoriteId} {
+        allow read, write: if true;
+      }
+    }
+
+    // Admins collection
+    match /admins/{adminId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
   }
 }

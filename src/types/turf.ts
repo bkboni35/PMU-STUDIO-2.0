@@ -125,9 +125,29 @@ export interface HorseGeminiMultiEvaluation {
     avis: string;
     puissanceSimulation: string;
   };
+  gemini4Argon?: {
+    note: number;
+    avis: string;
+    musiqueDriverCertifiee: string;
+    sourceExtraction: string;
+  };
+  manus20Pro?: {
+    note: number;
+    avis: string;
+    auditMultiSources: string;
+  };
+  manus20Lite?: {
+    note: number;
+    avis: string;
+    vitesseScan: string;
+  };
 }
 
 export type GeminiModelId = 
+  | 'gemini-4-argon'
+  | 'manus-2.0-pro'
+  | 'manus-2.0-lite'
+  | 'manus-flex-beta'
   | 'gemini-3.1-flash-lite'
   | 'gemini-3.8' 
   | 'gemini-3.8-lite' 

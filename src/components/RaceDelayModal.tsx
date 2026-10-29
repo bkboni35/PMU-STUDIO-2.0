@@ -218,7 +218,7 @@ export const RaceDelayModal: React.FC<RaceDelayModalProps> = ({
 
                     {/* Delay Selector Buttons */}
                     <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-                      {[0, 5, 10, 15, 20, 30].map((mins) => (
+                      {[0, 0.5, 1, 2, 3, 4, 5, 6].map((mins) => (
                         <button
                           key={mins}
                           type="button"
@@ -231,7 +231,7 @@ export const RaceDelayModal: React.FC<RaceDelayModalProps> = ({
                               : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800'
                           }`}
                         >
-                          {mins === 0 ? 'Heure d\'origine' : `+${mins}m`}
+                          {mins === 0 ? 'Heure d\'origine' : `${mins === 0.5 ? '+30s' : `+${mins}m`}`}
                         </button>
                       ))}
                     </div>

@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Globe, AlertTriangle, CheckCircle2, Sparkles, Star, Calendar, ClipboardPaste, History, Lock, X, ShieldAlert, Smartphone, Clock, Zap, ChevronLeft, ChevronRight, RotateCcw, Tv, Monitor, Laptop, Cpu, Sliders, Bell, Volume2, Trophy, Crown, Terminal, CheckSquare, Square, Database, Layers, Filter, Maximize2, Minimize2 } from 'lucide-react';
+import { Search, Globe, AlertTriangle, CheckCircle2, Sparkles, Star, Calendar, ClipboardPaste, History, Lock, X, ShieldAlert, Smartphone, Clock, Zap, ChevronLeft, ChevronRight, RotateCcw, Tv, Monitor, Laptop, Cpu, Sliders, Bell, Volume2, Trophy, Crown, Terminal, CheckSquare, Square, MinusSquare, ChevronDown, ChevronUp, Database, Layers, Filter, Maximize2, Minimize2, Phone } from 'lucide-react';
 import { validateTurfUrl } from '../utils/turfUrlValidator';
 import { CourseHippique, PmuMeeting, TurfSource } from '../types/turf';
 import { UserProfile } from '../types/userAuth';
@@ -43,7 +43,6 @@ interface UrlInputHeaderProps {
   onNavigateTab?: (tab: string) => void;
   onOpenInstallModal?: () => void;
   onOpenAiQuotas?: () => void;
-  onOpenNotifications?: () => void;
   onOpenSubscription?: () => void;
   onOpenPmuApiHub?: () => void;
   hasScraperLogs?: boolean;
@@ -157,6 +156,47 @@ function convertMeetingToCourseHippique(m: PmuMeeting): CourseHippique {
   };
 }
 
+function getReunionColorClasses(rNum: string) {
+  switch ((rNum || '').toUpperCase()) {
+    case 'R1':
+      return {
+        bg: 'bg-amber-400 text-slate-950 font-black border-amber-300 shadow-xs',
+        badge: 'text-amber-400 bg-amber-500/20 border-amber-500/30',
+        ring: 'ring-amber-400/50',
+      };
+    case 'R2':
+      return {
+        bg: 'bg-emerald-400 text-slate-950 font-black border-emerald-300 shadow-xs',
+        badge: 'text-emerald-400 bg-emerald-500/20 border-emerald-500/30',
+        ring: 'ring-emerald-400/50',
+      };
+    case 'R3':
+      return {
+        bg: 'bg-purple-400 text-slate-950 font-black border-purple-300 shadow-xs',
+        badge: 'text-purple-400 bg-purple-500/20 border-purple-500/30',
+        ring: 'ring-purple-400/50',
+      };
+    case 'R4':
+      return {
+        bg: 'bg-teal-400 text-slate-950 font-black border-teal-300 shadow-xs',
+        badge: 'text-teal-400 bg-teal-500/20 border-teal-500/30',
+        ring: 'ring-teal-400/50',
+      };
+    case 'R5':
+      return {
+        bg: 'bg-sky-400 text-slate-950 font-black border-sky-300 shadow-xs',
+        badge: 'text-sky-400 bg-sky-500/20 border-sky-500/30',
+        ring: 'ring-sky-400/50',
+      };
+    default:
+      return {
+        bg: 'bg-slate-300 text-slate-950 font-black border-slate-200 shadow-xs',
+        badge: 'text-slate-300 bg-slate-500/20 border-slate-500/30',
+        ring: 'ring-slate-400/50',
+      };
+  }
+}
+
 export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   currentUrl,
   currentCourse,
@@ -181,7 +221,6 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   onNavigateTab,
   onOpenInstallModal,
   onOpenAiQuotas,
-  onOpenNotifications,
   onOpenSubscription,
   onOpenPmuApiHub,
   isExpertMode,
@@ -323,7 +362,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
 
   // Fetch initial arrivals and setup background polling
   useEffect(() => {
-    handleFetchParisTurfDirect(true);
+    Promise.resolve().then(() => handleFetchParisTurfDirect(true));
     const tickerInterval = setInterval(() => {
       handleFetchParisTurfDirect(true);
     }, 60000); // Rafraîchir toutes les minutes en arrière-plan
@@ -404,16 +443,22 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   useEffect(() => {
     const handleSelectedRacesSync = (e?: any) => {
       try {
+        let newIds: string[] | null = null;
         if (e?.detail?.selectedRaceIds && Array.isArray(e.detail.selectedRaceIds)) {
-          setSelectedRaceIds(e.detail.selectedRaceIds);
-          return;
-        }
-        const saved = localStorage.getItem('hippo_selected_next_race_ids');
-        if (saved !== null) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            setSelectedRaceIds(parsed);
+          newIds = e.detail.selectedRaceIds;
+        } else if (e?.detail?.ids && Array.isArray(e.detail.ids)) {
+          newIds = e.detail.ids;
+        } else {
+          const saved = localStorage.getItem('hippo_selected_next_race_ids');
+          if (saved !== null) {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) newIds = parsed;
           }
+        }
+        if (newIds) {
+          setTimeout(() => {
+            setSelectedRaceIds(newIds!);
+          }, 0);
         }
       } catch {}
     };
@@ -524,17 +569,17 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   }, [upcomingRacesList, selectedRaceIds]);
 
   const toggleRaceSelection = (id: string) => {
-    setSelectedRaceIds((prev) => {
-      const cleanPrev = prev.filter((x) => x !== '__UNINITIALIZED__');
-      const next = cleanPrev.includes(id)
-        ? cleanPrev.filter((rId) => rId !== id)
-        : [...cleanPrev, id];
-      try {
-        localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(next));
+    const cleanPrev = selectedRaceIds.filter((x) => x !== '__UNINITIALIZED__');
+    const next = cleanPrev.includes(id)
+      ? cleanPrev.filter((rId) => rId !== id)
+      : [...cleanPrev, id];
+    setSelectedRaceIds(next);
+    try {
+      localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(next));
+      setTimeout(() => {
         window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: next } }));
-      } catch {}
-      return next;
-    });
+      }, 0);
+    } catch {}
   };
 
   const handleSelectAllRaces = () => {
@@ -542,7 +587,9 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     setSelectedRaceIds(allIds);
     try {
       localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(allIds));
-      window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: allIds } }));
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: allIds } }));
+      }, 0);
     } catch {}
   };
 
@@ -550,7 +597,9 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
     setSelectedRaceIds([]);
     try {
       localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify([]));
-      window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: [] } }));
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: [] } }));
+      }, 0);
     } catch {}
   };
 
@@ -629,7 +678,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   const availableReunions = useMemo(() => {
     const map = new Map<string, string>();
     upcomingRacesList.forEach((r) => {
-      const parts = (r.reunionCourse || '').trim().split(' ');
+      const parts = (r.reunionCourse || '').trim().split(/\s+/);
       const rNum = parts[0]?.toUpperCase();
       if (rNum && rNum.startsWith('R') && !map.has(rNum)) {
         map.set(rNum, r.hippodrome || 'Hippodrome');
@@ -642,32 +691,117 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
   const displayedUpcomingRaces = useMemo(() => {
     if (!selectedReunion || selectedReunion === 'all') return upcomingRacesList;
     return upcomingRacesList.filter((r) => {
-      const parts = (r.reunionCourse || '').trim().split(' ');
+      const parts = (r.reunionCourse || '').trim().split(/\s+/);
       return parts[0]?.toUpperCase() === selectedReunion.toUpperCase();
     });
   }, [upcomingRacesList, selectedReunion]);
 
-  const handleSelectAllMeetingRaces = (rNum: string) => {
-    const meetingRaceIds = upcomingRacesList
-      .filter((r) => (r.reunionCourse || '').toUpperCase().startsWith(rNum.toUpperCase()))
-      .map((r) => r.id);
+  // État d'ouverture du menu déroulant Réunion avec cases à cocher
+  const [isReunionDropdownOpen, setIsReunionDropdownOpen] = useState<boolean>(false);
+  const reunionDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Fermer le menu déroulant lors d'un clic extérieur ou appui sur Escape
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (reunionDropdownRef.current && !reunionDropdownRef.current.contains(event.target as Node)) {
+        setIsReunionDropdownOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsReunionDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
+
+  // Calcul dynamique détaillé de chaque réunion : courses, sélection, partants, première course
+  const reunionStats = useMemo(() => {
+    return availableReunions.map(([rNum, hippo]) => {
+      const meetingRaces = upcomingRacesList.filter((r) => {
+        const parts = (r.reunionCourse || '').trim().split(/\s+/);
+        return (parts[0] || '').toUpperCase() === rNum.toUpperCase();
+      });
+      const totalCount = meetingRaces.length;
+      const checkedRaces = meetingRaces.filter((r) => selectedRaceIds.includes(r.id));
+      const checkedCount = checkedRaces.length;
+      const isFullyChecked = totalCount > 0 && checkedCount === totalCount;
+      const isPartiallyChecked = checkedCount > 0 && checkedCount < totalCount;
+      const firstRace = meetingRaces.find((r) => r.estQuinte) || meetingRaces[0];
+
+      return {
+        rNum,
+        hippo,
+        totalCount,
+        checkedCount,
+        isFullyChecked,
+        isPartiallyChecked,
+        meetingRaces,
+        firstRace,
+      };
+    });
+  }, [availableReunions, upcomingRacesList, selectedRaceIds]);
+
+  const totalCheckedRacesCount = useMemo(() => {
+    return upcomingRacesList.filter((r) => selectedRaceIds.includes(r.id)).length;
+  }, [upcomingRacesList, selectedRaceIds]);
+
+  const checkedReunionsCount = useMemo(() => {
+    return reunionStats.filter((s) => s.isFullyChecked || s.isPartiallyChecked).length;
+  }, [reunionStats]);
+
+  const allReunionsFullyChecked = useMemo(() => {
+    return reunionStats.length > 0 && reunionStats.every((s) => s.isFullyChecked);
+  }, [reunionStats]);
+
+  // Cocher ou décocher toutes les courses d'une réunion spécifique
+  const handleToggleMeetingSelection = (rNum: string, forceSelect?: boolean) => {
+    const meetingRaces = upcomingRacesList.filter((r) => {
+      const parts = (r.reunionCourse || '').trim().split(/\s+/);
+      return (parts[0] || '').toUpperCase() === rNum.toUpperCase();
+    });
+    const meetingRaceIds = meetingRaces.map((r) => r.id);
     if (meetingRaceIds.length === 0) return;
 
-    setSelectedRaceIds((prev) => {
-      const cleanPrev = prev.filter((x) => x !== '__UNINITIALIZED__');
-      const allSelected = meetingRaceIds.every((id) => cleanPrev.includes(id));
-      let next: string[];
-      if (allSelected) {
-        next = cleanPrev.filter((id) => !meetingRaceIds.includes(id));
-      } else {
-        next = Array.from(new Set([...cleanPrev, ...meetingRaceIds]));
-      }
-      try {
-        localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(next));
+    const cleanPrev = selectedRaceIds.filter((x) => x !== '__UNINITIALIZED__');
+    const allSelected = meetingRaceIds.every((id) => cleanPrev.includes(id));
+    const shouldSelect = forceSelect !== undefined ? forceSelect : !allSelected;
+    let next: string[];
+    if (!shouldSelect) {
+      next = cleanPrev.filter((id) => !meetingRaceIds.includes(id));
+    } else {
+      next = Array.from(new Set([...cleanPrev, ...meetingRaceIds]));
+    }
+    setSelectedRaceIds(next);
+    try {
+      localStorage.setItem('hippo_selected_next_race_ids', JSON.stringify(next));
+      setTimeout(() => {
         window.dispatchEvent(new CustomEvent('hippo_selected_races_changed', { detail: { selectedRaceIds: next } }));
-      } catch {}
-      return next;
+      }, 0);
+    } catch {}
+  };
+
+  const handleSelectAllMeetingRaces = (rNum: string) => {
+    handleToggleMeetingSelection(rNum);
+  };
+
+  // Cocher une réunion et lancer directement l'analyse de sa course phare / 1ère course
+  const handleAnalyzeMeetingDirectly = (rNum: string) => {
+    handleToggleMeetingSelection(rNum, true);
+    const meetingRaces = upcomingRacesList.filter((r) => {
+      const parts = (r.reunionCourse || '').trim().split(/\s+/);
+      return (parts[0] || '').toUpperCase() === rNum.toUpperCase();
     });
+    if (meetingRaces.length > 0) {
+      const targetRace = meetingRaces.find((r) => r.estQuinte) || meetingRaces[0];
+      handleAnalyzeUpcomingRace(targetRace);
+      setIsReunionDropdownOpen(false);
+    }
   };
 
   // Sélectionner et actualiser automatiquement la prochaine course non démarrée du programme
@@ -982,43 +1116,82 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
         </div>
       </div>
 
-      {/* Top Banner with Update Timestamp & Designer */}
-      <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-amber-950 font-bold px-4 py-2 text-xs flex flex-col md:flex-row items-center justify-between gap-2">
-        {/* Left / Center-Left: Last Update Timestamp */}
-        <div className="flex items-center gap-1.5 bg-slate-950/40 px-3 py-1 rounded-full border border-amber-300/30 text-[11px] text-amber-100 shadow-sm shrink-0">
-          <Clock className="w-3.5 h-3.5 text-amber-200 animate-pulse" />
-          <span className="font-extrabold text-amber-200">Dernière mise à jour :</span>
-          <span className="font-black text-white font-mono tracking-wide">{formattedUpdateTimestamp}</span>
+      {/* Bannière d'En-tête Système : Horloge Live, Concepteur Centré & Contrôles */}
+      <div className="bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 text-amber-950 font-bold px-4 py-1.5 text-xs flex flex-col md:flex-row items-center justify-between gap-2 shadow-xl border-b border-amber-500/30">
+        {/* Horloge & Date Temps Réel */}
+        <div className="flex items-center gap-2 bg-slate-950/80 px-3.5 py-1 rounded-xl border border-amber-300/40 text-amber-100 shadow-inner shrink-0">
+          <Clock className="w-4 h-4 text-amber-300 animate-pulse" />
+          <span className="font-mono font-black text-white text-xs">
+            {currentDateTime.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+          </span>
+          <span className="text-amber-300/60 font-bold">•</span>
+          <span className="font-bold text-white capitalize text-xs">
+            {currentDateTime.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long', year: 'numeric' })}
+          </span>
         </div>
 
-        {/* Center: Live Date (Optional but useful context) */}
-        <div className="flex items-center gap-1.5 bg-slate-950/20 px-2.5 py-0.5 rounded-full border border-amber-300/20 text-[11px] text-amber-100/90 shadow-sm hidden lg:flex">
-          <Calendar className="w-3.5 h-3.5 text-amber-300" />
-          <span className="font-bold">Date du jour :</span>
-          <span className="font-extrabold text-white">{formattedCurrentDay}</span>
-        </div>
-
-        {/* Right / Extreme Right: Designer Credits */}
-        <div className="flex items-center gap-1.5 bg-black/25 px-3 py-1 rounded-full border border-amber-300/30 text-[11px] text-amber-200">
-          <span className="font-extrabold text-white">Concepteur :</span>
-          <span className="font-semibold text-amber-300">Ghislain BONI</span>
-          <span className="text-amber-300/70">/</span>
+        {/* Crédits Concepteur Centrés */}
+        <div className="flex items-center gap-1.5 bg-slate-950/80 px-3.5 py-1 rounded-xl border border-amber-300/40 text-amber-100 shadow-inner shrink-0 text-center justify-center">
+          <Sparkles className="w-3.5 h-3.5 text-amber-300 fill-amber-300 shrink-0" />
+          <span className="font-bold text-amber-200 text-xs">Concepteur :</span>
+          <span className="font-extrabold text-white text-xs tracking-wide">Ghislain BONI</span>
+          <span className="text-amber-300/60 font-bold">/</span>
           <a
             href="tel:+2250101246106"
-            className="font-bold text-amber-100 hover:text-white underline underline-offset-2 transition-colors"
+            className="font-bold text-amber-200 hover:text-white underline underline-offset-2 transition-colors flex items-center gap-1 text-xs"
           >
-            +(225) 01 01 24 61 06
+            <Phone className="w-3 h-3 text-amber-300" />
+            <span>+(225) 01 01 24 61 06</span>
           </a>
+        </div>
+
+        {/* Controls Système : Mode Expert & Afficher Logs Scraper */}
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-center">
+          {onToggleExpertMode && (
+            <button
+              type="button"
+              onClick={onToggleExpertMode}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer ${
+                isExpertMode
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 border border-emerald-300 font-extrabold shadow-emerald-500/30 ring-2 ring-emerald-400/40'
+                  : 'bg-slate-950/80 hover:bg-slate-900 text-amber-200 border border-amber-400/40'
+              }`}
+              title={isExpertMode ? "Mode Expert Actif : Cliquez pour désactiver" : "Activer le Mode Expert"}
+            >
+              <Zap className={`w-3.5 h-3.5 ${isExpertMode ? 'text-slate-950 fill-slate-950' : 'text-amber-300'}`} />
+              <span>Mode Expert : <strong className={isExpertMode ? 'text-slate-950 font-black' : 'text-amber-300 font-bold'}>{isExpertMode ? 'ON' : 'OFF'}</strong></span>
+            </button>
+          )}
+
+          {onOpenScraperLogs && (
+            <button
+              type="button"
+              onClick={onOpenScraperLogs}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 cursor-pointer ${
+                hasScraperLogs
+                  ? 'bg-indigo-600 hover:bg-indigo-500 text-white border border-indigo-400 shadow-indigo-500/20'
+                  : 'bg-slate-950/80 hover:bg-slate-900 text-indigo-300 border border-indigo-400/40'
+              }`}
+              title="Afficher les logs bruts du scraper (DebugRaceGate)"
+            >
+              <Terminal className="w-3.5 h-3.5 text-indigo-300" />
+              <span>Afficher Logs Scraper</span>
+              {hasScraperLogs && (
+                <span className="w-2 h-2 rounded-full bg-indigo-300 animate-ping" />
+              )}
+            </button>
+          )}
         </div>
       </div>
 
-      <div className="w-full max-w-[1440px] mx-auto px-3 sm:px-5 py-4">
-        {/* En-tête Réorganisé : Tous les onglets et actions visibles sans déplacement */}
-        <div className="flex flex-col gap-3.5 mb-4 w-full">
+      <div className="w-full max-w-[1440px] mx-auto px-3 sm:px-5 py-3">
+        {/* En-tête Réorganisé & Épuré : Navigation & Accès Console Admin */}
+        <div className="flex flex-col items-center justify-center gap-3.5 mb-3 w-full">
           {/* LIGNE 1 : Programme des Courses, Date & Espace Session / Réglages */}
-          <div className="flex flex-wrap items-center justify-between gap-3 w-full pb-3 border-b border-slate-800/80">
+          <div className="flex flex-wrap items-center justify-center gap-3 w-full pb-3 border-b border-slate-800/80">
             {/* Côté Gauche : Profil, Sélecteur de Date & Hub PMU API */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
+
               {/* User Space Connection / Profile Button */}
               {onOpenUserSpace && (
                 <button
@@ -1068,32 +1241,284 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 onOpenPmuApiHub={!isRestrictedMode ? onOpenPmuApiHub : undefined}
               />
 
-              {/* Menu Déroulant Filtrage par Réunion (R1, R2, R3...) */}
-              <div className="flex items-center gap-1.5 bg-slate-900 border border-slate-700/80 rounded-xl px-2.5 py-1.5 shadow-sm hover:border-amber-500/50 transition-colors">
-                <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
-                  <Layers className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Réunion :</span>
-                </span>
-                <select
-                  value={selectedReunion}
-                  onChange={(e) => setSelectedReunion(e.target.value)}
-                  className="bg-transparent text-white text-xs font-black focus:outline-none cursor-pointer pr-1"
-                  title="Filtrer les courses par numéro de réunion (ex: R1, R2, R3...)"
+              {/* Menu Déroulant avec cases à cocher : Filtrage & Sélection des Réunions à Analyser */}
+              <div ref={reunionDropdownRef} className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsReunionDropdownOpen((prev) => !prev)}
+                  className={`flex items-center gap-1.5 bg-slate-900 border rounded-xl px-2.5 py-1.5 shadow-sm transition-all cursor-pointer ${
+                    isReunionDropdownOpen
+                      ? 'border-amber-400 ring-2 ring-amber-400/40 bg-slate-850'
+                      : 'border-slate-700/80 hover:border-amber-500/50 hover:bg-slate-850'
+                  }`}
+                  title="Menu déroulant des réunions : cochez pour analyser et filtrez par réunion"
                 >
-                  <option value="all" className="bg-slate-900 text-white font-bold">
-                    Toutes les réunions {availableReunions.length > 0 ? `(${availableReunions.length})` : ''}
-                  </option>
-                  {availableReunions.map(([rNum, hippo]) => (
-                    <option key={rNum} value={rNum} className="bg-slate-900 text-white font-bold">
-                      {rNum} - {hippo}
-                    </option>
-                  ))}
-                </select>
+                  <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+                    <Layers className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Réunion :</span>
+                  </span>
+
+                  <span className="text-white text-xs font-black truncate max-w-[120px] sm:max-w-[160px]">
+                    {selectedReunion === 'all'
+                      ? `Toutes (${availableReunions.length})`
+                      : availableReunions.find(([r]) => r === selectedReunion)
+                      ? `${selectedReunion} - ${availableReunions.find(([r]) => r === selectedReunion)?.[1]}`
+                      : selectedReunion}
+                  </span>
+
+                  {/* Badge d'indication des réunions cochées pour analyse */}
+                  {totalCheckedRacesCount > 0 ? (
+                    <span
+                      className="px-1.5 py-0.2 rounded-md text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0 flex items-center gap-1 shadow-xs"
+                      title={`${checkedReunionsCount} réunion(s) cochée(s) pour analyse (${totalCheckedRacesCount} courses prêtes)`}
+                    >
+                      <CheckSquare className="w-3 h-3 text-emerald-400" />
+                      <span>{checkedReunionsCount} R</span>
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.2 rounded-md text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+                      0 cochée
+                    </span>
+                  )}
+
+                  {isReunionDropdownOpen ? (
+                    <ChevronUp className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  ) : (
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-amber-400 shrink-0" />
+                  )}
+                </button>
+
+                {/* Volet Déroulant avec cases à cocher pour chaque réunion */}
+                {isReunionDropdownOpen && (
+                  <div className="absolute top-full left-0 sm:left-auto sm:right-0 mt-2 w-[calc(100vw-32px)] max-w-[420px] bg-slate-900/98 backdrop-blur-xl border-2 border-amber-500/70 rounded-2xl shadow-2xl shadow-amber-500/20 p-3.5 z-50 animate-fadeIn space-y-3">
+                    {/* En-tête du volet déroulant */}
+                    <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-800">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                          <Layers className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-xs font-black text-amber-300 uppercase tracking-wide flex items-center gap-1.5">
+                            RÉUNIONS & COURSES À ANALYSER
+                          </h4>
+                          <p className="text-[11px] text-slate-400">
+                            Cochez les réunions pour les positionner et les analyser
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsReunionDropdownOpen(false)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                        title="Fermer le menu déroulant"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Barre d'action rapide globale */}
+                    <div className="flex items-center justify-between gap-2 bg-slate-950/80 p-2 rounded-xl border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (allReunionsFullyChecked) {
+                            handleDeselectAllRaces();
+                          } else {
+                            handleSelectAllRaces();
+                          }
+                        }}
+                        className="flex items-center gap-1.5 text-xs font-bold text-slate-200 hover:text-amber-300 transition-colors cursor-pointer select-none"
+                        title={allReunionsFullyChecked ? 'Tout décocher' : 'Cocher toutes les réunions'}
+                      >
+                        {allReunionsFullyChecked ? (
+                          <CheckSquare className="w-4 h-4 text-emerald-400" />
+                        ) : totalCheckedRacesCount > 0 ? (
+                          <MinusSquare className="w-4 h-4 text-amber-400" />
+                        ) : (
+                          <Square className="w-4 h-4 text-slate-500" />
+                        )}
+                        <span>{allReunionsFullyChecked ? 'Tout décocher' : 'Tout cocher pour analyser'}</span>
+                      </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedReunion('all');
+                          }}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-black transition-colors cursor-pointer ${
+                            selectedReunion === 'all'
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'bg-slate-800 text-slate-300 hover:text-white'
+                          }`}
+                          title="Afficher toutes les réunions dans la vue"
+                        >
+                          Voir Toutes ({availableReunions.length})
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Liste des réunions disponibles avec case à cocher pour chacune */}
+                    <div className="space-y-1.5 max-h-[290px] overflow-y-auto pr-1 custom-scrollbar">
+                      {reunionStats.length === 0 ? (
+                        <div className="p-4 text-center text-xs text-slate-400 bg-slate-950/60 rounded-xl border border-slate-800">
+                          <p>Aucune réunion disponible pour cette date.</p>
+                          {onOpenPmuApiHub && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsReunionDropdownOpen(false);
+                                onOpenPmuApiHub();
+                              }}
+                              className="mt-2 px-3 py-1 bg-amber-500/20 text-amber-300 rounded-lg font-bold border border-amber-500/40 text-[10px] hover:bg-amber-500/30 transition-colors cursor-pointer"
+                            >
+                              Ouvrir le Centre PMU API
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        reunionStats.map((item) => {
+                          const colors = getReunionColorClasses(item.rNum);
+                          const isFiltered = selectedReunion.toUpperCase() === item.rNum.toUpperCase();
+
+                          return (
+                            <div
+                              key={item.rNum}
+                              className={`p-2.5 rounded-xl border transition-all flex items-center justify-between gap-2 text-xs ${
+                                item.isFullyChecked
+                                  ? 'bg-amber-950/30 border-amber-500/60 ring-1 ring-amber-500/30 shadow-xs'
+                                  : item.isPartiallyChecked
+                                  ? 'bg-slate-850 border-amber-500/40'
+                                  : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-850/60'
+                              }`}
+                            >
+                              {/* Case à cocher Réunion & Infos */}
+                              <div
+                                className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer select-none"
+                                onClick={() => handleToggleMeetingSelection(item.rNum)}
+                                title={`Cliquer pour ${item.isFullyChecked ? 'décocher' : 'cocher'} la réunion ${item.rNum} (${item.hippo}) pour analyse`}
+                              >
+                                <div className="w-4 h-4 shrink-0 flex items-center justify-center cursor-pointer">
+                                  {item.isFullyChecked ? (
+                                    <CheckSquare className="w-4 h-4 text-emerald-400" />
+                                  ) : item.isPartiallyChecked ? (
+                                    <MinusSquare className="w-4 h-4 text-amber-400" />
+                                  ) : (
+                                    <Square className="w-4 h-4 text-slate-500 hover:text-slate-400" />
+                                  )}
+                                </div>
+
+                                <span className={`px-2 py-0.5 rounded-md text-[11px] font-black shrink-0 border ${colors.bg}`}>
+                                  {item.rNum}
+                                </span>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-white text-xs truncate max-w-[130px] sm:max-w-[160px]" title={item.hippo}>
+                                      {item.hippo}
+                                    </span>
+                                    {item.isFullyChecked && (
+                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                                        ✓ Cochée
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                    <span className="font-semibold text-amber-300/90 font-mono">
+                                      {item.checkedCount}/{item.totalCount} course{item.totalCount > 1 ? 's' : ''}
+                                    </span>
+                                    {item.firstRace && (
+                                      <>
+                                        <span>•</span>
+                                        <span className="truncate">Départ {item.firstRace.heure}</span>
+                                      </>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Boutons Filtrer & Analyser */}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedReunion(isFiltered ? 'all' : item.rNum);
+                                  }}
+                                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors cursor-pointer ${
+                                    isFiltered
+                                      ? 'bg-amber-400 text-slate-950 border-amber-300 font-black'
+                                      : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+                                  }`}
+                                  title={`Filtrer la vue principale sur la réunion ${item.rNum}`}
+                                >
+                                  {isFiltered ? 'Filtré ✓' : 'Filtrer'}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAnalyzeMeetingDirectly(item.rNum);
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-bold text-[10px] border border-emerald-500/40 transition-colors shrink-0 flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                                  title={`Cocher et analyser immédiatement la réunion ${item.rNum} (${item.hippo})`}
+                                >
+                                  <Zap className="w-3 h-3 text-emerald-400" />
+                                  <span>Analyser</span>
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    {/* Pied du volet déroulant avec synthèse et bouton d'action */}
+                    <div className="pt-2 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs">
+                      <div className="text-[11px] text-slate-300 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                        <span>
+                          <strong className="text-amber-300">{checkedReunionsCount}</strong> réunion(s) cochée(s) · <strong className="text-emerald-300">{totalCheckedRacesCount}</strong> courses prêtes
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 w-full sm:w-auto justify-end">
+                        {totalCheckedRacesCount > 0 && pinnedUpcomingRaces.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleAnalyzeUpcomingRace(pinnedUpcomingRaces[0]);
+                              setIsReunionDropdownOpen(false);
+                            }}
+                            className="flex-1 sm:flex-initial px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-slate-950 font-black text-xs transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer active:scale-95"
+                            title="Lancer l'analyse de la première course cochée"
+                          >
+                            <Zap className="w-3.5 h-3.5 fill-slate-950 text-slate-950" />
+                            <span>Analyser ({pinnedUpcomingRaces[0].reunionCourse})</span>
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowRaceSelectionGrid(!showRaceSelectionGrid);
+                            setIsReunionDropdownOpen(false);
+                          }}
+                          className="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 transition-colors cursor-pointer shrink-0"
+                          title="Afficher/masquer les cases à cocher détaillées de toutes les courses"
+                        >
+                          Détail courses
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Côté Droite : Navigation Session, Historique, Favoris & Préférences Système */}
-            <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
+            <div className="flex items-center justify-center gap-2 sm:gap-2.5 flex-wrap">
               {/* 1. Bouton Historique */}
               {onOpenHistory && (
                 <button
@@ -1129,17 +1554,7 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 </button>
               )}
 
-              {!isRestrictedMode && onOpenNotifications && (
-                <button
-                  type="button"
-                  onClick={onOpenNotifications}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border border-emerald-500/50 text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
-                  title="Voir les alertes d'arrivées officielles pour mes courses favorites"
-                >
-                  <Bell className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
-                  <span className="hidden sm:inline">Alertes Arrivées</span>
-                </button>
-              )}
+
 
               {/* 2ter. Bouton Gestion des Retards de Course en temps réel */}
               <button
@@ -1151,53 +1566,6 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 <AlertTriangle className="w-3.5 h-3.5 text-rose-400 animate-pulse" />
                 <span>Retards de Course</span>
               </button>
-
-              {/* 3. Onglet Quotas AI */}
-              {!isRestrictedMode && onOpenAiQuotas && (
-                <button
-                  type="button"
-                  onClick={onOpenAiQuotas}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-amber-300 border border-amber-500/40 text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
-                  title="Consulter les quotas & limites des modèles IA (Google Gemini API)"
-                >
-                  <Cpu className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Quotas AI</span>
-                </button>
-              )}
-
-              {/* Bouton Afficher Logs Scraper si disponibles */}
-              {!isRestrictedMode && hasScraperLogs && onOpenScraperLogs && (
-                <button
-                  type="button"
-                  onClick={onOpenScraperLogs}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-amber-700 hover:from-amber-400 hover:to-amber-600 text-slate-950 border border-amber-300 text-xs font-black transition-all shadow-md active:scale-95 shrink-0 cursor-pointer animate-pulse"
-                  title="Réouvrir le dernier composant DebugRaceGate si des logs de scraping sont disponibles"
-                >
-                  <Terminal className="w-3.5 h-3.5 text-slate-950" />
-                  <span>Afficher Logs Scraper</span>
-                </button>
-              )}
-
-              {/* 4. Bascule Mode Expert */}
-              {!isRestrictedMode && onToggleExpertMode && (
-                <button
-                  type="button"
-                  onClick={onToggleExpertMode}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border text-xs font-black transition-all shadow-md active:scale-95 shrink-0 ${
-                    isExpertMode
-                      ? 'bg-gradient-to-r from-purple-600 via-fuchsia-600 to-indigo-600 text-white border-purple-400 shadow-purple-500/30 ring-2 ring-purple-300'
-                      : 'bg-slate-900 hover:bg-slate-800 text-purple-300 border-purple-500/40'
-                  }`}
-                  title={
-                    isExpertMode
-                      ? 'Mode Expert Actif : colonnes de données avancées affichées (Gains Cumulés, Record Kilométrique)'
-                      : 'Activer le Mode Expert pour afficher les colonnes avancées (Gains Cumulés & Record Kilométrique)'
-                  }
-                >
-                  <Sliders className={`w-3.5 h-3.5 ${isExpertMode ? 'text-purple-200' : 'text-purple-400'}`} />
-                  <span>Mode Expert : {isExpertMode ? 'ON' : 'OFF'}</span>
-                </button>
-              )}
 
               {/* 4. Sélecteur Thème */}
               <ThemeToggleWidget />
@@ -1230,16 +1598,29 @@ export const UrlInputHeader: React.FC<UrlInputHeaderProps> = ({
                 )}
               </button>
 
-              {/* 5. Console Administrateur */}
+              {/* 4ter. Liens Courts & Raccourcis pour mémoriser facilement */}
+              {onOpenLinksModal && (
+                <button
+                  type="button"
+                  onClick={onOpenLinksModal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 border border-cyan-500/60 text-xs font-black transition-all shadow-md active:scale-95 shrink-0 cursor-pointer"
+                  title="Raccourcir l'adresse, liens d'accès direct, favoris et QR Code mobile"
+                >
+                  <Globe className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Liens & Raccourcis</span>
+                </button>
+              )}
+
+              {/* 5. Console Admin */}
               {!isRestrictedMode && onOpenAdmin && (
                 <button
                   type="button"
                   onClick={onOpenAdmin}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950/70 hover:bg-red-900/80 text-red-300 border border-red-500/40 text-xs font-black transition-all shadow-md active:scale-95 shrink-0"
-                  title="Console Administrateur : voir les utilisateurs connectés et heures de connexion"
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-red-700 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white border border-red-400/80 text-xs font-black transition-all shadow-md shadow-red-500/20 active:scale-95 shrink-0 cursor-pointer"
+                  title="Ouvrir la Console Admin V39 (En-tête Système, Crédits Concepteur, Mode Expert, Logs Scraper, Utilisateurs)"
                 >
-                  <ShieldAlert className="w-3.5 h-3.5 text-red-400" />
-                  <span>Administrateurs</span>
+                  <ShieldAlert className="w-3.5 h-3.5 text-red-200 animate-pulse" />
+                  <span>Console Admin</span>
                 </button>
               )}
             </div>

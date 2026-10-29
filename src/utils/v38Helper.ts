@@ -60,18 +60,62 @@ export interface V38Result {
  * Extrait la cote Geny / PMU d'un partant pour le tri obligatoire par cote croissante
  */
 export function getHorseGenyOdds(p: Partant): number {
+  // 1. Cote probable officielle (Geny / PMU)
   if (p.coteProbable !== undefined && p.coteProbable !== null && !isNaN(Number(p.coteProbable))) {
     const val = Number(p.coteProbable);
     if (val > 0) return val;
   }
+  // 2. Cote directe (propriété p.cote si fournie par le scrapeur)
+  if ((p as any).cote !== undefined && (p as any).cote !== null && !isNaN(Number((p as any).cote))) {
+    const val = Number((p as any).cote);
+    if (val > 0) return val;
+  }
+  // 3. genyOdds direct
+  if (p.genyOdds !== undefined && p.genyOdds !== null && !isNaN(Number(p.genyOdds))) {
+    const val = Number(p.genyOdds);
+    if (val > 0) return val;
+  }
+  // 4. pmuOdds direct
+  if (p.pmuOdds !== undefined && p.pmuOdds !== null && !isNaN(Number(p.pmuOdds))) {
+    const val = Number(p.pmuOdds);
+    if (val > 0) return val;
+  }
+  // 5. parisTurfOdds direct
+  if (p.parisTurfOdds !== undefined && p.parisTurfOdds !== null && !isNaN(Number(p.parisTurfOdds))) {
+    const val = Number(p.parisTurfOdds);
+    if (val > 0) return val;
+  }
+  // 6. cotesRaw textuelle (ex: "8.5/1", "12/1")
+  if (p.cotesRaw) {
+    const parsed = parseFloat(String(p.cotesRaw).replace(/\/1$/, '').trim().replace(',', '.'));
+    if (!isNaN(parsed) && parsed > 0) return parsed;
+  }
+  // 7. Cote précédente réelle
   if (p.cotePrecedente !== undefined && p.cotePrecedente !== null && !isNaN(Number(p.cotePrecedente))) {
     const val = Number(p.cotePrecedente);
     if (val > 0) return val;
   }
-  if (p.hippoScore && Number(p.hippoScore) > 0) {
-    return Math.max(1.5, Math.round((100 - Number(p.hippoScore)) * 0.5 * 10) / 10);
-  }
+  // Aucune cote réelle disponible : retourne 99 sans inventer de données
   return 99;
+}
+
+/**
+ * Formate l'écriture des cotes au format turf standard :
+ * Exemples demandés : 2,3/1 ; 20/1 ; 46/1
+ * - Cotes entières (ex: 20 ou 20.0 ou 46.0) : affichage entier sans virgule superflue suivie de /1 (ex: "20/1", "46/1")
+ * - Cotes à décimale (ex: 2.3) : affichage avec virgule et 1 décimale suivie de /1 (ex: "2,3/1")
+ */
+export function formatCote(cote: number | string | undefined | null): string {
+  if (cote === undefined || cote === null || cote === '' || cote === '—' || cote === '-') return '—';
+  const cleanStr = String(cote).replace(/\/1$/, '').trim().replace(',', '.');
+  const num = parseFloat(cleanStr);
+  if (isNaN(num) || num <= 0) return '—';
+
+  const isInteger = Math.abs(num - Math.round(num)) < 0.05;
+  const formattedVal = isInteger
+    ? Math.round(num).toString()
+    : num.toFixed(1).replace('.', ',');
+  return `${formattedVal}/1`;
 }
 
 /**
@@ -246,25 +290,14 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     const num = Number(p.numero);
     let group: 'G1' | 'G2' | 'G3' = 'G1';
 
-    // En plat, le regroupement et le positionnement sont faits en fonction du numéro de corde du cheval (CA, CB, CC)
-    if (isPlat) {
-      const cordeVal = assignedCordes.get(num) || (typeof p.corde === 'number' ? p.corde : parseInt(String(p.corde).replace(/\D/g, ''), 10)) || num;
-      if (cordeVal >= 1 && cordeVal <= 5) {
-        group = 'G1'; // Correspond à CA (Corde 1 à 5)
-      } else if (cordeVal >= 6 && cordeVal <= 8) {
-        group = 'G2'; // Correspond à CB (Corde 6 à 8)
-      } else {
-        group = 'G3'; // Correspond à CC (Corde 9+)
-      }
+    // Regroupement universel par Numéro de dossard pour TOUTES les disciplines (Plat, Trot, Obstacles)
+    // G1 (Groupe A) : 1 à 6 | G2 (Groupe B) : 7 à 10 | G3 (Groupe C) : 11+
+    if (num >= 1 && num <= 6) {
+      group = 'G1';
+    } else if (num >= 7 && num <= 10) {
+      group = 'G2';
     } else {
-      // Regroupement universel par Numéro de dossard pour TOUTES les autres disciplines (Trot, Obstacles)
-      if (num >= 1 && num <= 6) {
-        group = 'G1';
-      } else if (num >= 7 && num <= 10) {
-        group = 'G2';
-      } else {
-        group = 'G3';
-      }
+      group = 'G3';
     }
 
     const genyOdds = getHorseGenyOdds(p);
@@ -327,8 +360,9 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     }
   }
 
-  // --- SYSTÈME 74 RANKING ---
+  // --- CLASSEMENT DU SYSTÈME 74 STRICT PAR LA DIFFÉRENCE (X) DÉCROISSANTE ---
   const activePartants = enriched.filter(p => !p.estNonPartant && p.statut !== 'Non-partant');
+
   const systeme74Ranked = [...activePartants].map(p => {
     const num = Number(p.numero);
     const cote = getHorseGenyOdds(p);
@@ -336,18 +370,18 @@ export function computeV38Hierarchy(course: CourseHippique, options?: V38Options
     return { ...p, scoreX, cote };
   }).sort((a, b) => b.scoreX - a.scoreX);
 
-  const favoris = systeme74Ranked.slice(0, 3);             // 1er au 3e N°
-  const outsiders = systeme74Ranked.slice(3, 6);           // 4e au 6e N°
-  const tocardsSpeculatifs = systeme74Ranked.slice(6, 10); // 7e au 10e N° (4 N°)
-  const remaining74 = systeme74Ranked.slice(10);
-  const surprises = remaining74.slice(0, 4);
+  const favoris = systeme74Ranked.slice(0, 3);             // 1er, 2e, 3e (3 N° FAVORIS)
+  const outsiders = systeme74Ranked.slice(3, 6);           // 4e, 5e, 6e (3 N° OUTSIDERS)
+  const tocardsSpeculatifs = systeme74Ranked.slice(6, 10); // 7e à 10e (4 N° TOCARDS)
+  const surprises = systeme74Ranked.slice(10, 14);         // 11e+ (4 N° SURPRISES)
 
   const assignedNums = new Set([
-    ...favoris.map(p => Number(p.numero)),
-    ...outsiders.map(p => Number(p.numero)),
-    ...tocardsSpeculatifs.map(p => Number(p.numero)),
-    ...surprises.map(p => Number(p.numero)),
+    ...favoris.map((p) => Number(p.numero)),
+    ...outsiders.map((p) => Number(p.numero)),
+    ...tocardsSpeculatifs.map((p) => Number(p.numero)),
+    ...surprises.map((p) => Number(p.numero)),
   ]);
+
   const delaisses = activePartants.filter(p => !assignedNums.has(Number(p.numero)));
 
   const selection12 = systeme74Ranked.slice(0, Math.min(12, systeme74Ranked.length));
@@ -825,3 +859,706 @@ export function buildRealV38Synthese(course: CourseHippique): PronosticSynthese 
     ordrePossible: [base1, outNums[0] || selection8[2], base2, outNums[1] || selection8[3], tocNums[0] || selection8[6]].filter(Boolean).slice(0, 5),
   };
 }
+
+/**
+ * Calcule les tocards et surprises du Système 74 :
+ * - TOCARDS (4 N° : 7e - 10e) : 4 chevaux du 7e au 10e rang du Système 74, classés selon leurs 3 dernières performances (musique).
+ * - SURPRISES (4 N° : petites cotes) : 4 chevaux aux plus petites cotes parmi les partants restants (11e+), classés selon leurs 3 dernières performances (musique).
+ */
+export function getSysteme74TocardsAndSurprises(course: CourseHippique) {
+  const activePartants = (course.partants || []).filter(
+    (p) => !p.estNonPartant && p.statut !== 'Non-partant'
+  );
+
+  const ranked = activePartants
+    .map((p) => {
+      const num = Number(p.numero);
+      const cote = getHorseGenyOdds(p);
+      const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+      return { p, num, cote, scoreX };
+    })
+    .sort((a, b) => b.scoreX - a.scoreX);
+
+  // 1. TOCARDS (4 N° : rangs 7e à 10e du Système 74)
+  const candidatesToc = ranked.slice(6, 10);
+
+  // Classement des Tocards en fonction des 3 dernières performances des chevaux
+  const tocards74 = [...candidatesToc].sort((a, b) => {
+    const perfA = calculerPerformance3Musiques(a.p.musique || '').totalPoints;
+    const perfB = calculerPerformance3Musiques(b.p.musique || '').totalPoints;
+    if (perfA !== perfB) return perfA - perfB;
+    if (a.cote !== b.cote) return a.cote - b.cote;
+    return a.num - b.num;
+  });
+
+  // 2. SURPRISES (4 N° : petites cotes parmi les 11e+)
+  const remainingCandidates = ranked.slice(10);
+
+  // Sélection des 4 chevaux aux plus petites cotes parmi les candidats aux surprises (11e+)
+  const top4SurprisesPetitesCotes = [...remainingCandidates]
+    .sort((a, b) => {
+      if (a.cote !== b.cote) return a.cote - b.cote;
+      return a.num - b.num;
+    })
+    .slice(0, 4);
+
+  // Classement des Surprises en fonction des 3 dernières performances des chevaux
+  const surprises74 = [...top4SurprisesPetitesCotes].sort((a, b) => {
+    const perfA = calculerPerformance3Musiques(a.p.musique || '').totalPoints;
+    const perfB = calculerPerformance3Musiques(b.p.musique || '').totalPoints;
+    if (perfA !== perfB) return perfA - perfB;
+    if (a.cote !== b.cote) return a.cote - b.cote;
+    return a.num - b.num;
+  });
+
+  return { tocards74, surprises74 };
+}
+
+export interface TacticalGroupItem {
+  p: Partant;
+  num: number;
+  cote: number;
+  scoreX: number;
+  classified?: any;
+  rangScoreX?: number;
+  rangPerf?: number;
+  sommeRangs?: number;
+}
+
+export interface TacticalGroupsResult {
+  groupA: (TacticalGroupItem | undefined)[];
+  groupB: (TacticalGroupItem | undefined)[];
+  groupC: (TacticalGroupItem | undefined)[];
+}
+
+export interface TacticalGroupsOptions {
+  filterMinScoreX?: boolean;
+  minScoreXThreshold?: number;
+}
+
+/**
+ * Calcule l'ordonnancement officiel des Groupes A (1-6), B (7-10) et C (11+)
+ * pour le Positionnement Tactique (Système 74) dans le moteur de synthèse V38 :
+ *
+ * 1. Répartition stricte des partants par dossard :
+ *    - Groupe A : N° 1 à 6
+ *    - Groupe B : N° 7 à 10
+ *    - Groupe C : N° 11 et plus
+ *
+ * 2. Répartition initiale en 2 lignes (grille 3 colonnes x 2 rangées) :
+ *    - Ligne 1 : les 3 premiers numéros du groupe
+ *    - Ligne 2 : les numéros suivants du groupe
+ *
+ * 3. 1ère ligne (Groupes A, B, C) :
+ *    - Filtrée par le seuil minimal de Score(X) si le filtre est actif (scoreX >= minScoreXThreshold)
+ *    - Classée en fonction du Score(X) décroissant du Système 74
+ *
+ * 4. 2e ligne du Groupe A (1-6) :
+ *    - Retient les 3 numéros restants parmi les partants du Groupe A (jusqu'à 6 chevaux au total : 3 en L1 + 3 en L2)
+ *    - Si le seuil minimal de Score(X) est actif : élimine ceux sous le seuil
+ *    - La 2e ligne est ordonnée par Score(X) décroissant du Système 74
+ *
+ * 5. 2e ligne du Groupe B (7-10) et Groupe C (11+) :
+ *    - Retient jusqu'à 3 numéros parmi les partants du groupe
+ *    - Filtrée par le seuil Score(X) si actif
+ *    - Ordonnée par Score(X) décroissant du Système 74
+ *
+ * 6. Les deux lignes de chaque groupe sont ainsi rigoureusement ordonnées par Score(X) décroissant.
+ */
+export function computeSysteme74TacticalGroups(
+  partants: Partant[],
+  options?: TacticalGroupsOptions
+): TacticalGroupsResult {
+  const activePartants = (partants || []).filter(
+    (p) => !p.estNonPartant && p.statut !== 'Non-partant'
+  );
+
+  const classificationForme = classerChevauxFormeEtPoints(partants || []);
+  const allClassified = classificationForme.allClassified;
+
+  const allWithX: TacticalGroupItem[] = activePartants.map((p) => {
+    const num = Number(p.numero);
+    const cote = getHorseGenyOdds(p);
+    const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+    const classified = allClassified.find((c) => Number(c.partant.numero) === num);
+    return { p, num, cote, scoreX, classified };
+  });
+
+  // Calcul du Rang Score(X) et Rang Performance sur tous les partants actifs
+  const sortedByScoreXMap = new Map<number, number>();
+  [...allWithX]
+    .sort((a, b) => (b.scoreX !== a.scoreX ? b.scoreX - a.scoreX : a.cote - b.cote))
+    .forEach((item, idx) => sortedByScoreXMap.set(item.num, idx + 1));
+
+  const sortedByPerfMap = new Map<number, number>();
+  [...allWithX]
+    .sort((a, b) => {
+      const perfA = calculerPerformance3Musiques(a.p.musique || '').totalPoints;
+      const perfB = calculerPerformance3Musiques(b.p.musique || '').totalPoints;
+      return perfA !== perfB ? perfA - perfB : a.cote - b.cote;
+    })
+    .forEach((item, idx) => sortedByPerfMap.set(item.num, idx + 1));
+
+  allWithX.forEach((item) => {
+    item.rangScoreX = sortedByScoreXMap.get(item.num) || 99;
+    item.rangPerf = sortedByPerfMap.get(item.num) || 99;
+    item.sommeRangs = item.rangScoreX + item.rangPerf;
+  });
+
+  const filterMinScoreX = Boolean(options?.filterMinScoreX);
+  const minScoreXThreshold = options?.minScoreXThreshold ?? 20;
+
+  const getProcessedGroup = (min: number, max: number | null): (TacticalGroupItem | undefined)[] => {
+    const groupPartants = allWithX.filter(
+      (item) => item.num >= min && (max === null || item.num <= max)
+    );
+
+    const sortedByPerf = [...groupPartants].sort((a, b) => {
+      const perfA = calculerPerformance3Musiques(a.p.musique || '').totalPoints;
+      const perfB = calculerPerformance3Musiques(b.p.musique || '').totalPoints;
+      if (perfA !== perfB) return perfA - perfB;
+      if (a.cote !== b.cote) return a.cote - b.cote;
+      return a.num - b.num;
+    });
+
+    const rawRow1 = sortedByPerf.slice(0, 3);
+    const rawRow2Candidates = sortedByPerf.slice(3);
+
+    // 2. Ordonnancement de la 1ère Ligne (Tous les groupes) :
+    // Les 3 numéros de la 1ere ligne sont classés entre eux en fonctions du score (x) du système 74
+    let row1: (TacticalGroupItem | undefined)[] = [...rawRow1].sort((a, b) => {
+      if (b.scoreX !== a.scoreX) return b.scoreX - a.scoreX;
+      return a.cote - b.cote;
+    });
+
+    // Filtrage par le seuil minimal de Score(X) sur la 1ère ligne
+    if (filterMinScoreX) {
+      row1 = row1.map((item) => (item && item.scoreX >= minScoreXThreshold ? item : undefined));
+    }
+
+    // 3. Traitement de la 2e Ligne (Tous les groupes, incluant le Groupe A 1-6) :
+    // Retient jusqu'à 3 numéros pour la 2e ligne (Max 6 numéros par groupe : 3 en ligne 1 + 3 en ligne 2)
+    let candidatesRow2 = rawRow2Candidates.slice(0, 3);
+
+    // Exclusion par le seuil minimal de Score(X) si le filtre est actif
+    if (filterMinScoreX) {
+      candidatesRow2 = candidatesRow2.filter((item) => item.scoreX >= minScoreXThreshold);
+    }
+
+    // Ordonnancement par Score(X) décroissant du Système 74
+    candidatesRow2.sort((a, b) => {
+      if (b.scoreX !== a.scoreX) return b.scoreX - a.scoreX;
+      return a.cote - b.cote;
+    });
+
+    const row2: (TacticalGroupItem | undefined)[] = [
+      candidatesRow2[0],
+      candidatesRow2[1],
+      candidatesRow2[2],
+    ];
+
+    // Alignement strict 3 colonnes x 2 rangées
+    return [
+      row1[0],
+      row1[1],
+      row1[2],
+      row2[0],
+      row2[1],
+      row2[2],
+    ];
+  };
+
+  return {
+    groupA: getProcessedGroup(1, 6),
+    groupB: getProcessedGroup(7, 10),
+    groupC: getProcessedGroup(11, 99),
+  };
+}
+
+export interface TableauSyntheseTactiqueResult {
+  base: TacticalGroupItem[];
+  chanceReguliere: TacticalGroupItem[];
+  chanceReguliereVecteur1: TacticalGroupItem[];
+  chanceReguliereVecteur2: TacticalGroupItem[];
+  outsidersSeduisants: TacticalGroupItem[];
+  aSuivre: TacticalGroupItem[];
+  ligne1Globale: TacticalGroupItem[];
+  ligne2Globale: TacticalGroupItem[];
+}
+
+export function computeTableauSyntheseTactique(
+  partants: Partant[],
+  options?: TacticalGroupsOptions
+): TableauSyntheseTactiqueResult {
+  const filterMinScoreX = Boolean(options?.filterMinScoreX);
+  const minScoreXThreshold = options?.minScoreXThreshold ?? 20;
+
+  const activePartants = (partants || []).filter(
+    (p) => !p.estNonPartant && p.statut !== 'Non-partant'
+  );
+
+  const classificationForme = classerChevauxFormeEtPoints(partants || []);
+  const allClassified = classificationForme.allClassified;
+
+  let allWithX: TacticalGroupItem[] = activePartants.map((p) => {
+    const num = Number(p.numero);
+    const cote = getHorseGenyOdds(p);
+    const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+    const classified = allClassified.find((c) => Number(c.partant.numero) === num);
+    return { p, num, cote, scoreX, classified };
+  });
+
+  // Calcul du Rang Score(X) (Système 74) et du Rang Performance (3 musiques) sur tous les partants actifs
+  const sortedByScoreXMap = new Map<number, number>();
+  [...allWithX]
+    .sort((a, b) => (b.scoreX !== a.scoreX ? b.scoreX - a.scoreX : a.cote - b.cote))
+    .forEach((item, idx) => sortedByScoreXMap.set(item.num, idx + 1));
+
+  const sortedByPerfMap = new Map<number, number>();
+  [...allWithX]
+    .sort((a, b) => {
+      const perfA = calculerPerformance3Musiques(a.p.musique || '').totalPoints;
+      const perfB = calculerPerformance3Musiques(b.p.musique || '').totalPoints;
+      return perfA !== perfB ? perfA - perfB : a.cote - b.cote;
+    })
+    .forEach((item, idx) => sortedByPerfMap.set(item.num, idx + 1));
+
+  // Attribution des rangs et calcul de la Somme des Rangs (Rang Score X + Rang Performance)
+  allWithX.forEach((item) => {
+    item.rangScoreX = sortedByScoreXMap.get(item.num) || 99;
+    item.rangPerf = sortedByPerfMap.get(item.num) || 99;
+    item.sommeRangs = item.rangScoreX + item.rangPerf;
+  });
+
+  const tactical = computeSysteme74TacticalGroups(partants, options);
+
+  // 1. SÉLECTION 1 (Max. 10 numéros) :
+  // - Ligne 1 du Groupe A (1-6) (max 3)
+  // - Ligne 1 du Groupe B (7-10) (max 3)
+  // - Groupe C (11+) : 3 numéros de L1 + 1er numéro de L2 (4 N° au total)
+  const l1GroupA = tactical.groupA.slice(0, 3).filter((item): item is TacticalGroupItem => Boolean(item));
+  const l1GroupB = tactical.groupB.slice(0, 3).filter((item): item is TacticalGroupItem => Boolean(item));
+
+  const l1GroupC = tactical.groupC.slice(0, 3).filter((item): item is TacticalGroupItem => Boolean(item));
+  const c1Line2GrpC = tactical.groupC[3]; // 1er numéro de Ligne 2 du Groupe C
+  const selectedGrpC = [...l1GroupC, ...(c1Line2GrpC ? [c1Line2GrpC] : [])];
+
+  let selection1 = [...l1GroupA, ...l1GroupB, ...selectedGrpC];
+
+  // Application du seuil Système 74 Diff X ≥ 20
+  if (filterMinScoreX) {
+    selection1 = selection1.filter((item) => item.scoreX >= minScoreXThreshold);
+  }
+
+  // Traitement Sélection 1 :
+  // 1. Les numéros retenus en Sélection 1 sont classés par Score(X) décroissant.
+  const sortedSel1ByScoreX = [...selection1].sort((a, b) => {
+    if (b.scoreX !== a.scoreX) return b.scoreX - a.scoreX;
+    return a.cote - b.cote;
+  });
+
+  // BASE : Attribuée aux 2 premiers numéros du classement par score de la Sélection 1.
+  const base = sortedSel1ByScoreX.slice(0, 2);
+
+  // CHANCE RÉGULIÈRE : Chevaux restants de la Sélection 1 (hors BASE)
+  // Double Condition irréprochable :
+  // 1. Condition Système 74 : Rang Score(X) <= 10 (figurer parmi les 10 premiers au classement du Score X)
+  // 2. Condition Performance : Rang Perf <= 10 (figurer parmi les 10 meilleures performances)
+  // Exclusion garantie des numéros comme le n°7 s'ils dépassent le Rang Score(X) 10 (ex: rangScoreX = 13).
+  const remainingSel1 = sortedSel1ByScoreX.slice(2);
+  const chanceReguliereCandidates = remainingSel1.filter((item) => {
+    const isRangScoreXOk = (item.rangScoreX ?? 99) <= 10; // Rang Score(X) Système 74 <= 10
+    const isPerfOk = (item.rangPerf ?? 99) <= 10;         // Rang Performance <= 10
+
+    // Journalisation spécifique pour le cheval N° 7 lors du filtrage
+    if (item.num === 7) {
+      console.log(
+        `[Chance Régulière Évaluation N°7] rangScoreX=${item.rangScoreX} (<=10: ${isRangScoreXOk}), rangPerf=${item.rangPerf} (<=10: ${isPerfOk}) -> Éligible: ${isRangScoreXOk && isPerfOk}`
+      );
+    }
+
+    // Les DEUX conditions doivent être strictement VRAIES en même temps
+    return isRangScoreXOk && isPerfOk;
+  });
+
+  // Classement de CHANCE RÉGULIÈRE en 2 Vecteurs sur les survivants de la double condition :
+  // VECTEUR 1 : Numéros de dossard 1 à 9 (triés par Somme des Rangs croissante)
+  // VECTEUR 2 : Numéros de dossard 10 et + (triés par Somme des Rangs croissante)
+  const sortBySommeRangsCroissant = (a: TacticalGroupItem, b: TacticalGroupItem) => {
+    const sumA = a.sommeRangs ?? 99;
+    const sumB = b.sommeRangs ?? 99;
+    if (sumA !== sumB) return sumA - sumB;
+    if (b.scoreX !== a.scoreX) return b.scoreX - a.scoreX;
+    if (a.cote !== b.cote) return a.cote - b.cote;
+    return a.num - b.num;
+  };
+
+  const chanceReguliereVecteur1 = chanceReguliereCandidates
+    .filter((item) => item.num >= 1 && item.num <= 9)
+    .sort(sortBySommeRangsCroissant);
+
+  const chanceReguliereVecteur2 = chanceReguliereCandidates
+    .filter((item) => item.num >= 10)
+    .sort(sortBySommeRangsCroissant);
+
+  const combinedChanceReguliere = [...chanceReguliereVecteur1, ...chanceReguliereVecteur2];
+
+  // Journalisation de contrôle : vérifier si le cheval N°7 est effectivement exclu du résultat final de Chance Régulière
+  if (allWithX.some((h) => h.num === 7)) {
+    const isN7InChanceReg = combinedChanceReguliere.some((h) => h.num === 7);
+    console.log(
+      `[Chance Régulière Résultat Final] Cheval N°7 dans le résultat final : ${
+        isN7InChanceReg ? 'PRÉSENT (NON EXCLU)' : 'EXCLU (Condition respectée)'
+      }`
+    );
+  }
+
+  // 2. SÉLECTION 2 :
+  // - Ligne 2 du Groupe A (1-6) (max 2)
+  // - Ligne 2 du Groupe B (7-10) (max 3)
+  // - 2e et 3e numéros de Ligne 2 du Groupe C (11+) (indices 4 et 5)
+  const l2GroupA = tactical.groupA.slice(3, 6).filter((item): item is TacticalGroupItem => Boolean(item));
+  const l2GroupB = tactical.groupB.slice(3, 6).filter((item): item is TacticalGroupItem => Boolean(item));
+  const l2GroupC_1stAnd2nd = tactical.groupC.slice(3, 5).filter((item): item is TacticalGroupItem => Boolean(item));
+
+  let selection2 = [...l2GroupA, ...l2GroupB, ...l2GroupC_1stAnd2nd];
+
+  // Application du seuil Système 74 Diff X ≥ 20
+  if (filterMinScoreX) {
+    selection2 = selection2.filter((item) => item.scoreX >= minScoreXThreshold);
+  }
+
+  // OUTSIDERS SÉDUISANTS :
+  // Origine : Chevaux de la Sélection 2 (Ligne 2 des Groupes A, B, C) non retenus en Base ni Chance Régulière
+  const baseNums = new Set(base.map((item) => item.num));
+  const chanceRegNums = new Set(combinedChanceReguliere.map((item) => item.num));
+
+  const seenOutsiderNums = new Set<number>();
+  const outsidersCandidatePool: TacticalGroupItem[] = [];
+  selection2.forEach((item) => {
+    if (
+      !baseNums.has(item.num) &&
+      !chanceRegNums.has(item.num) &&
+      (!filterMinScoreX || item.scoreX >= minScoreXThreshold) &&
+      !seenOutsiderNums.has(item.num)
+    ) {
+      seenOutsiderNums.add(item.num);
+      outsidersCandidatePool.push(item);
+    }
+  });
+
+  // Retient jusqu'à 4 chevaux max présentant la plus petite Somme des Rangs (sommeRangs croissante)
+  const outsidersSeduisants = [...outsidersCandidatePool]
+    .sort(sortBySommeRangsCroissant)
+    .slice(0, 4);
+
+  // 3. À SUIVRE :
+  // Les autres numéros de la course non retenus (BASE, CHANCE REG, OUTSIDERS) respectant le seuil Système 74 Diff X ≥ 20
+  const selectedNums = new Set<number>([
+    ...base.map((item) => item.num),
+    ...combinedChanceReguliere.map((item) => item.num),
+    ...outsidersSeduisants.map((item) => item.num),
+  ]);
+
+  let allWithXFiltered = allWithX;
+  if (filterMinScoreX) {
+    allWithXFiltered = allWithXFiltered.filter((item) => item.scoreX >= minScoreXThreshold);
+  }
+
+  // Classés par Performance croissante (meilleures performances en premier)
+  const aSuivre = allWithXFiltered
+    .filter((item) => !selectedNums.has(item.num))
+    .sort((a, b) => {
+      const perfA = a.rangPerf ?? 99;
+      const perfB = b.rangPerf ?? 99;
+      if (perfA !== perfB) return perfA - perfB;
+      if (b.scoreX !== a.scoreX) return b.scoreX - a.scoreX;
+      if (a.cote !== b.cote) return a.cote - b.cote;
+      return a.num - b.num;
+    });
+
+  return {
+    base,
+    chanceReguliere: combinedChanceReguliere,
+    chanceReguliereVecteur1,
+    chanceReguliereVecteur2,
+    outsidersSeduisants,
+    aSuivre,
+    ligne1Globale: selection1,
+    ligne2Globale: selection2,
+  };
+}
+
+export interface CarreMagiqueHorseItem {
+  partant: Partant;
+  num: number;
+  cote: number;
+  scoreX: number;
+  rangSysteme74: number;
+  categorie: 'EN_FORME' | 'FORME_MOYENNE' | 'CAPABLE_EXPLOIT' | 'MEFORME';
+  badgeColor: 'VERT' | 'ORANGE' | 'ROUGE';
+  badgeIcon: string;
+  badgeLabel: string;
+  colonneIndex: number; // 0: Vert, 1: Orange, 2: Rouge
+  colonneLabel: string;
+  ligneIndex: number;   // 0 à 5 (Ligne 1 à 6)
+  ligneLabel: string;
+}
+
+export interface CarreMagiqueResult {
+  col1Vert: CarreMagiqueHorseItem[];    // Max 6 N° (Badge Vert uniquement)
+  col2Orange: CarreMagiqueHorseItem[];  // Max 4 N° (Badge Orange uniquement)
+  col3Rouge: CarreMagiqueHorseItem[];   // Max 4 N° (Badge Rouge uniquement)
+  grid: (CarreMagiqueHorseItem | null)[][]; // 6 rows x 3 columns
+  extraHorses: CarreMagiqueHorseItem[]; // Chevaux non placés dans la grille
+  allRankedSysteme74: CarreMagiqueHorseItem[];
+}
+
+/**
+ * Calcul officiel du CARRÉ MAGIQUE du Système 74 :
+ * - Grille : 6 Lignes × 3 Colonnes
+ * - Colonne 1 : Les numéros avec un BADGE VERT uniquement (6 N° max)
+ * - Colonne 2 : Les numéros avec un BADGE ORANGE/JAUNE uniquement (4 N° max, lignes 5 et 6 hachurées)
+ * - Colonne 3 : Les numéros avec un BADGE ROUGE uniquement (4 N° max, lignes 5 et 6 hachurées)
+ * - Classement au sein de chaque colonne selon le rang dans le Système 74 (Score X = 73 + N° - Cote décroissant)
+ */
+export function computeCarreMagique(
+  course: CourseHippique,
+  options?: {
+    filterMinScoreX?: boolean;
+    minScoreXThreshold?: number;
+  }
+): CarreMagiqueResult {
+  const activePartants = (course.partants || []).filter(
+    (p) => !p.estNonPartant && p.statut !== 'Non-partant'
+  );
+
+  const formClassification = classerChevauxFormeEtPoints(course.partants || []);
+  const allClassified = formClassification.allClassified;
+
+  const rawRanked = activePartants.map((p) => {
+    const num = Number(p.numero);
+    const cote = getHorseGenyOdds(p);
+    const scoreX = Math.round(((73 + num) - cote) * 10) / 10;
+    const classified = allClassified.find((c) => Number(c.partant.numero) === num);
+    const categorie = (classified?.categorie || 'MEFORME') as 'EN_FORME' | 'FORME_MOYENNE' | 'CAPABLE_EXPLOIT' | 'MEFORME';
+
+    let badgeColor: 'VERT' | 'ORANGE' | 'ROUGE' = 'ROUGE';
+    let badgeIcon = '🔴';
+    let badgeLabel = 'Méforme';
+
+    if (categorie === 'EN_FORME') {
+      badgeColor = 'VERT';
+      badgeIcon = '🟢';
+      badgeLabel = 'En Forme';
+    } else if (categorie === 'FORME_MOYENNE' || categorie === 'CAPABLE_EXPLOIT') {
+      badgeColor = 'ORANGE';
+      badgeIcon = categorie === 'CAPABLE_EXPLOIT' ? '⚡' : '🟡';
+      badgeLabel = categorie === 'CAPABLE_EXPLOIT' ? "Capable d'Exploit" : 'Forme Moyenne';
+    } else {
+      badgeColor = 'ROUGE';
+      badgeIcon = '🔴';
+      badgeLabel = 'Méforme';
+    }
+
+    return {
+      partant: p,
+      num,
+      cote,
+      scoreX,
+      rangSysteme74: 0,
+      categorie,
+      badgeColor,
+      badgeIcon,
+      badgeLabel,
+      colonneIndex: -1,
+      colonneLabel: '',
+      ligneIndex: -1,
+      ligneLabel: '',
+    };
+  });
+
+  // Classement Système 74 : Score(X) décroissant, puis cote croissante, puis numéro croissant
+  rawRanked.sort((a, b) => {
+    if (b.scoreX !== a.scoreX) return b.scoreX - a.scoreX;
+    if (a.cote !== b.cote) return a.cote - b.cote;
+    return a.num - b.num;
+  });
+
+  rawRanked.forEach((item, idx) => {
+    item.rangSysteme74 = idx + 1;
+  });
+
+  const filterMin = options?.filterMinScoreX;
+  const threshold = options?.minScoreXThreshold ?? 20;
+  const eligibleItems = filterMin
+    ? rawRanked.filter((item) => item.scoreX >= threshold)
+    : rawRanked;
+
+  // Filtrage exclusif par couleur de badge
+  const greenHorses = eligibleItems.filter((item) => item.badgeColor === 'VERT');
+  const orangeHorses = eligibleItems.filter((item) => item.badgeColor === 'ORANGE');
+  const redHorses = eligibleItems.filter((item) => item.badgeColor === 'ROUGE');
+
+  // Attribution aux colonnes avec quotas stricts :
+  // Colonne 1 : 6 chevaux max (Lignes 1 à 6)
+  const col1Vert: CarreMagiqueHorseItem[] = greenHorses.slice(0, 6).map((item, idx) => ({
+    ...item,
+    colonneIndex: 0,
+    colonneLabel: '🟢 En Forme',
+    ligneIndex: idx,
+    ligneLabel: `Ligne ${idx + 1}`,
+  }));
+
+  // Colonne 2 : 4 chevaux max (Lignes 1 à 4)
+  const col2Orange: CarreMagiqueHorseItem[] = orangeHorses.slice(0, 4).map((item, idx) => ({
+    ...item,
+    colonneIndex: 1,
+    colonneLabel: '🟡 Forme Moyenne',
+    ligneIndex: idx,
+    ligneLabel: `Ligne ${idx + 1}`,
+  }));
+
+  // Colonne 3 : 4 chevaux max (Lignes 1 à 4)
+  const col3Rouge: CarreMagiqueHorseItem[] = redHorses.slice(0, 4).map((item, idx) => ({
+    ...item,
+    colonneIndex: 2,
+    colonneLabel: '🔴 Méforme',
+    ligneIndex: idx,
+    ligneLabel: `Ligne ${idx + 1}`,
+  }));
+
+  // Grille 6 Lignes × 3 Colonnes
+  const grid: (CarreMagiqueHorseItem | null)[][] = Array.from({ length: 6 }, () => [
+    null,
+    null,
+    null,
+  ]);
+
+  // Remplir Colonne 0 (Vert)
+  col1Vert.forEach((item, rowIdx) => {
+    if (rowIdx < 6) grid[rowIdx][0] = item;
+  });
+
+  // Remplir Colonne 1 (Orange)
+  col2Orange.forEach((item, rowIdx) => {
+    if (rowIdx < 4) grid[rowIdx][1] = item;
+  });
+
+  // Remplir Colonne 2 (Rouge)
+  col3Rouge.forEach((item, rowIdx) => {
+    if (rowIdx < 4) grid[rowIdx][2] = item;
+  });
+
+  // Chevaux excédentaires ou non placés
+  const placedNums = new Set<number>([
+    ...col1Vert.map((h) => h.num),
+    ...col2Orange.map((h) => h.num),
+    ...col3Rouge.map((h) => h.num),
+  ]);
+
+  const extraHorses: CarreMagiqueHorseItem[] = eligibleItems
+    .filter((item) => !placedNums.has(item.num))
+    .map((item) => ({
+      ...item,
+      colonneIndex: -1,
+      colonneLabel: 'Hors Carré (Quota dépassé)',
+      ligneIndex: -1,
+      ligneLabel: '—',
+    }));
+
+  return {
+    col1Vert,
+    col2Orange,
+    col3Rouge,
+    grid,
+    extraHorses,
+    allRankedSysteme74: rawRanked,
+  };
+}
+
+export interface CarreMagiqueExploitationItem {
+  item: CarreMagiqueHorseItem;
+  originTag: string; // ex: "1er N° de Forme", "1er N° de Forme Moyenne", "3e N° de Forme"
+}
+
+export interface CarreMagiqueExploitation {
+  zoneGagnant: CarreMagiqueExploitationItem[];        // 3 N° : 1er Forme, 1er Forme Moyenne, 3e Forme
+  coupDeCoeur: CarreMagiqueExploitationItem | null;  // 1 N° : 2e Forme
+  outsiders: CarreMagiqueExploitationItem[];          // 4 N° : 6e Forme, 2e Forme Moyenne, 3e Forme Moyenne, 1er Méforme
+  probableQuatrieme: CarreMagiqueExploitationItem | null; // 1 N° : 4e Forme
+  delaisses: CarreMagiqueHorseItem[];               // Tous les autres N° non retenus, classés par cotes
+}
+
+/**
+ * Exploitation tactique du Carré Magique selon la règle officielle :
+ * - Zone du Gagnant (3 N°) = 1er Forme + 1er Forme Moyenne + 3e Forme
+ * - 1 Coup de Cœur (1 N°) = 2e Forme
+ * - Outsiders (4 N°) = 6e Forme + 2e Forme Moyenne + 3e Forme Moyenne + 1er Méforme
+ * - Probable 4e / Rang 4e (1 N°) = 4e Forme
+ * - Délaissés = Tous les autres chevaux non retenus dans les sélections du haut, classés par cotes
+ */
+export function computeCarreMagiqueExploitation(
+  carre: CarreMagiqueResult,
+  course: CourseHippique
+): CarreMagiqueExploitation {
+  const { col1Vert, col2Orange, col3Rouge, allRankedSysteme74 } = carre;
+
+  // 1. Zone du Gagnant : 3 N°
+  const zoneGagnant: CarreMagiqueExploitationItem[] = [];
+  if (col1Vert[0]) zoneGagnant.push({ item: col1Vert[0], originTag: '1er N° de Forme' });
+  if (col2Orange[0]) zoneGagnant.push({ item: col2Orange[0], originTag: '1er Forme Moyenne' });
+  if (col1Vert[2]) zoneGagnant.push({ item: col1Vert[2], originTag: '3e N° de Forme' });
+
+  // 2. 1 Coup de Cœur : 1 N°
+  const coupDeCoeur: CarreMagiqueExploitationItem | null = col1Vert[1]
+    ? { item: col1Vert[1], originTag: '2e N° de Forme' }
+    : null;
+
+  // 3. Outsiders : 4 N° retenus, classés par cotes croissantes
+  const outsiders: CarreMagiqueExploitationItem[] = [];
+  if (col1Vert[5]) outsiders.push({ item: col1Vert[5], originTag: '6e N° de Forme' });
+  if (col2Orange[1]) outsiders.push({ item: col2Orange[1], originTag: '2e Forme Moyenne' });
+  if (col2Orange[2]) outsiders.push({ item: col2Orange[2], originTag: '3e Forme Moyenne' });
+  if (col3Rouge[0]) outsiders.push({ item: col3Rouge[0], originTag: '1er N° de Méforme' });
+
+  outsiders.sort((a, b) => {
+    if (a.item.cote !== b.item.cote) return a.item.cote - b.item.cote;
+    return a.item.num - b.item.num;
+  });
+
+  // 4. Probable 4e (Rang 4e) : 1 N°
+  const probableQuatrieme: CarreMagiqueExploitationItem | null = col1Vert[3]
+    ? { item: col1Vert[3], originTag: '4e N° de Forme' }
+    : null;
+
+  // Ensemble des numéros retenus dans les 4 sélections principales
+  const selectedNums = new Set<number>();
+  zoneGagnant.forEach((z) => selectedNums.add(z.item.num));
+  if (coupDeCoeur) selectedNums.add(coupDeCoeur.item.num);
+  outsiders.forEach((o) => selectedNums.add(o.item.num));
+  if (probableQuatrieme) selectedNums.add(probableQuatrieme.item.num);
+
+  // 5. Délaissés : Tous les autres N° non retenus dans les sélections du haut, classés par cotes croissantes
+  const activePartants = (course.partants || []).filter(
+    (p) => !p.estNonPartant && p.statut !== 'Non-partant'
+  );
+
+  const activeNums = new Set<number>(activePartants.map((p) => Number(p.numero)));
+
+  const delaisses = allRankedSysteme74
+    .filter((item) => activeNums.has(item.num) && !selectedNums.has(item.num))
+    .sort((a, b) => {
+      if (a.cote !== b.cote) return a.cote - b.cote;
+      return a.num - b.num;
+    });
+
+  return {
+    zoneGagnant,
+    coupDeCoeur,
+    outsiders,
+    probableQuatrieme,
+    delaisses,
+  };
+}
+

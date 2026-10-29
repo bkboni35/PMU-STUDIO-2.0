@@ -795,24 +795,46 @@ export const PmuApiHubModal: React.FC<PmuApiHubModalProps> = ({
 
                               <div className="flex items-center gap-2 shrink-0">
                                 {onSelectMeeting && (
-                                  <button
-                                    onClick={() => {
-                                      onSelectMeeting(c);
-                                      onClose();
-                                    }}
-                                    className="text-xs bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-white font-bold px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 shadow-xs"
-                                    title="Charger et analyser cette course maintenant"
-                                  >
-                                    <Zap className="w-3.5 h-3.5 text-amber-400 hover:text-slate-950" />
-                                    <span>Charger Course</span>
-                                  </button>
+                                  <div className="inline-flex items-center rounded-lg shadow-sm border border-slate-700 bg-slate-900 overflow-hidden">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const genyRaceUrl = c.lienGeny || `https://www.geny.com/resultats-pmu-courses-hippiques/course-du-jour_c${c.id.replace('pmu-live-', '')}`;
+                                        onSelectMeeting({
+                                          ...c,
+                                          lienGeny: genyRaceUrl,
+                                          sourceUrl: c.sourceUrl || genyRaceUrl,
+                                        });
+                                        onClose();
+                                      }}
+                                      className="text-xs bg-slate-800 hover:bg-amber-500 hover:text-slate-950 text-white font-bold px-3 py-1.5 transition-all cursor-pointer flex items-center gap-1.5"
+                                      title="Charger cette course dans HippoAnalyse avec cotes actualisées chaque 5 secondes"
+                                    >
+                                      <Zap className="w-3.5 h-3.5 text-amber-400 group-hover:text-slate-950" />
+                                      <span>Charger Course</span>
+                                      <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30">
+                                        5s
+                                      </span>
+                                    </button>
+                                    <a
+                                      href={c.lienGeny || `https://www.geny.com/resultats-pmu-courses-hippiques`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-[11px] bg-slate-950 hover:bg-slate-800 text-amber-400 hover:text-amber-300 font-bold px-2.5 py-1.5 flex items-center gap-1 transition-colors border-l border-slate-700"
+                                      title="Ouvrir la page de la course sur geny.com dans un nouvel onglet"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <span>geny.com</span>
+                                      <ExternalLink className="w-3 h-3 text-amber-400/80" />
+                                    </a>
+                                  </div>
                                 )}
                                 <a
                                   href={`https://online.turfinfo.api.pmu.fr/rest/client/1/programme/${c.id.replace('pmu-live-', '').split('-')[0]}/${rNum}/${c.courseNumero}/participants?specialisation=INTERNET`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-slate-500 hover:text-amber-400 p-1.5 rounded"
-                                  title="Voir JSON PMU officiel"
+                                  title="Voir flux API JSON direct PMU officiel (sans scraping)"
                                 >
                                   <ExternalLink className="w-3.5 h-3.5" />
                                 </a>

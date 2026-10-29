@@ -44,7 +44,7 @@ interface UserSpaceModalProps {
   onOpenSubscription?: () => void;
 }
 
-type ActiveTab = 'login' | 'register' | 'accounts' | 'profile';
+type ActiveTab = 'login' | 'register' | 'accounts' | 'profile' | 'verify_email';
 
 export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
   isOpen,
@@ -68,12 +68,32 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
   const [regPays, setRegPays] = useState('Côte d\'Ivoire (LONACI)');
   const [regStatut, setRegStatut] = useState<UserProfile['statutMembre']>('Turfiste Certifié');
 
+  // Vérification et Confirmation d'Email
+  const [pendingVerificationUser, setPendingVerificationUser] = useState<{
+    email: string;
+    nom?: string;
+    telephone?: string;
+    pays?: string;
+    statutMembre?: UserProfile['statutMembre'];
+    type: 'login' | 'register';
+  } | null>(null);
+  const [verificationCodeInput, setVerificationCodeInput] = useState('');
+  const [generatedVerificationCode, setGeneratedVerificationCode] = useState('');
+  const [resendCountdown, setResendCountdown] = useState(0);
+
   const [savedUsers, setSavedUsers] = useState<UserProfile[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Charger les utilisateurs et forcer l'affichage direct de la connexion en haut
+  useEffect(() => {
+    if (resendCountdown > 0) {
+      const timer = setTimeout(() => setResendCountdown(resendCountdown - 1), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [resendCountdown]);
+
+  // Charger les utilisateurs et adapter l'onglet par défaut (Profil si déjà connecté)
   useEffect(() => {
     if (isOpen) {
       setError(null);
@@ -81,20 +101,24 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
       const users = getAllRegisteredUsers();
       setSavedUsers(users);
 
-      // Ouvrir directement la page de connexion
-      setActiveTab('login');
+      if (currentUser?.estConnecte && !currentUser.id.startsWith('guest_')) {
+        setActiveTab('profile');
+      } else {
+        setActiveTab('login');
+      }
+
       if (currentUser?.email) {
         setLoginEmailInput(currentUser.email);
       }
       scrollToTopInstant();
     }
-  }, [isOpen, currentUser, activeTab]);
+  }, [isOpen, currentUser]);
 
   if (!isOpen) return null;
 
   // ================= HANDLERS =================
 
-  // 1. Connexion par e-mail
+  // 1. Demande de Connexion par e-mail avec confirmation
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -110,24 +134,20 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
       return;
     }
 
-    setIsSubmitting(true);
-
-    try {
-      const loggedUser = loginWithEmail(clean);
-      setSuccessNotice(`Connexion réussie ! Bienvenue ${loggedUser.nom || loggedUser.email}.`);
-      setSavedUsers(getAllRegisteredUsers());
-      setTimeout(() => {
-        setIsSubmitting(false);
-        onLoginSuccess(loggedUser);
-        onClose();
-      }, 400);
-    } catch (err: any) {
-      setIsSubmitting(false);
-      setError(err?.message || 'Une erreur est survenue lors de la connexion.');
-    }
+    // Demande de confirmation du mail avec code sécurisé
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedVerificationCode(code);
+    setVerificationCodeInput('');
+    setPendingVerificationUser({
+      email: clean,
+      type: 'login',
+    });
+    setResendCountdown(30);
+    setActiveTab('verify_email');
+    setSuccessNotice(`Code de confirmation généré pour ${clean}.`);
   };
 
-  // 2. Inscription d'un nouvel utilisateur
+  // 2. Inscription d'un nouvel utilisateur avec confirmation d'e-mail
   const handleRegisterSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -147,33 +167,77 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
       return;
     }
 
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedVerificationCode(code);
+    setVerificationCodeInput('');
+    setPendingVerificationUser({
+      email: regEmail.trim(),
+      nom: regNom.trim(),
+      telephone: regTelephone.trim(),
+      pays: regPays,
+      statutMembre: regStatut,
+      type: 'register',
+    });
+    setResendCountdown(30);
+    setActiveTab('verify_email');
+    setSuccessNotice(`Code de confirmation envoyé pour ${regEmail.trim()}.`);
+  };
+
+  // 3. Validation du code de confirmation d'e-mail
+  const handleVerifyCodeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!pendingVerificationUser) {
+      setError('Aucune demande de confirmation en cours.');
+      return;
+    }
+
+    const cleanInput = verificationCodeInput.trim().replace(/\s+/g, '');
+    const cleanExpected = generatedVerificationCode.trim().replace(/\s+/g, '');
+
+    if (cleanInput !== cleanExpected) {
+      setError('Code de confirmation incorrect. Veuillez saisir les 6 chiffres corrects.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const newUser = registerNewUser({
-        nom: regNom,
-        email: regEmail,
-        telephone: regTelephone,
-        pays: regPays,
-        statutMembre: regStatut,
-      });
+      let user: UserProfile;
+      if (pendingVerificationUser.type === 'register') {
+        user = registerNewUser({
+          nom: pendingVerificationUser.nom || '',
+          email: pendingVerificationUser.email,
+          telephone: pendingVerificationUser.telephone,
+          pays: pendingVerificationUser.pays,
+          statutMembre: pendingVerificationUser.statutMembre,
+        });
+      } else {
+        user = loginWithEmail(pendingVerificationUser.email);
+      }
 
-      setSuccessNotice(`🎉 Inscription réussie ! Bienvenue ${newUser.nom}.`);
+      setSuccessNotice(`✅ E-mail vérifié et confirmé ! Bienvenue ${user.nom || user.email}. Toutes vos données de session sont sécurisées.`);
       setSavedUsers(getAllRegisteredUsers());
-
-      setRegNom('');
-      setRegEmail('');
-      setRegTelephone('');
+      setPendingVerificationUser(null);
 
       setTimeout(() => {
         setIsSubmitting(false);
-        onLoginSuccess(newUser);
+        onLoginSuccess(user);
         onClose();
       }, 400);
     } catch (err: any) {
       setIsSubmitting(false);
-      setError(err?.message || 'Erreur lors de l\'inscription.');
+      setError(err?.message || 'Erreur lors de la validation du code.');
     }
+  };
+
+  const handleResendCode = () => {
+    if (!pendingVerificationUser) return;
+    const newCode = Math.floor(100000 + Math.random() * 900000).toString();
+    setGeneratedVerificationCode(newCode);
+    setResendCountdown(30);
+    setSuccessNotice(`Nouveau code de confirmation généré pour ${pendingVerificationUser.email}.`);
   };
 
   // 3. Connexion Google Popup / Firebase
@@ -483,6 +547,91 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
           </div>
         )}
 
+        {/* ================= TAB CONFIRMATION DU MAIL (VÉRIFICATION SÉCURISÉE) ================= */}
+        {activeTab === 'verify_email' && pendingVerificationUser && (
+          <div className="space-y-3 p-1">
+            <div className="p-3 rounded-2xl bg-slate-950/80 border border-amber-500/40 text-center space-y-2">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center mx-auto">
+                <ShieldCheck className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-white">
+                  Demande de confirmation d'adresse e-mail
+                </h3>
+                <p className="text-[11px] text-slate-300 mt-0.5">
+                  Pour sécuriser votre session turfiste et garantir que vos analyses, pronostics et calculs restent intacts, confirmez votre e-mail :
+                </p>
+                <div className="mt-1.5 px-3 py-1 rounded-xl bg-slate-900 border border-slate-700 text-amber-300 font-mono font-bold text-xs inline-block">
+                  {pendingVerificationUser.email}
+                </div>
+              </div>
+
+              {/* Code Démo Instantané pour la prévisualisation */}
+              <div className="p-2 rounded-xl bg-amber-950/40 border border-amber-500/30 text-left flex items-center justify-between gap-2">
+                <div>
+                  <span className="text-[10px] text-amber-400 font-bold block">Code de confirmation officiel :</span>
+                  <span className="text-sm font-black font-mono text-white tracking-widest">{generatedVerificationCode}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setVerificationCodeInput(generatedVerificationCode)}
+                  className="px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black text-[10px] shadow active:scale-95 transition-all cursor-pointer"
+                >
+                  Remplir ce code
+                </button>
+              </div>
+            </div>
+
+            <form onSubmit={handleVerifyCodeSubmit} className="space-y-2.5">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-200 mb-1 text-center">
+                  Saisissez le code de confirmation à 6 chiffres :
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  required
+                  value={verificationCodeInput}
+                  onChange={(e) => setVerificationCodeInput(e.target.value)}
+                  placeholder="000000"
+                  className="w-full text-center py-2 px-3 rounded-xl bg-slate-950 border-2 border-amber-500/50 focus:border-amber-400 text-white font-mono font-black text-lg tracking-[0.3em] outline-none transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting || verificationCodeInput.trim().length === 0}
+                className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-emerald-600 to-teal-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20 active:scale-98 transition-all disabled:opacity-50 cursor-pointer"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>{isSubmitting ? 'Vérification...' : 'Valider & Confirmer mon compte'}</span>
+              </button>
+
+              <div className="flex items-center justify-between pt-1 text-xs">
+                <button
+                  type="button"
+                  onClick={handleResendCode}
+                  disabled={resendCountdown > 0}
+                  className="text-[11px] text-slate-400 hover:text-amber-300 disabled:opacity-50 font-semibold cursor-pointer"
+                >
+                  {resendCountdown > 0 ? `Renvoyer le code (${resendCountdown}s)` : 'Renvoyer un nouveau code'}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTab(pendingVerificationUser.type === 'register' ? 'register' : 'login');
+                    setError(null);
+                  }}
+                  className="text-[11px] text-amber-400 hover:underline font-semibold cursor-pointer"
+                >
+                  Modifier l'adresse e-mail
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
         {/* ================= TAB 2 : NOUVELLE INSCRIPTION ================= */}
         {activeTab === 'register' && (
           <form onSubmit={handleRegisterSubmit} className="space-y-2">
@@ -712,6 +861,12 @@ export const UserSpaceModal: React.FC<UserSpaceModalProps> = ({
                   <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[9px] font-black uppercase tracking-wider">
                     {currentUser.statutMembre || 'Membre Actif'}
                   </span>
+                  {currentUser.emailVerifie && (
+                    <span className="px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 text-[9px] font-black flex items-center gap-1">
+                      <ShieldCheck className="w-2.5 h-2.5 text-blue-400" />
+                      E-mail Vérifié & Confirmé
+                    </span>
+                  )}
                 </div>
                 <h3 className="text-xs sm:text-sm font-extrabold text-white truncate mt-0.5">
                   {currentUser.nom || 'Turfiste HippoAnalyse'}

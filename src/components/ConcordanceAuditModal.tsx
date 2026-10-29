@@ -14,6 +14,7 @@ import {
   Filter,
 } from 'lucide-react';
 import { PmuMeeting } from '../types/turf';
+import { getDualDepartureTimes } from '../utils/raceCountdown';
 
 interface ConcordanceItem {
   id: string;
@@ -57,21 +58,9 @@ export const ConcordanceAuditModal: React.FC<ConcordanceAuditModalProps> = ({
 
   if (!isOpen) return null;
 
-  // Calcul du rapport de concordance officiel
+  // Calcul du rapport de concordance officiel avec prise en compte de l'heure d'hiver
   const auditItems: ConcordanceItem[] = (meetings || []).map((m) => {
-    const rawHeure = m.heure || '10h00';
-    // L'heure de départ officielle PMU / Geny est l'Heure de France (UTC+2).
-    // L'heure de Côte d'Ivoire / GMT Abidjan (UTC+0) est l'Heure de France - 2h en heure d'été.
-    let rawH = 10;
-    let rawM = 0;
-    const match = rawHeure.match(/(\d{1,2})[h:](\d{2})/i);
-    if (match) {
-      rawH = parseInt(match[1], 10);
-      rawM = parseInt(match[2], 10);
-    }
-    const ciH = (rawH - 2 + 24) % 24;
-    const heureFranceStr = `${String(rawH).padStart(2, '0')}h${String(rawM).padStart(2, '0')}`;
-    const heureCIStr = `${String(ciH).padStart(2, '0')}h${String(rawM).padStart(2, '0')}`;
+    const { franceTime: heureFranceStr, ciTime: heureCIStr } = getDualDepartureTimes(m.heure, m.date);
 
     return {
       id: m.id,

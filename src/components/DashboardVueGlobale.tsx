@@ -192,7 +192,7 @@ export const DashboardVueGlobale: React.FC<DashboardVueGlobaleProps> = ({
     isCourseArrivalOfficiallyConfirmed(currentCourse)
   );
 
-  // Horodatage garanti pour activer le compte à rebours de 5 minutes (300 secondes) des commissaires
+  // Horodatage garanti pour activer le compte à rebours de 3 minutes (180 secondes) des commissaires
   const effectiveCourseForWidget = useMemo(() => {
     if (!currentCourse) return null;
     const auditReferenceTime = currentCourse.arrivalAuditTimestamp || currentCourse.officialArrivalAt;
@@ -217,7 +217,7 @@ export const DashboardVueGlobale: React.FC<DashboardVueGlobaleProps> = ({
 
   return (
     <div className="space-y-4 mb-6">
-      {/* COMPTE À REBOURS VISUEL DE 5 MINUTES (PÉRIODE DE CONTRÔLE DES COMMISSAIRES) */}
+      {/* COMPTE À REBOURS VISUEL DE 3 MINUTES (PÉRIODE DE CONTRÔLE DES COMMISSAIRES) */}
       {/* Activé uniquement après la confirmation officielle d'une arrivée */}
       {hasOfficialArrival && effectiveCourseForWidget && (
         <div className="bg-gradient-to-r from-slate-950 via-amber-950/30 to-slate-950 border-2 border-amber-500/60 p-4 rounded-3xl shadow-2xl backdrop-blur-md space-y-3 animate-fadeIn">

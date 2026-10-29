@@ -2,17 +2,17 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import { AppInitializer } from './components/AppInitializer';
-import { ErrorBoundary } from './components/ErrorBoundary';
+import { AppSafeBoundary } from './components/AppSafeBoundary';
 import './index.css';
 
 // Mounting point v2.0.0
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
+    <AppSafeBoundary>
       <AppInitializer>
         <App />
       </AppInitializer>
-    </ErrorBoundary>
+    </AppSafeBoundary>
   </StrictMode>,
 );
 

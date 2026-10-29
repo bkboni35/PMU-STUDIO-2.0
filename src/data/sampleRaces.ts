@@ -24,9 +24,9 @@ export const SAMPLE_RACES: CourseHippique[] = [
     terrain: 'Sable - Mâchefer en excellent état',
     allocation: 41000,
     conditions: "Pour chevaux entiers et hongres de 5 ans, n'ayant pas gagné 58.500 €. Course E. Grande piste.",
-    statutCourse: 'Arrivée officielle',
-    arriveeOfficielle: '1 - 9 - 4 - 17 - 7',
-    officialArrivalAt: '2026-10-06T14:30:00.000Z',
+    statutCourse: 'Partants définitifs',
+    arriveeOfficielle: undefined,
+    officialArrivalAt: undefined,
     synthese: {
       baseIncontournable: 2,
       secondeBase: 1,

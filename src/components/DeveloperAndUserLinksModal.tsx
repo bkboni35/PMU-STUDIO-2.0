@@ -12,6 +12,10 @@ import {
   Monitor,
   Laptop,
   Presentation,
+  Link2,
+  Bookmark,
+  Sparkles,
+  Share2,
 } from 'lucide-react';
 import { getUserAppUrl, getDevAppUrl, getQrCodeImageUrl } from '../utils/appUrls';
 import {
@@ -149,6 +153,112 @@ export const DeveloperAndUserLinksModal: React.FC<DeveloperAndUserLinksModalProp
                   <ExternalLink className="w-3.5 h-3.5" />
                   <span>Ouvrir</span>
                 </a>
+              </div>
+            </div>
+          </div>
+
+          {/* Section Raccourcir & Mémoriser Facilement le Lien */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-indigo-950/70 via-slate-900 to-cyan-950/60 border-2 border-cyan-500/50 shadow-xl space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shrink-0">
+                  <Link2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-white text-sm sm:text-base flex items-center gap-2">
+                    <span>Raccourcir & Mémoriser Facilement le Lien</span>
+                    <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 text-[10px] font-black uppercase tracking-wider">
+                      Pratique
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-300">
+                    Transformez la longue adresse Cloud Run en un lien court simple ou installez l'accès direct sans rien taper.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {/* Solution 1: Raccourcisseurs Gratuits */}
+              <div className="p-3.5 rounded-xl bg-slate-950/90 border border-cyan-500/30 space-y-3">
+                <div className="flex items-center gap-2 text-cyan-400 font-bold text-xs">
+                  <Sparkles className="w-4 h-4 text-cyan-400" />
+                  <span>1. Liens Courts Personnalisés (TinyURL / Bitly)</span>
+                </div>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Créez un alias gratuit en 1 clic pour remplacer la longue URL par un nom facile à retenir :
+                </p>
+                <div className="space-y-1.5">
+                  {[
+                    { short: 'tinyurl.com/hippo-remix', target: `https://tinyurl.com/create.php?url=${encodeURIComponent(userUrl)}&alias=hippo-remix` },
+                    { short: 'tinyurl.com/systeme74', target: `https://tinyurl.com/create.php?url=${encodeURIComponent(userUrl)}&alias=systeme74` },
+                    { short: 'tinyurl.com/turf-pmu20', target: `https://tinyurl.com/create.php?url=${encodeURIComponent(userUrl)}&alias=turf-pmu20` },
+                  ].map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-slate-900 border border-slate-800 text-[11px]">
+                      <span className="font-mono font-bold text-cyan-300">{item.short}</span>
+                      <a
+                        href={item.target}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="py-1 px-2.5 rounded-md bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 font-bold text-[10px] flex items-center gap-1 transition-all"
+                      >
+                        <span>Créer</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  ))}
+                </div>
+                <a
+                  href={`https://tinyurl.com/create.php?url=${encodeURIComponent(userUrl)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-xs flex items-center justify-center gap-2 transition-all shadow"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>Générer un lien court personnalisé</span>
+                </a>
+              </div>
+
+              {/* Solution 2: Écran d'accueil & Favoris */}
+              <div className="p-3.5 rounded-xl bg-slate-950/90 border border-emerald-500/30 space-y-3 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs mb-1">
+                    <Bookmark className="w-4 h-4 text-emerald-400" />
+                    <span>2. Écran d'Accueil Smartphone & Favoris PC</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-relaxed mb-2">
+                    La méthode la plus rapide : ouvrez l'application en 1 clic sans jamais retaper l'URL.
+                  </p>
+                  <ul className="space-y-2 text-[11px] text-slate-300">
+                    <li className="flex items-start gap-2 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <span className="text-emerald-400 font-black">📱 Mobile :</span>
+                      <span>Ouvrez le lien dans Chrome/Safari, appuyez sur <strong>Menu (⋮)</strong> ou <strong>Partager</strong> &gt; <strong>« Ajouter à l'écran d'accueil »</strong>.</span>
+                    </li>
+                    <li className="flex items-start gap-2 bg-slate-900/80 p-2 rounded-lg border border-slate-800">
+                      <span className="text-emerald-400 font-black">💻 PC / Mac :</span>
+                      <span>Appuyez sur <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-amber-300 font-bold">Ctrl + D</kbd> (ou <kbd className="px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono text-[10px] text-amber-300 font-bold">Cmd + D</kbd>) pour l'enregistrer dans vos favoris.</span>
+                    </li>
+                  </ul>
+                </div>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (navigator.share) {
+                        navigator.share({
+                          title: 'Remix HippoAnalyse',
+                          url: userUrl,
+                        }).catch(() => {});
+                      } else {
+                        handleCopy(userUrl, 'user');
+                      }
+                    }}
+                    className="w-full py-2 px-3 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Partager / Enregistrer le lien</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>

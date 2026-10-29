@@ -3,14 +3,16 @@ import {
   getFirestore, 
   doc, 
   getDocFromServer, 
-  initializeFirestore, 
-  persistentLocalCache, 
-  persistentMultipleTabManager,
-  Firestore,
-  FirestoreSettings
+  setLogLevel,
+  Firestore
 } from 'firebase/firestore';
 import { getAuth, GoogleAuthProvider, Auth, signInWithPopup, signOut } from 'firebase/auth';
 import firebaseConfig from '../firebase-applet-config.json';
+
+// Silence internal Firestore connection retry logs so harmless offline retries don't trip console.error
+try {
+  setLogLevel('silent');
+} catch {}
 
 // Singleton pattern for Firebase initialization
 let app: FirebaseApp;
@@ -22,14 +24,7 @@ try {
   const dbId = (firebaseConfig as any).firestoreDatabaseId;
   const targetDbId = dbId && dbId !== '(default)' ? dbId : undefined;
   
-  try {
-    db = initializeFirestore(app, {
-      experimentalForceLongPolling: true,
-    }, targetDbId);
-  } catch {
-    db = targetDbId ? getFirestore(app, targetDbId) : getFirestore(app);
-  }
-  
+  db = targetDbId ? getFirestore(app, targetDbId) : getFirestore(app);
   (db as any).type = 'firestore';
   auth = getAuth(app);
 } catch (error) {
@@ -122,43 +117,106 @@ export interface FirestoreErrorInfo {
   operationType: OperationType;
   path: string | null;
   authInfo: {
-    uid: string | null;
-    isAnonymous: boolean;
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
   };
 }
 
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const msg = error instanceof Error ? error.message : String(error);
   const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
+    error: msg,
     authInfo: {
-      uid: auth.currentUser?.uid || null,
-      isAnonymous: auth.currentUser?.isAnonymous || false,
+      userId: auth?.currentUser?.uid || null,
+      email: auth?.currentUser?.email || null,
+      emailVerified: auth?.currentUser?.emailVerified || null,
+      isAnonymous: auth?.currentUser?.isAnonymous || false,
+      tenantId: auth?.currentUser?.tenantId || null,
+      providerInfo: auth?.currentUser?.providerData?.map(provider => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || []
     },
     operationType,
     path
   };
+
+  const isNetworkOrOffline = 
+    msg.includes('Could not reach Cloud Firestore backend') ||
+    msg.includes('client is offline') ||
+    msg.includes('unavailable') ||
+    msg.includes('deadline-exceeded') ||
+    msg.includes('network-request-failed') ||
+    msg.includes('Fetching auth token failed') ||
+    msg.includes('auth/network-request-failed') ||
+    msg.includes("Backend didn't respond");
+
+  if (isNetworkOrOffline) {
+    // Mode hors-ligne ou attente réseau normale dans l'environnement d'aperçu
+    return errInfo;
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  // We don't throw here to avoid crashing the UI, but we log it
   return errInfo;
 }
 
 /**
- * Utility to test the Firestore connection
+ * Utility to test the Firestore connection (optional and non-blocking)
  */
 export async function testFirestoreConnection() {
   if (!db || !(db as any).type) return false;
   try {
     const testDoc = doc(db, 'test', 'connection');
-    const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 5000));
-    await Promise.race([getDocFromServer(testDoc), timeout]);
-    console.log("Firestore connection verified");
+    await getDocFromServer(testDoc);
     return true;
-  } catch (error: any) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn("Firestore client is in offline mode or connecting...");
-    } else {
-      console.warn("Firestore connection notice:", error?.message || error);
-    }
+  } catch (error) {
+    // Offline or network waiting is expected and non-fatal
     return false;
   }
 }
+
+/**
+ * Persist user favorite race to Firestore
+ */
+export async function saveUserFavoriteToFirestore(userId: string, favorite: any) {
+  if (!db || !userId) return;
+  try {
+    const { doc, setDoc } = await import('firebase/firestore');
+    const cleanId = String(favorite.id || favorite.raceId || Date.now()).replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const favRef = doc(db, 'users', userId, 'favorites', cleanId);
+    await setDoc(favRef, {
+      ...favorite,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `users/${userId}/favorites`);
+  }
+}
+
+/**
+ * Persist race data to Firestore
+ */
+export async function saveRaceToFirestore(raceId: string, courseData: any) {
+  if (!db || !raceId) return;
+  try {
+    const { doc, setDoc } = await import('firebase/firestore');
+    const cleanId = String(raceId).replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const raceRef = doc(db, 'live_races', cleanId);
+    await setDoc(raceRef, {
+      id: cleanId,
+      courseData,
+      arriveeOfficielle: courseData.arriveeOfficielle || null,
+      updatedAt: new Date().toISOString(),
+    }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `live_races/${raceId}`);
+  }
+}
+

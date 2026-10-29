@@ -455,7 +455,7 @@ export function saveRaceToHistory(course: CourseHippique): HistoryCourseItem[] {
     };
 
     const updated = [newItem, ...filtered];
-    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 50);
     return updated;
   } catch (err) {
     console.error('Erreur sauvegarde historique localStorage:', err);
@@ -478,7 +478,7 @@ export function getRaceHistory(): HistoryCourseItem[] {
         analyzedAt: Date.now() - (idx + 1) * 3600000,
         course: pruneCourseForStorage(race),
       }));
-      safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, items, 30);
+      safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, items, 50);
     } else {
       const parsed = JSON.parse(raw);
       items = Array.isArray(parsed) ? parsed : [];
@@ -504,7 +504,7 @@ export function removeRaceFromHistory(idOrUrl: string): HistoryCourseItem[] {
     const updated = current.filter(
       (item) => item.id !== idOrUrl && item.course.id !== idOrUrl && item.course.sourceUrl !== idOrUrl
     );
-    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 50);
     return updated;
   } catch (err) {
     console.error('Erreur suppression course historique:', err);
@@ -517,7 +517,7 @@ export function removeRaceFromHistory(idOrUrl: string): HistoryCourseItem[] {
  */
 export function clearAllRaceHistory(): HistoryCourseItem[] {
   try {
-    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, [], 30);
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, [], 50);
   } catch (err) {
     console.error('Erreur vidage historique:', err);
   }
@@ -551,7 +551,7 @@ export function updateRaceArrivalInHistory(
       }
       return item;
     });
-    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 50);
     return updated;
   } catch (err) {
     console.error('Erreur mise à jour arrivée dans l\'historique:', err);
@@ -591,7 +591,7 @@ export function updateCourseInHistory(
       }
       return item;
     });
-    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 50);
     return updated;
   } catch (err) {
     console.error('Erreur mise à jour globale de la course dans l\'historique:', err);
@@ -618,15 +618,18 @@ export function purgePastRacesFromHistory(): { updated: HistoryCourseItem[]; pur
           if (iso < todayISO) return false;
         }
       }
-      // 2. Si arrivée officielle et analysée depuis plus de 24h
-      if (item.course.arriveeOfficielle && item.analyzedAt && (Date.now() - item.analyzedAt > 24 * 3600 * 1000)) {
+      // 2. Si arrivée officielle, on la garde (on ne purge que les données vraiment obsolètes si besoin, 
+      // mais ici on suit la demande de conserver jusqu'à 50)
+      // On peut garder une limite de sécurité très large (ex: 30 jours) si nécessaire, 
+      // mais supprimons la limite de 24h qui est trop restrictive.
+      if (item.course.arriveeOfficielle && item.analyzedAt && (Date.now() - item.analyzedAt > 30 * 24 * 3600 * 1000)) {
         return false;
       }
       return true;
     });
 
     const purgedCount = current.length - updated.length;
-    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 30);
+    safeSetItemWithQuotaHandling(HISTORY_STORAGE_KEY, updated, 50);
     return { updated, purgedCount };
   } catch (err) {
     console.error('Erreur purge automatique historique:', err);
@@ -773,5 +776,104 @@ export function purgeRaceByKeywordsFromAllStorage(keywords: string[]): {
 
   return { historyPurged, favoritesPurged, calendarPurged };
 }
+
+export const purgeCourseFromApplicationMemory = purgeRaceByKeywordsFromAllStorage;
+
+/**
+ * GESTION PERSISTANTE DES ARRIVÉES EFFACÉES / ANNULÉES PAR L'UTILISATEUR
+ * Empêche qu'une arrivée réapparaisse pour des courses comme R4C4 ou via les caches API.
+ */
+export const CLEARED_ARRIVALS_STORAGE_KEY = 'hippo_cleared_arrivals_list';
+
+export function getClearedArrivalKeys(): string[] {
+  try {
+    const raw = localStorage.getItem(CLEARED_ARRIVALS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+export function markArrivalAsClearedInStorage(info: { id?: string; reunion?: string; course?: string; courseNumero?: string; sourceUrl?: string; prixNom?: string }): void {
+  try {
+    const currentKeys = new Set<string>(getClearedArrivalKeys());
+    
+    const rCode = info.reunion ? normalizeReunionCode(info.reunion) : '';
+    const cCode = (info.course || info.courseNumero || '').toString().trim().toUpperCase();
+    
+    if (info.id) currentKeys.add(String(info.id).toLowerCase().trim());
+    if (info.sourceUrl) currentKeys.add(String(info.sourceUrl).toLowerCase().trim());
+    if (rCode && cCode) {
+      currentKeys.add(`${rCode.toLowerCase()}${cCode.toLowerCase()}`); // e.g. "r4c4"
+      currentKeys.add(`${rCode.toLowerCase()} ${cCode.toLowerCase()}`); // e.g. "r4 c4"
+    }
+    if (info.prixNom) {
+      currentKeys.add(String(info.prixNom).toLowerCase().trim());
+    }
+
+    localStorage.setItem(CLEARED_ARRIVALS_STORAGE_KEY, JSON.stringify(Array.from(currentKeys)));
+
+    // Nettoyage immédiat des mémoires de l'application
+    const keywordsToPurge = Array.from(currentKeys);
+    purgeCourseFromApplicationMemory(keywordsToPurge);
+  } catch (err) {
+    console.error('Erreur sauvegarde clé de course effacée:', err);
+  }
+}
+
+export function isArrivalClearedInStorage(info?: { id?: string; reunion?: string; course?: string; courseNumero?: string; sourceUrl?: string; prixNom?: string; manualArrivalCleared?: boolean; verrouillageNonDisputee?: boolean } | null): boolean {
+  if (!info) return false;
+  if (info.manualArrivalCleared || info.verrouillageNonDisputee) return true;
+  
+  try {
+    const cleared = getClearedArrivalKeys();
+    if (cleared.length === 0) return false;
+    const clearedSet = new Set(cleared.map(k => String(k).toLowerCase().trim()));
+
+    if (info.id && clearedSet.has(String(info.id).toLowerCase().trim())) return true;
+    if (info.sourceUrl && clearedSet.has(String(info.sourceUrl).toLowerCase().trim())) return true;
+    
+    const rCode = info.reunion ? normalizeReunionCode(info.reunion) : '';
+    const cCode = (info.course || info.courseNumero || '').toString().trim().toUpperCase();
+    
+    if (rCode && cCode) {
+      const rcKey = `${rCode.toLowerCase()}${cCode.toLowerCase()}`;
+      if (clearedSet.has(rcKey)) return true;
+      if (clearedSet.has(`${rCode.toLowerCase()} ${cCode.toLowerCase()}`)) return true;
+    }
+    
+    if (info.prixNom && clearedSet.has(String(info.prixNom).toLowerCase().trim())) return true;
+  } catch (err) {
+    console.error('Erreur vérification course effacée:', err);
+  }
+
+  return false;
+}
+
+export function removeClearedArrivalFromStorage(info: { id?: string; reunion?: string; course?: string; courseNumero?: string; sourceUrl?: string }): void {
+  try {
+    const currentKeys = getClearedArrivalKeys();
+    if (currentKeys.length === 0) return;
+
+    const rCode = info.reunion ? normalizeReunionCode(info.reunion) : '';
+    const cCode = (info.course || info.courseNumero || '').toString().trim().toUpperCase();
+    const toRemove = new Set<string>();
+    
+    if (info.id) toRemove.add(String(info.id).toLowerCase().trim());
+    if (info.sourceUrl) toRemove.add(String(info.sourceUrl).toLowerCase().trim());
+    if (rCode && cCode) {
+      toRemove.add(`${rCode.toLowerCase()}${cCode.toLowerCase()}`);
+      toRemove.add(`${rCode.toLowerCase()} ${cCode.toLowerCase()}`);
+    }
+
+    const updated = currentKeys.filter(k => !toRemove.has(String(k).toLowerCase().trim()));
+    localStorage.setItem(CLEARED_ARRIVALS_STORAGE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.error('Erreur suppression clé de course effacée:', err);
+  }
+}
+
 
 

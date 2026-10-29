@@ -39,6 +39,12 @@
   --group-outsiders: 245, 158, 11; /* #f59e0b */
   --group-tocards: 234, 88, 12;    /* #ea580c */
   --group-surprises: 220, 38, 38;  /* #dc2626 */
+
+  /* Dégradés progressifs officiels basés sur le Score X */
+  --gradient-favoris: linear-gradient(135deg, #022c22 0%, #064e3b 22%, #059669 45%, #10b981 88%, #34d399 100%);
+  --gradient-outsiders: linear-gradient(135deg, #451a03 0%, #78350f 20%, #b45309 40%, #f59e0b 60%, #fbbf24 90%, #fde68a 100%);
+  --gradient-tocards: linear-gradient(135deg, #431407 0%, #7c2d12 22%, #9a3412 42%, #ea580c 60%, #f97316 88%, #fdba74 100%);
+  --gradient-surprises: linear-gradient(135deg, #450a0a 0%, #7f1d1d 20%, #991b1b 38%, #dc2626 58%, #ef4444 86%, #fca5a5 100%);
 }
 
 /* =========================================================

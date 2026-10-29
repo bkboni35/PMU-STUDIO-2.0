@@ -4,7 +4,7 @@ import { CourseHippique } from '../types/turf';
 import { shouldPromoteProvisionalToOfficial, checkOfficialArrivalAuditStatus, isPastDepartureTime } from '../utils/raceCountdown';
 import { getFriday02Meetings } from '../data/plrFriday02Data';
 import { getCuratedPmuMeetings } from '../data/pmuMeetingsData';
-import { getRaceHistory } from '../utils/favoritesStorage';
+import { getRaceHistory, isArrivalClearedInStorage } from '../utils/favoritesStorage';
 import { convertToAbidjanGMT, getIvoryCoastDate } from '../utils/timeConversion';
 
 interface BandePassanteArriveesProps {
@@ -119,7 +119,9 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
     synthese,
   } = displayCourse;
 
-  const hasOfficialArrival = Boolean(arriveeOfficielle && arriveeOfficielle.trim());
+  const isCleared = isArrivalClearedInStorage(displayCourse);
+  const effectiveArrival = isCleared ? undefined : arriveeOfficielle;
+  const hasOfficialArrival = Boolean(effectiveArrival && effectiveArrival.trim());
 
   // Détection si l'arrivée est provisoire ou officielle
   const isProvisional = Boolean(
@@ -133,7 +135,7 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
 
   // Parse arrival numbers if real official arrival is available (NEVER invent arrivals)
   const arrivalNumbers: number[] = hasOfficialArrival
-    ? (arriveeOfficielle || '')
+    ? (effectiveArrival || '')
         .split(/[-,\s]+/)
         .map((s) => parseInt(s.trim(), 10))
         .filter((n) => !isNaN(n))
@@ -541,7 +543,7 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/50 uppercase flex items-center gap-1.5 animate-pulse">
                   <AlertCircle className="w-3.5 h-3.5 text-amber-400" />
                   {currentCourse.hasEnquete ? (
-                    <span className="text-rose-300">⚠️ ARRIVÉE PROVISOIRE (Enquête commissaires en cours... Reste PROVISOIRE)</span>
+                    <span>⚠️ ARRIVÉE PROVISOIRE (En attente d'homologation)</span>
                   ) : (
                     <span>⚠️ ARRIVÉE PROVISOIRE (Officielle dans {promotionCheck.remainingSeconds}s · {promotionCheck.delayMinutes} min {promotionCheck.delayMinutes === 3 ? 'Trot' : 'Galop'})</span>
                   )}
@@ -549,14 +551,7 @@ export const BandePassanteArrivees: React.FC<BandePassanteArriveesProps> = ({
               );
             }
 
-            if (currentCourse.arrivalAuditModificationDetected) {
-              return (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/60 uppercase flex items-center gap-1.5 animate-bounce">
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                  <span>🚨 ARRIVÉE OFFICIELLE MODIFIÉE (Audit 5 min commissaires)</span>
-                </span>
-              );
-            }
+
 
             if (currentCourse.arrivalAuditCompleted) {
               return (

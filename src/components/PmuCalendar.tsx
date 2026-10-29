@@ -30,6 +30,7 @@ import { getCuratedPmuMeetings, PMU_SUNDAY_11_MEETINGS, getSunday11Meetings, get
 import { ConcordanceAuditModal } from './ConcordanceAuditModal';
 import { GroundingArrivalsModal } from './GroundingArrivalsModal';
 import { InteractivePmuDatePicker } from './InteractivePmuDatePicker';
+import { PmuDateRangePicker, DateRange } from './PmuDateRangePicker';
 import { PmuApiHubModal } from './PmuApiHubModal';
 
 import { CountdownTimer } from './CountdownTimer';
@@ -125,6 +126,16 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
       localStorage.setItem('hippo_selected_date', todayIso);
     } catch {}
     return todayIso;
+  });
+  const [customDateRange, setCustomDateRange] = useState<DateRange>(() => {
+    const todayIso = getIvoryCoastDate(0) || '2026-10-11';
+    return {
+      startDate: todayIso,
+      endDate: todayIso,
+      isActive: false,
+      presetKey: 'today',
+      label: "Aujourd'hui",
+    };
   });
   const [selectedHippodrome, setSelectedHippodrome] = useState<string>('all');
   // Hippodromes Favoris & Recherche Dédiée
@@ -451,6 +462,9 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
     setSelectedDate(newDate);
     setSelectedHippodrome('all');
     setReunionFilter('all');
+    if (customDateRange.isActive) {
+      setCustomDateRange((prev) => ({ ...prev, isActive: false }));
+    }
     try {
       localStorage.setItem('hippo_selected_date', newDate);
     } catch {}
@@ -1148,9 +1162,19 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
     });
   }, [rawMeetings]);
 
-  // 1. Filtrage par plage de dates (7 derniers jours, 7 prochains jours, aujourd'hui, ou date spécifique)
+  // 1. Filtrage par plage de dates (plage personnalisée, 7 derniers jours, 7 prochains jours, aujourd'hui, ou date spécifique)
   const activeDayMeetings = useMemo(() => {
     if (!meetings || meetings.length === 0) return [];
+
+    // Priorité 1 : Plage de dates personnalisée active
+    if (customDateRange.isActive && customDateRange.startDate && customDateRange.endDate) {
+      return meetings.filter((m) => {
+        const mIso = getMeetingIsoDate(m) || normalizeDateForQuery(m.date || '');
+        if (!mIso) return true;
+        return mIso >= customDateRange.startDate && mIso <= customDateRange.endDate;
+      });
+    }
+
     if (selectedDate === 'all') return meetings;
 
     const todayIso = getIvoryCoastDate(0);
@@ -1197,7 +1221,7 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
       const matchNorm = Boolean(selNorm && mNorm && selNorm === mNorm);
       return matchExact || matchIso || matchNorm;
     });
-  }, [meetings, selectedDate]);
+  }, [meetings, selectedDate, customDateRange]);
 
   // Liste de toutes les dates distinctes détectées dans l'ensemble du programme avec métadonnées et décomptes
   const distinctDatesWithCount = useMemo(() => {
@@ -1279,6 +1303,9 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
 
   // Libellé textuel convivial de la date couramment sélectionnée
   const currentSelectedDateLabel = useMemo(() => {
+    if (customDateRange.isActive && customDateRange.startDate && customDateRange.endDate) {
+      return customDateRange.label || `Du ${customDateRange.startDate} au ${customDateRange.endDate}`;
+    }
     if (selectedDate === 'all') return 'Toutes les dates';
     if (selectedDate === 'today') return "Aujourd'hui";
     if (selectedDate === 'last7') return '7 derniers jours';
@@ -1304,7 +1331,7 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
     } catch {}
 
     return selectedDate;
-  }, [selectedDate, distinctDatesWithCount]);
+  }, [selectedDate, distinctDatesWithCount, customDateRange]);
 
   // Carte des dates disponibles avec nombre de courses pour le calendrier interactif
   const availableDatesMap = useMemo(() => {
@@ -1329,6 +1356,15 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
 
     return map;
   }, [meetings]);
+
+  // Carte des décomptes pour le sélecteur de plages de dates
+  const availableDatesCountMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    distinctDatesWithCount.forEach((d) => {
+      map[d.iso] = d.count;
+    });
+    return map;
+  }, [distinctDatesWithCount]);
 
   const uniqueReunions = Array.from(new Set(activeDayMeetings.map((m) => m.reunion).filter(Boolean))).sort();
   const uniqueHippodromes = Array.from(new Set(activeDayMeetings.map((m) => m.hippodrome).filter(Boolean))).sort();
@@ -1910,6 +1946,36 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
           </div>
         </div>
 
+        {/* 🌟 Sélecteur de Plages de Dates PMU pour Filtrer les Réunions Hippiques sur une Période Définie */}
+        <div className="mt-3.5">
+          <PmuDateRangePicker
+            dateRange={customDateRange}
+            onChangeRange={(newRange) => {
+              setCustomDateRange(newRange);
+              if (newRange.isActive) {
+                if (newRange.startDate === newRange.endDate) {
+                  setSelectedDate(newRange.startDate);
+                } else {
+                  setSelectedDate('custom_range');
+                }
+              }
+            }}
+            onClearRange={() => {
+              setCustomDateRange({
+                startDate: '',
+                endDate: '',
+                isActive: false,
+                presetKey: 'today',
+                label: "Aujourd'hui",
+              });
+              setSelectedDate('today');
+            }}
+            totalMeetingsCount={meetings.length}
+            filteredMeetingsCount={activeDayMeetings.length}
+            availableDatesCountMap={availableDatesCountMap}
+          />
+        </div>
+
         {/* Sélecteur de Date & Calendrier Interactif (Filtrage Spécifique par Jour) */}
         <div className="mt-3.5">
           <InteractivePmuDatePicker
@@ -1942,6 +2008,11 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                   className="bg-slate-950 text-amber-300 font-black text-xs sm:text-sm px-3.5 py-2 rounded-xl border-2 border-amber-500 hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-400 cursor-pointer shadow-lg shadow-amber-500/10"
                   title="Sélectionner une date pour afficher son programme complet"
                 >
+                  {customDateRange.isActive && (
+                    <option value="custom_range" className="bg-slate-900 text-amber-300 font-bold">
+                      🎯 Plage active : {customDateRange.label} ({activeDayMeetings.length} courses)
+                    </option>
+                  )}
                   <option value="all" className="bg-slate-900 text-white font-bold">
                     📅 Toutes les dates ({meetings.length} courses)
                   </option>
@@ -3677,9 +3748,9 @@ export const PmuCalendar: React.FC<PmuCalendarProps> = ({ onAnalyzeMeeting, pred
                       {/* Date & Horaire de Départ / Statut */}
                       <td className="py-3.5 px-4 font-bold whitespace-nowrap">
                         <div className="flex flex-col gap-1.5">
-                          {/* Badge Heure de Départ de la Course - Heure officielle LONACI / CI (GMT) & France (UTC+2) */}
+                          {/* Badge Heure de Départ de la Course - Heure officielle LONACI / CI (GMT) & France */}
                           {(() => {
-                            const { franceTime, ciTime } = getDualDepartureTimes(meeting.heure);
+                            const { franceTime, ciTime } = getDualDepartureTimes(meeting.heure, meeting.date);
                             return (
                               <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-500/20 border border-amber-500/40 text-amber-300 shadow-sm w-fit flex-wrap">
                                 <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />

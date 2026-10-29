@@ -10,6 +10,8 @@ export interface UserProfile {
   statutMembre: 'Turfiste Certifié' | 'Abonné VIP' | 'Pronostiqueur Pro' | 'Membre Administrateur / VIP';
   analysesEffectuees: number;
   pays?: string;
+  emailVerifie?: boolean;
+  dateVerificationEmail?: string;
 }
 
 export interface AuthState {

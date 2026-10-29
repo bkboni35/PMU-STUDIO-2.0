@@ -36,7 +36,7 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
   );
 
   const remainingSeconds = auditStatus.remainingSeconds;
-  const totalSeconds = auditStatus.totalDelaySeconds || 300;
+  const totalSeconds = auditStatus.totalDelaySeconds || 180;
   const elapsedSeconds = Math.max(0, totalSeconds - remainingSeconds);
   const progressPercent = Math.min(100, Math.max(0, Math.round((elapsedSeconds / totalSeconds) * 100)));
 
@@ -63,63 +63,9 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
 
   const [dismissedAlert, setDismissedAlert] = useState<boolean>(false);
 
-  // Déclenchement automatique de l'alerte sonore et visuelle en cas de modification d'arrivée (rétrogradation / disqualification)
-  useEffect(() => {
-    if (course.arrivalAuditModificationDetected) {
-      setDismissedAlert(false);
-      playArrivalModificationAlertAudio();
-    }
-  }, [course.arrivalAuditModificationDetected]);
 
-  // 1. Cas : Modification d'arrivée constatée après enquête des commissaires
-  if (course.arrivalAuditModificationDetected && !dismissedAlert) {
-    return (
-      <div className="w-full p-4.5 rounded-2xl bg-gradient-to-r from-rose-950 via-rose-900 to-slate-950 border-2 border-rose-500 shadow-2xl space-y-3 shadow-rose-500/30">
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <div className="flex items-start gap-3.5">
-            <div className="p-3 rounded-2xl bg-rose-500 text-slate-950 shadow-lg shadow-rose-500/40 shrink-0 font-black animate-pulse">
-              <AlertTriangle className="w-6 h-6 stroke-[3]" />
-            </div>
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="px-3 py-0.5 rounded-md bg-rose-500 text-slate-950 font-black text-xs uppercase tracking-wider shadow">
-                  🚨 ALERTE COMMISSAIRES : MODIFICATION D'ARRIVÉE
-                </span>
-                <span className="px-2 py-0.5 rounded-full bg-rose-950 text-rose-300 border border-rose-500/50 text-[10px] font-bold">
-                  Rétrogradation / Disqualification après enquête
-                </span>
-              </div>
-              <p className="text-xs font-bold text-rose-100">
-                Le service de certification a détecté une modification officielle de l'arrivée suite aux réclamations ou enquêtes des commissaires.
-              </p>
-              {course.arrivalAuditPreviousArrival && (
-                <div className="p-2.5 rounded-xl bg-slate-950/90 border border-rose-500/40 text-xs font-mono text-rose-300 mt-1 space-y-0.5">
-                  <div>Ancien ordre provisoire : <span className="text-slate-400 font-bold">{course.arrivalAuditPreviousArrival}</span></div>
-                  <div>Nouvel ordre officiel rectifié : <strong className="text-amber-400 font-black text-sm">{course.arriveeOfficielle}</strong></div>
-                </div>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            {course.arrivalAuditTimestamp && (
-              <span className="text-[10px] font-mono text-rose-200 bg-rose-950 px-3 py-1.5 rounded-xl border border-rose-500/50 shadow">
-                Alerte émise à {new Date(course.arrivalAuditTimestamp).toLocaleTimeString('fr-FR')}
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={() => setDismissedAlert(true)}
-              className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow transition-colors flex items-center gap-1 cursor-pointer"
-            >
-              Fermer
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
-  // 2. Cas : Contrôle des 5 minutes entièrement complété et certifié sans modification
+  // 2. Cas : Contrôle des 3 minutes entièrement complété et certifié sans modification
   if (course.arrivalAuditCompleted) {
     return (
       <div className="w-full p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/90 via-slate-900 to-slate-950 border border-emerald-500/40 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
@@ -130,10 +76,10 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
           <div className="space-y-0.5">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-black text-emerald-300">
-                Contrôle 5 min post-arrivée validé par les commissaires
+                Contrôle 3 min post-arrivée validé
               </span>
               <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-300 text-[10px] font-mono font-bold border border-emerald-500/40">
-                ✓ 300s écoulées · Homologation définitive
+                ✓ 180s écoulées · Homologation définitive
               </span>
             </div>
             <p className="text-[11px] text-slate-400">
@@ -151,7 +97,7 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
     );
   }
 
-  // 3. Cas : Compte à rebours actif de 5 minutes (300 secondes)
+  // 3. Cas : Compte à rebours actif de 3 minutes (180 secondes)
   return (
     <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-amber-500/40 shadow-xl space-y-3.5 relative overflow-hidden">
       {/* Background glowing gradient */}
@@ -166,11 +112,11 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="px-2.5 py-0.5 rounded-md bg-amber-500 text-slate-950 font-black text-[10px] uppercase tracking-wider shadow-sm">
-                Contrôle Réglementaire PMU (5 min / 300s)
+                Contrôle Réglementaire PMU (3 min / 180s)
               </span>
               <span className="text-xs font-black text-amber-200 flex items-center gap-1.5">
                 <Scale className="w-3.5 h-3.5 text-amber-400" />
-                <span>Contrôle de conformité des commissaires en cours</span>
+                <span>Contrôle de conformité et homologation en cours</span>
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-1">
@@ -210,12 +156,12 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
         </div>
       </div>
 
-      {/* Progress Bar (300s Countdown Visual Indicator) */}
+      {/* Progress Bar (180s Countdown Visual Indicator) */}
       <div className="space-y-1.5 relative z-10">
         <div className="flex items-center justify-between text-[11px]">
           <span className="text-slate-400 font-medium flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span>Progression du délai des 5 minutes :</span>
+            <span>Progression du délai des 3 minutes :</span>
           </span>
           <span className="font-mono font-bold text-amber-300">
             {elapsedSeconds}s / {totalSeconds}s ({progressPercent}%)
@@ -241,7 +187,7 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
               </>
             ) : (
               <>
-                Délai de sécurité 5 minutes (300s) déclenché dès l'affichage officiel de l'arrivée.
+                Délai de sécurité 3 minutes (180s) déclenché dès l'affichage officiel de l'arrivée.
               </>
             )}
           </span>
@@ -253,7 +199,7 @@ export const ArrivalAuditCountdownWidget: React.FC<ArrivalAuditCountdownWidgetPr
             onClick={onTriggerArrivalAudit}
             disabled={isAuditingArrival}
             className="px-3.5 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/50 text-amber-300 text-xs font-black flex items-center gap-1.5 transition-all active:scale-95 shadow-sm shrink-0 self-start sm:self-auto cursor-pointer"
-            title="Vérifier immédiatement auprès des commissaires sans attendre l'expiration des 5 minutes"
+            title="Vérifier immédiatement les modifications d'arrivée sans attendre l'expiration des 3 minutes"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${isAuditingArrival ? 'animate-spin text-amber-400' : ''}`} />
             <span>{isAuditingArrival ? 'Audit en cours...' : 'Vérifier modifications'}</span>

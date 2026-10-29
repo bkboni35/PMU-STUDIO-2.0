@@ -467,9 +467,9 @@ export const GroundingArrivalsModal: React.FC<GroundingArrivalsModalProps> = ({
                         {/* Badge Statut */}
                         <div>
                           {hasInquiry ? (
-                            <span className="px-2.5 py-1 rounded-xl bg-rose-950 text-rose-300 border border-rose-500 text-[11px] font-black flex items-center gap-1.5 shadow-md shadow-rose-950/50">
-                              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
-                              <span>Enquête Commissaires</span>
+                            <span className="px-2.5 py-1 rounded-xl bg-amber-950 text-amber-300 border border-amber-500 text-[11px] font-black flex items-center gap-1.5 shadow-md shadow-amber-950/50">
+                              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+                              <span>Arrivée Provisoire</span>
                             </span>
                           ) : isItemOfficial ? (
                             <span className="px-2.5 py-1 rounded-xl bg-emerald-950 text-emerald-300 border border-emerald-500 text-[11px] font-black flex items-center gap-1.5 shadow-md shadow-emerald-950/50">

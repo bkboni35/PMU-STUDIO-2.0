@@ -50,7 +50,7 @@ export default defineConfig(() => {
           enabled: true,
         },
         workbox: {
-          maximumFileSizeToCacheInBytes: 5000000,
+          maximumFileSizeToCacheInBytes: 10000000,
         },
       }),
     ],

@@ -42,6 +42,7 @@ import { computeV38Hierarchy, getHorseGenyOdds } from '../utils/v38Helper';
 import { calculerPerformanceTandem, calculerPerformanceDriverJockey, getPartantDriverMusique } from '../utils/turfCalculations';
 import { scrollToTopInstant } from '../utils/scrollHelper';
 import { TandemDiagnosticModal } from './TandemDiagnosticModal';
+import { TableScrollWrapper } from './TableScrollWrapper';
 
 interface PronosticsDeJeuViewProps {
   course: CourseHippique;
@@ -1161,8 +1162,12 @@ Généré par HippoAnalyse Studio V38`;
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
+          <TableScrollWrapper
+            title="Déplacement du tableau des délaissés"
+            description="Faites défiler vers la droite pour visualiser les cotes, probabilités et motifs algorithmiques"
+            className="my-1"
+          >
+            <table className="w-full min-w-[720px] text-left text-xs text-slate-300">
               <thead className="bg-slate-950/80 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800">
                 <tr>
                   <th className="p-3 text-center">Rang</th>
@@ -1198,7 +1203,7 @@ Généré par HippoAnalyse Studio V38`;
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScrollWrapper>
         </div>
       )}
 
@@ -1387,8 +1392,12 @@ Généré par HippoAnalyse Studio V38`;
             </div>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs text-slate-300">
+          <TableScrollWrapper
+            title="Déplacement du tableau Value Bet"
+            description="Faites défiler vers la droite pour visualiser l'Edge calculé, le rendement espéré et le diagnostic mathématique"
+            className="my-1"
+          >
+            <table className="w-full min-w-[760px] text-left text-xs text-slate-300">
               <thead className="bg-slate-950/80 text-[10px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-800">
                 <tr>
                   <th className="p-3 text-center">Rang Value</th>
@@ -1437,7 +1446,7 @@ Généré par HippoAnalyse Studio V38`;
                 })}
               </tbody>
             </table>
-          </div>
+          </TableScrollWrapper>
         </div>
       )}
 

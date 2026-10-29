@@ -146,7 +146,7 @@ export const FavoriteArrivalNotificationBanner: React.FC<FavoriteArrivalNotifica
                   }`}
                 >
                   <ShieldCheck className="w-3 h-3" />
-                  {isModified ? 'Arrivée Rectifiée Commissaires' : 'Arrivée Officielle Confirmée'}
+                  {isModified ? 'Arrivée Rectifiée' : 'Arrivée Officielle Confirmée'}
                 </span>
               </div>
 

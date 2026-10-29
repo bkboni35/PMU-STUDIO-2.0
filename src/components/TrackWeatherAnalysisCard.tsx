@@ -765,11 +765,11 @@ export const TrackWeatherAnalysisCard: React.FC<TrackWeatherAnalysisCardProps> =
                   Certification PMU / Geny.com
                 </span>
                 <span className="text-xs font-black text-white">
-                  Audit 5 Min Post-Arrivée (300 Secondes)
+                  Audit 3 Min Post-Arrivée (180 Secondes)
                 </span>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5">
-                Mécanisme officiel de contrôle des commissaires et sécurisation de l'arrivée définitive.
+                Mécanisme officiel de sécurisation de l'arrivée définitive (3 minutes maximum).
               </p>
             </div>
           </div>
@@ -783,10 +783,10 @@ export const TrackWeatherAnalysisCard: React.FC<TrackWeatherAnalysisCardProps> =
           <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1.5">
             <div className="flex items-center gap-2 font-bold text-amber-300">
               <Clock className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>1. Fenêtre de 300s (5 Min)</span>
+              <span>1. Fenêtre de 180s (3 Min)</span>
             </div>
             <p className="text-slate-300 text-[11px] leading-relaxed">
-              Dès la publication de l'ordre provisoire, un délai réglementaire de 5 minutes s'ouvre pour permettre aux commissaires d'examiner d'éventuelles réclamations, enquêtes sur la régularité des allures ou incidents de course.
+              Dès la publication de l'ordre provisoire, un délai réglementaire de 3 minutes maximum s'ouvre pour permettre aux commissaires d'examiner d'éventuelles réclamations, enquêtes sur la régularité des allures ou incidents de course.
             </p>
           </div>
 
@@ -796,7 +796,7 @@ export const TrackWeatherAnalysisCard: React.FC<TrackWeatherAnalysisCardProps> =
               <span>2. Statut Provisoire ➔ Définitif</span>
             </div>
             <p className="text-slate-300 text-[11px] leading-relaxed">
-              Si aucune réclamation ni enquête n'aboutit à une sanction à l'issue des 5 minutes, le statut bascule automatiquement de <strong>provisoire</strong> à <strong>définitif / officiel</strong> certifié par le service.
+              Si aucune réclamation ni enquête n'aboutit à une sanction à l'issue des 3 minutes, le statut bascule automatiquement de <strong>provisoire</strong> à <strong>définitif / officiel</strong> certifié par le service.
             </p>
           </div>
 
@@ -815,15 +815,11 @@ export const TrackWeatherAnalysisCard: React.FC<TrackWeatherAnalysisCardProps> =
         <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className={`p-2 rounded-xl shrink-0 ${
-              course.arrivalAuditModificationDetected
-                ? 'bg-rose-500/20 text-rose-400 border border-rose-500/40'
-                : course.arrivalAuditCompleted
+              course.arrivalAuditCompleted || course.arriveeOfficielle
                 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
                 : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
             }`}>
-              {course.arrivalAuditModificationDetected ? (
-                <AlertTriangle className="w-5 h-5 text-rose-400" />
-              ) : course.arrivalAuditCompleted ? (
+              {course.arrivalAuditCompleted || course.arriveeOfficielle ? (
                 <CheckCircle2 className="w-5 h-5 text-emerald-400" />
               ) : (
                 <Clock className="w-5 h-5 text-amber-400 animate-pulse" />
@@ -832,23 +828,19 @@ export const TrackWeatherAnalysisCard: React.FC<TrackWeatherAnalysisCardProps> =
             <div className="space-y-0.5">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-black text-white">
-                  {course.arrivalAuditModificationDetected
-                    ? '⚠️ Modification détectée par le service de certification'
-                    : course.arrivalAuditCompleted
-                    ? '✓ Statut officiel : Transité de Provisoire à Définitif (Certifié)'
+                  {course.arrivalAuditCompleted
+                    ? '✓ Statut officiel : Homologué et Certifié Définitif'
                     : course.arriveeOfficielle
-                    ? '⏳ Audit 5 min en cours de surveillance (Provisoire ➔ Définitif)'
-                    : 'ℹ️ En attente de l\'arrivée pour déclencher l\'audit 5 min'}
+                    ? '✓ Arrivée officielle confirmée'
+                    : 'ℹ️ En attente de l\'arrivée officielle'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                {course.arrivalAuditModificationDetected
-                  ? `Ordre initial rectifié suite à enquête commissaires : ${course.arrivalAuditPreviousArrival || 'N/A'} ➔ ${course.arriveeOfficielle}`
-                  : course.arrivalAuditCompleted
-                  ? 'Le délai de 300 secondes est écoulé. Les commissaires ont validé l\'ordre officiel sans modification.'
+                {course.arrivalAuditCompleted
+                  ? 'Le délai de contrôle est validé. L\'ordre officiel définitif est homologué.'
                   : course.arriveeOfficielle
-                  ? 'Surveillance active des cotes et rapports officiels en temps réel.'
-                  : 'L\'audit s\'activera dès l\'enregistrement officiel des premiers arrivants.'}
+                  ? 'Surveillance active des cotes et rapports officiels en direct.'
+                  : 'L\'homologation s\'activera dès l\'enregistrement officiel des premiers arrivants.'}
               </p>
             </div>
           </div>
@@ -856,13 +848,11 @@ export const TrackWeatherAnalysisCard: React.FC<TrackWeatherAnalysisCardProps> =
           <div className="text-right shrink-0">
             <span className="text-[10px] uppercase font-bold text-slate-400 block">Statut Actuel</span>
             <span className={`font-mono text-xs font-black px-2.5 py-1 rounded-lg border inline-block mt-0.5 ${
-              course.arrivalAuditModificationDetected
-                ? 'bg-rose-950 text-rose-300 border-rose-500/40'
-                : course.arrivalAuditCompleted
+              course.arrivalAuditCompleted || course.arriveeOfficielle
                 ? 'bg-emerald-950 text-emerald-300 border-emerald-500/30'
                 : 'bg-amber-950 text-amber-300 border-amber-500/30'
             }`}>
-              {course.arrivalAuditModificationDetected ? 'Modifié / Rectifié' : course.arrivalAuditCompleted ? 'Définitif (Homologué)' : 'Provisoire / En cours'}
+              {course.arrivalAuditCompleted || course.arriveeOfficielle ? 'Définitif (Homologué)' : 'Provisoire / En cours'}
             </span>
           </div>
         </div>

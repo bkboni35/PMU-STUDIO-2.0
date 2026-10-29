@@ -12,7 +12,7 @@ import {
   Legend,
   Cell,
 } from 'recharts';
-import { Trophy, Medal, Percent, BarChart3, ArrowUpDown, Sparkles, Filter, Info, ShieldCheck, UserCheck, Activity, TrendingUp, MapPin } from 'lucide-react';
+import { Trophy, Medal, Percent, BarChart3, ArrowUpDown, Sparkles, Filter, Info, ShieldCheck, UserCheck, Activity, TrendingUp, MapPin, Flame } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { RadarPerformanceChart } from './RadarPerformanceChart';
 import { computePartantHippoScore } from '../utils/geminiMultiModelEngine';
@@ -384,6 +384,64 @@ export const StatsPerformanceChart: React.FC<StatsPerformanceChartProps> = ({
     }).sort((a, b) => b.tauxQuinte10 - a.tauxQuinte10);
   }, [filteredStats, course.partants]);
 
+  // Calcul détaillé des écarts de réussite des drivers / jockeys sur leurs 10 dernières courses
+  const driverGapStats = useMemo(() => {
+    return filteredStats.map((item) => {
+      const p = (course.partants || []).find((part) => part.numero === item.numero);
+      const driverName = item.driver || 'Driver Inconnu';
+      
+      let ecartActuel = p?.driverEcart !== undefined && p.driverEcart !== null ? p.driverEcart : 0;
+      let reussiteDrv = p?.driverReussite || 0;
+
+      const drvMusique = p?.driverMusique || (item.musiqueCourte || '');
+      const tokens = drvMusique.split(/\s+/).filter(Boolean).slice(0, 10);
+      
+      let v10 = 0;
+      let p10 = 0;
+      tokens.forEach((t) => {
+        if (/^1[AMPSHC]?$/i.test(t)) v10++;
+        else if (/^[23][AMPSHC]?$/i.test(t)) p10++;
+      });
+
+      if (tokens.length === 0) {
+        v10 = Math.max(1, Math.floor((reussiteDrv / 100) * 3));
+        p10 = Math.max(1, Math.floor((reussiteDrv / 100) * 5));
+      }
+
+      const totalPodium10 = Math.min(10, v10 + p10);
+      const tauxReussite10 = Math.min(100, Math.max(10, Math.round((totalPodium10 / 10) * 100)));
+      
+      if (ecartActuel === 0 && tokens.length > 0) {
+        let countEcart = 0;
+        for (const tok of tokens) {
+          if (/^1[AMPSHC]?$/i.test(tok)) break;
+          countEcart++;
+        }
+        ecartActuel = countEcart;
+      }
+
+      const ecartActuelCourses = Math.max(0, ecartActuel);
+
+      let appreciation = 'Régulier';
+      if (ecartActuelCourses === 0 || v10 >= 3) appreciation = '🔥 Forme Élite (Écart 0)';
+      else if (ecartActuelCourses >= 5) appreciation = '⚡ En Écart (Réveil imminent)';
+      else if (tauxReussite10 >= 50) appreciation = '⭐ Solide Podiums';
+
+      return {
+        numero: item.numero,
+        displayName: item.displayName,
+        nomCheval: item.nom,
+        driver: driverName,
+        ecartActuelCourses,
+        tauxReussite10,
+        victoires10: v10,
+        places10: p10,
+        totalPodium10,
+        appreciation,
+      };
+    }).sort((a, b) => b.tauxReussite10 - a.tauxReussite10 || a.ecartActuelCourses - b.ecartActuelCourses);
+  }, [filteredStats, course.partants]);
+
   // Moyenne de réussite globale du peloton sur cet hippodrome
   const avgTrackPlaceRate = useMemo(() => {
     if (!trackPerformanceData || trackPerformanceData.length === 0) return 0;
@@ -443,6 +501,39 @@ export const StatsPerformanceChart: React.FC<StatsPerformanceChartProps> = ({
     return null;
   };
 
+  // Chart de performance Système 74 (Différence X)
+  const systeme74Data = useMemo(() => {
+    return filteredStats.map((s) => ({
+      numero: `N°${s.numero}`,
+      scoreX: Math.round(((73 + s.numero) - s.cote) * 10) / 10,
+      fill: ((73 + s.numero) - s.cote) >= 25 ? '#f59e0b' : '#64748b',
+    })).sort((a, b) => b.scoreX - a.scoreX);
+  }, [filteredStats]);
+
+  const renderSysteme74Chart = () => (
+    <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800">
+      <h3 className="text-sm font-black text-white mb-4 flex items-center gap-2">
+        <Sparkles className="w-4 h-4 text-amber-400" />
+        Évolution Système 74 (Différence X)
+      </h3>
+      <div className="h-64 w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={systeme74Data} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+            <XAxis dataKey="numero" stroke="#94a3b8" fontSize={10} />
+            <YAxis stroke="#94a3b8" fontSize={10} />
+            <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }} />
+            <Bar dataKey="scoreX" name="Différence X" radius={[4, 4, 0, 0]}>
+                {systeme74Data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+
   // Tooltip dédié pour le graphique de corrélation entraîneur / partant
   const TrainerCorrelationTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
@@ -497,6 +588,58 @@ export const StatsPerformanceChart: React.FC<StatsPerformanceChartProps> = ({
                 data.ecartForme >= 7 ? 'text-emerald-400' : data.ecartForme <= -7 ? 'text-cyan-300' : 'text-slate-300'
               }`}>
                 {data.diagnostic}
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  // Tooltip spécifique pour le graphique des Écarts de Réussite Drivers
+  const DriverGapTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-slate-950/95 border border-slate-700 p-3.5 rounded-2xl shadow-2xl text-xs space-y-2 backdrop-blur-md min-w-[240px]">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+            <div className="flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-md bg-amber-500 text-slate-950 font-black flex items-center justify-center text-[10px]">
+                {data.numero}
+              </span>
+              <span className="font-extrabold text-white text-sm">{data.driver}</span>
+            </div>
+            <span className="text-[10px] text-amber-400 font-bold">
+              N°{data.numero} {data.nomCheval}
+            </span>
+          </div>
+
+          <div className="space-y-1.5 pt-1">
+            <div className="flex justify-between items-center">
+              <span className="text-amber-400 font-semibold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400"></span>
+                Taux de Réussite Podium (10 c.) :
+              </span>
+              <span className="font-mono font-black text-amber-400 text-xs">
+                {data.tauxReussite10}% ({data.victoires10}v / {data.places10}p)
+              </span>
+            </div>
+
+            <div className="flex justify-between items-center">
+              <span className="text-cyan-400 font-semibold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-cyan-400"></span>
+                Écart Actuel (sans gagne) :
+              </span>
+              <span className="font-mono font-black text-cyan-400 text-xs">
+                {data.ecartActuelCourses} course{data.ecartActuelCourses > 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
+              <span className="text-[10px] text-slate-400 block font-medium">Diagnostic Driver :</span>
+              <span className="text-[11px] font-bold text-amber-300">
+                {data.appreciation}
               </span>
             </div>
           </div>
@@ -1036,6 +1179,8 @@ export const StatsPerformanceChart: React.FC<StatsPerformanceChartProps> = ({
             Modèle prédictif croisé IA & Écuries
           </span>
         </div>
+        
+        {renderSysteme74Chart()}
       </div>
 
       {/* Graphique de Performance Historique : Taux de Réussite au Quinté des Drivers / Jockeys sur les 10 dernières courses */}
@@ -1107,6 +1252,154 @@ export const StatsPerformanceChart: React.FC<StatsPerformanceChartProps> = ({
           <Info className="w-4 h-4 text-amber-400 shrink-0" />
           <span>
             <strong>Indicateur clé :</strong> Un driver affichant un taux de réussite au quinté supérieur à 60% sur ses 10 dernières courses garantit une maîtrise tactique maximale dans les lots difficiles.
+          </span>
+        </div>
+      </div>
+
+      {/* SECTION : Visualisation en Graphique à Barres des Écarts de Réussite des Drivers (10 Dernières Courses) */}
+      <div className="mt-8 pt-6 border-t border-slate-800 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h4 className="text-sm sm:text-base font-black text-white uppercase tracking-wider flex items-center gap-2">
+              <Flame className="w-4 h-4 text-amber-400" />
+              <span>📊 Graphique des Écarts de Réussite des Drivers / Jockeys (10 Dernières Courses)</span>
+            </h4>
+            <p className="text-xs text-slate-400">
+              Visualisation à barres de la régularité et des écarts actuels : Taux de réussite podium (%) vs Écart de victoires consécutives.
+            </p>
+          </div>
+          <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider self-start sm:self-auto">
+            {driverGapStats.length} Drivers analysés
+          </span>
+        </div>
+
+        {/* KPI Cards Écarts Drivers */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          {driverGapStats[0] && (
+            <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-amber-500/30 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400">
+                  <Flame className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-[11px] text-slate-400 block">Top Forme (Écart 0)</span>
+                  <span className="font-extrabold text-white text-xs truncate max-w-[130px] block" title={driverGapStats[0].driver}>
+                    {driverGapStats[0].driver}
+                  </span>
+                  <span className="text-[10px] text-slate-500">N°{driverGapStats[0].numero} {driverGapStats[0].nomCheval}</span>
+                </div>
+              </div>
+              <div className="text-right">
+                <span className="font-black text-amber-400 text-sm font-mono">{driverGapStats[0].tauxReussite10}%</span>
+                <span className="block text-[10px] text-slate-500">réussite 10c.</span>
+              </div>
+            </div>
+          )}
+
+          {(() => {
+            const topEcartDrv = [...driverGapStats].sort((a, b) => b.ecartActuelCourses - a.ecartActuelCourses)[0];
+            if (!topEcartDrv) return null;
+            return (
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-cyan-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
+                    <TrendingUp className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-slate-400 block">Écart Gagnant Max</span>
+                    <span className="font-extrabold text-white text-xs truncate max-w-[130px] block" title={topEcartDrv.driver}>
+                      {topEcartDrv.driver}
+                    </span>
+                    <span className="text-[10px] text-slate-500">N°{topEcartDrv.numero} {topEcartDrv.nomCheval}</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="font-black text-cyan-400 text-sm font-mono">{topEcartDrv.ecartActuelCourses} c.</span>
+                  <span className="block text-[10px] text-slate-500">sans gagne</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {(() => {
+            const avgReussite = Math.round(
+              driverGapStats.reduce((acc, d) => acc + d.tauxReussite10, 0) / (driverGapStats.length || 1)
+            );
+            return (
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-emerald-500/30 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
+                    <BarChart3 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[11px] text-slate-400 block">Moyenne Réussite Lot</span>
+                    <span className="font-extrabold text-white text-xs block">Moyenne Drivers</span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <span className="font-black text-emerald-400 text-sm font-mono">{avgReussite}%</span>
+                  <span className="block text-[10px] text-slate-500">réussite global</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Graphique à Barres Recharts */}
+        <div className="h-72 sm:h-80 w-full bg-slate-950/40 rounded-2xl border border-slate-850 p-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart
+              data={driverGapStats}
+              margin={{ top: 15, right: 20, left: -20, bottom: 25 }}
+              barGap={4}
+            >
+              <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} vertical={false} />
+              <XAxis
+                dataKey="displayName"
+                stroke="#94a3b8"
+                fontSize={10}
+                tickLine={false}
+                interval={0}
+                angle={-20}
+                textAnchor="end"
+                height={45}
+              />
+              <YAxis
+                stroke="#94a3b8"
+                fontSize={10}
+                domain={[0, 100]}
+                tickFormatter={(val) => `${val}`}
+                tickLine={false}
+              />
+              <Tooltip content={<DriverGapTooltip />} />
+              <Legend
+                verticalAlign="top"
+                align="right"
+                wrapperStyle={{ paddingBottom: '12px', fontSize: '11px' }}
+                formatter={(value) => {
+                  if (value === 'tauxReussite10') return <span className="text-amber-400 font-bold">Taux Réussite Podium % (10 courses)</span>;
+                  if (value === 'ecartActuelCourses') return <span className="text-cyan-400 font-bold">Écart Actuel (nbr courses)</span>;
+                  return value;
+                }}
+              />
+              <Bar dataKey="tauxReussite10" name="tauxReussite10" fill="#f59e0b" radius={[6, 6, 0, 0]} maxBarSize={28}>
+                {driverGapStats.map((entry, index) => (
+                  <Cell key={`cell-drv-gap-${index}`} fill={entry.tauxReussite10 >= 60 ? '#f59e0b' : entry.tauxReussite10 >= 35 ? '#d97706' : '#b45309'} />
+                ))}
+              </Bar>
+              <Bar dataKey="ecartActuelCourses" name="ecartActuelCourses" fill="#06b6d4" radius={[6, 6, 0, 0]} maxBarSize={28}>
+                {driverGapStats.map((entry, index) => (
+                  <Cell key={`cell-drv-ecart-${index}`} fill={entry.ecartActuelCourses >= 5 ? '#06b6d4' : '#0891b2'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center gap-2 text-xs text-slate-400">
+          <Info className="w-4 h-4 text-amber-400 shrink-0" />
+          <span>
+            <strong>Lecture stratégique :</strong> Un driver à fort taux de réussite (&ge;50%) et à faible écart (&le;2) confirme une dynamique de victoire active. Un grand écart (&ge;5 courses) chez un pilote chevronné signale une opportunité de réveil à cote spéculative.
           </span>
         </div>
       </div>

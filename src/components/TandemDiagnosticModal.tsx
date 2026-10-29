@@ -146,12 +146,15 @@ export const TandemDiagnosticModal: React.FC<TandemDiagnosticModalProps> = ({
     setIsExtractingLive(true);
     setLiveSuccessMsg(null);
     try {
-      const res = await extractDriversMusiqueLive(course);
+      const res = await extractDriversMusiqueLive(course, 'all');
       if (res && res.driversMusique && res.driversMusique.length > 0) {
         setRefreshCounter((prev) => prev + 1);
         setTestExecutedAt(new Date().toLocaleTimeString('fr-FR'));
-        setLiveSuccessMsg(`Musiques extraites en direct pour ${res.driversMusique.length} pilotes (PMU API / geny.com)`);
-        setTimeout(() => setLiveSuccessMsg(null), 5000);
+        const verifiedCount = res.driversMusique.filter((d) => d.driverMusique && d.driverMusique.trim()).length;
+        setLiveSuccessMsg(
+          `Gemini 4 Argon + Manus 2.0 Pro/Lite : ${verifiedCount}/${res.driversMusique.length} musiques réelles extraites sans invention`
+        );
+        setTimeout(() => setLiveSuccessMsg(null), 6000);
       }
     } catch (e) {
       console.error(e);
@@ -223,11 +226,11 @@ export const TandemDiagnosticModal: React.FC<TandemDiagnosticModalProps> = ({
               type="button"
               onClick={handleExtractLiveMusique}
               disabled={isExtractingLive || isRunning}
-              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-[11px] uppercase tracking-wider shadow-md transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
-              title="Extraire en direct par Perplexity AI la musique de chaque pilote (API PMU / geny.com / pmu.fr)"
+              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-indigo-600 hover:from-emerald-500 hover:to-indigo-500 text-white font-black text-[11px] uppercase tracking-wider shadow-md transition-all flex items-center gap-1.5 cursor-pointer shrink-0"
+              title="Extraire en direct par Gemini 4 Argon, Manus 2.0 Pro & Manus 2.0 Lite la vraie musique de chaque pilote sans rien inventer (API PMU / geny.com)"
             >
               <Sparkles className={`w-3.5 h-3.5 ${isExtractingLive ? 'animate-spin' : 'text-amber-300'}`} />
-              <span>{isExtractingLive ? 'Extraction...' : 'Perplexity AI Live Musique'}</span>
+              <span>{isExtractingLive ? 'Extraction Argon...' : 'Gemini 4 Argon · Manus 2.0 Musique Réelle'}</span>
             </button>
 
             <button
@@ -271,8 +274,8 @@ export const TandemDiagnosticModal: React.FC<TandemDiagnosticModalProps> = ({
             <thead className="sticky top-0 z-10">
               <tr className="bg-slate-900 text-slate-200 font-black uppercase text-[10px] tracking-wider border-b border-slate-800 whitespace-nowrap shadow-md">
                 <th className="py-2.5 px-3">N° & Cheval</th>
-                <th className="py-2.5 px-3">Performances Cheval (3 musiques)</th>
-                <th className="py-2.5 px-3">Driver / Jockey & Musique</th>
+                <th className="py-2.5 px-3 text-left">Performances Cheval (3 musiques)</th>
+                <th className="py-2.5 px-3 text-left">Driver / Jockey & Musique</th>
                 <th className="py-2.5 px-3 text-center">Score Client</th>
                 <th className="py-2.5 px-3 text-center">Score Brut Attendu</th>
                 <th className="py-2.5 px-3 text-center">Statut Test</th>

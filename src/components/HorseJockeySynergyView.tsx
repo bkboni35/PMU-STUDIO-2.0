@@ -5,6 +5,7 @@ import {
   generatePythonHorseJockeyScript,
   HorseJockeySynergyMetrics
 } from '../utils/horseJockeySynergyEngine';
+import { DriversRankingTable } from './DriversRankingTable';
 import {
   Users,
   Flame,
@@ -363,6 +364,13 @@ export const HorseJockeySynergyView: React.FC<HorseJockeySynergyViewProps> = ({ 
           </table>
         </div>
       </div>
+
+      {/* CLASSEMENT & PALMARÈS INTERACTIF DES DRIVERS */}
+      <DriversRankingTable
+        course={course}
+        selectedHorseNumero={selectedHorseNumero}
+        onSelectHorse={setSelectedHorseNumero}
+      />
 
       {/* PYTHON SCRIPT EXPORTER CARD */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-lg space-y-4">

@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Sparkles, Trophy, ShieldCheck, Flame, AlertOctagon, HelpCircle, Check, ArrowRight, FileDown, FileSpreadsheet, Printer, CheckCircle2, Calendar, Brain, Star, Crown, Copy, FileText, Compass, Mail, Loader2, TrendingDown, TrendingUp, Filter, ArrowDownUp, ShieldAlert, Award, Cpu, UserCheck, Users, Radar } from 'lucide-react';
+import { Sparkles, Trophy, ShieldCheck, Flame, AlertOctagon, HelpCircle, Check, ArrowRight, FileDown, FileSpreadsheet, Printer, CheckCircle2, Calendar, Brain, Star, Crown, Copy, FileText, Compass, Mail, Loader2, TrendingDown, TrendingUp, Filter, ArrowDownUp, ShieldAlert, Award, Cpu, UserCheck, Users, Radar, Target } from 'lucide-react';
 import { CourseHippique, Partant } from '../types/turf';
 import { exportCourseToPdf, exportQuinteOnlyToPdf } from '../utils/pdfExport';
 import { exportCourseToExcel } from '../utils/excelExport';
 import { StatsPerformanceChart } from './StatsPerformanceChart';
 import { computePartantHippoScore, generatePerplexityResearch } from '../utils/geminiMultiModelEngine';
 import { QuinteOrdresSection } from './QuinteOrdresSection';
+import { StrategieProprietairesCard } from './StrategieProprietairesCard';
+import { LivePmu2sControlBar } from './LivePmu2sControlBar';
 import { DisciplineGridTable } from './DisciplineGridTable';
 import { TrackWeatherAnalysisCard } from './TrackWeatherAnalysisCard';
 import { EcartsFormeAnalysisCard } from './EcartsFormeAnalysisCard';
@@ -21,6 +23,9 @@ import { sendRaceAnalysisEmail } from '../utils/gmailService';
 import { getStoredUserSession } from '../utils/userAuthStorage';
 import { computeV38Hierarchy, computeHorseSuccessProbabilities, buildRealV38Synthese, isDummySequentialSelection, getHorseGenyOdds } from '../utils/v38Helper';
 import { scrollToTopInstant } from '../utils/scrollHelper';
+import { getHorseBadgeTheme } from '../utils/horseBadgeTheme';
+import { TableScrollWrapper } from './TableScrollWrapper';
+import { isCourseFinished } from '../utils/raceCountdown';
 
 interface SyntheseHippoAnalyseProps {
   course: CourseHippique;
@@ -28,9 +33,10 @@ interface SyntheseHippoAnalyseProps {
   selectedHorseNumbers: number[];
   onNavigateToCalendar?: () => void;
   onNavigateToCollege?: () => void;
-  initialSubView?: 'pronostic' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout';
+  initialSubView?: 'pronostic' | 'strategie-proprietaires' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout';
   onOpenMusiqueDecoder?: (musique: string, nom: string) => void;
   isRestrictedMode?: boolean;
+  onCourseUpdated?: (updatedCourse: CourseHippique) => void;
 }
 
 export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
@@ -42,6 +48,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   initialSubView = 'pronostic',
   onOpenMusiqueDecoder,
   isRestrictedMode = false,
+  onCourseUpdated,
 }) => {
   if (!course) {
     return (
@@ -66,10 +73,10 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         piegesCourse: []
       });
   const partants = course.partants || [];
-  const [subView, setSubView] = useState<'pronostic' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'radar' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout'>(initialSubView);
+  const [subView, setSubView] = useState<'pronostic' | 'strategie-proprietaires' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'radar' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout'>(initialSubView);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
-  const handleSubViewChange = (newSubView: 'pronostic' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'radar' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout') => {
+  const handleSubViewChange = (newSubView: 'pronostic' | 'strategie-proprietaires' | 'classification' | 'pronostics-jeu' | 'tabular-ml' | 'geny-import' | 'jockey-encoder' | 'horse-jockey-duo' | 'radar' | 'classement' | 'valeur' | 'stats' | 'ecarts' | 'parcours' | 'tout') => {
     setSubView(newSubView);
     scrollToTopInstant();
   };
@@ -212,8 +219,18 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
   // 9 chevaux ordonnés automatiquement selon leur différence X décroissante (HIÉRARCHIE V38)
   const selection9Order = top9ParCote;
 
-  // Les 5 baisses de cotes significatives (Bruits d'écurie)
+  // Si la course est terminée ou a une arrivée officielle, aucune variation de cotes n'est affichée
+  const isRaceFinished = Boolean(
+    isCourseFinished(course) ||
+    course?.arriveeOfficielle ||
+    course?.statutCourse === 'Arrivée officielle' ||
+    course?.statutCourse === 'Course terminée' ||
+    (course as any)?.cotesScellees
+  );
+
+  // Les 5 baisses de cotes significatives (Bruits d'écurie - uniquement avant course)
   const topBaisses = useMemo(() => {
+    if (isRaceFinished) return [];
     return [...partants]
       .filter((p) => p.coteProbable && p.cotePrecedente && p.cotePrecedente > p.coteProbable)
       .sort((a, b) => {
@@ -222,7 +239,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         return dropB - dropA;
       })
       .slice(0, 5);
-  }, [partants]);
+  }, [partants, isRaceFinished]);
 
   const [copiedHierarchy, setCopiedHierarchy] = useState(false);
 
@@ -281,33 +298,35 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
     let statutV38 = 'Chance Régulière';
     let roleBadgeClass = 'bg-slate-800 text-slate-300 border-slate-700';
     let numBadgeClass = 'bg-slate-800 text-slate-200';
+    let catHint: 'favoris' | 'outsiders' | 'tocards' | 'surprises' = 'outsiders';
 
     if (position === 1) {
       statutV38 = 'Base Incontournable';
-      roleBadgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/50';
-      numBadgeClass = 'bg-amber-500 text-slate-950 font-black';
+      roleBadgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50';
+      catHint = 'favoris';
     } else if (position === 2) {
       statutV38 = 'Seconde Base';
       roleBadgeClass = 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50';
-      numBadgeClass = 'bg-emerald-500 text-slate-950 font-black';
+      catHint = 'favoris';
     } else if (position === 3) {
       statutV38 = '1ère Chance Forte';
-      roleBadgeClass = 'bg-amber-800/30 text-amber-200 border-amber-700/50';
-      numBadgeClass = 'bg-amber-700 text-amber-100 font-bold';
+      roleBadgeClass = 'bg-emerald-800/30 text-emerald-200 border-emerald-700/50';
+      catHint = 'favoris';
     } else if (position <= 5) {
       statutV38 = '1ère Chance';
-      roleBadgeClass = 'bg-sky-500/20 text-sky-300 border-sky-500/40';
-      numBadgeClass = 'bg-sky-600 text-white font-bold';
+      roleBadgeClass = 'bg-amber-500/20 text-amber-300 border-amber-500/40';
+      catHint = 'outsiders';
     } else {
       statutV38 = 'Tocard Spéculatif';
-      roleBadgeClass = 'bg-rose-500/20 text-rose-300 border-rose-500/40';
-      numBadgeClass = 'bg-rose-600 text-white font-bold';
+      roleBadgeClass = 'bg-orange-500/20 text-orange-300 border-orange-500/40';
+      catHint = 'tocards';
     }
 
     const horseScore = p ? computePartantHippoScore(p, course) : (95 - idx * 3);
     const horseNum = p ? Number(p.numero) : num;
     const horseCote = p ? getHorseGenyOdds(p) : 10;
     const horseScoreX = Math.round(((73 + horseNum) - horseCote) * 10) / 10;
+    const badgeTheme = getHorseBadgeTheme(horseNum, course, catHint, horseScoreX, horseCote);
 
     return {
       numero: num,
@@ -324,6 +343,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
       statutV38,
       roleBadgeClass,
       numBadgeClass,
+      badgeTheme,
     };
   });
 
@@ -364,10 +384,14 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
         </div>
       )}
 
+      {/* Controleur Direct PMU Turf Info 2s */}
+      <LivePmu2sControlBar course={course} onCourseUpdated={onCourseUpdated} />
+
       {/* 1. Sub-tabs Navigation */}
       <div ref={containerRef} className="flex items-center gap-2 p-2 bg-slate-900/90 rounded-2xl border border-slate-800 overflow-x-auto shadow-xl backdrop-blur-md scrollbar-none sticky top-16 z-30">
         {[
           { id: 'pronostic', label: '🎯 Pronostic', icon: Trophy },
+          { id: 'strategie-proprietaires', label: '🎯 Stratégie Propriétaires', icon: Target, badge: 'Geny • Week-End Turf • Équidia • France Galop • LeTrot' },
           { id: 'pronostics-jeu', label: '⚡ PRONOSTICS DE JEU', icon: Sparkles, badge: 'Base ≤ 4.9 • Top 8 • Gros Rapport' },
           { id: 'tabular-ml', label: '🤖 ML Tabulaire & Ranking', icon: Cpu, badge: 'CatBoost + LambdaRank + SHAP' },
           { id: 'horse-jockey-duo', label: '🤝 Duo Cheval–Jockey', icon: Users, badge: 'Synergie & Surplus' },
@@ -379,7 +403,6 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
           { id: 'valeur', label: '📈 Index Valeur', icon: Sparkles },
           { id: 'ecarts', label: '⏳ Écarts & Forme', icon: Flame },
           { id: 'stats', label: '📊 Stats 10 Courses', icon: Star },
-          { id: 'parcours', label: '🏛️ Tracé & Facteurs', icon: Sparkles },
           { id: 'tout', label: '👁️ Vue Globale', icon: Star },
         ].filter(tab => !isRestrictedMode || (tab.id === 'pronostic' || tab.id === 'pronostics-jeu'))
         .map((tab) => (
@@ -557,6 +580,18 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
 
       <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
 
+      {/* SECTION STRATÉGIE DES PROPRIÉTAIRES & ENTOURAGES (Geny.com & Week-End-Turf.com) */}
+      {(subView === 'strategie-proprietaires' || subView === 'pronostic' || subView === 'tout') && (
+        <div className="space-y-6">
+          <StrategieProprietairesCard
+            course={course}
+            selectedHorseNumbers={selectedHorseNumbers}
+            onSelectHorseForTicket={onSelectHorseForTicket}
+          />
+          <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
+        </div>
+      )}
+
       {/* SECTION PRONOSTICS DE JEU (Base ≤ 4.9 • Top 8 • Gros Rapport) */}
       {(subView === 'pronostics-jeu' || subView === 'tout') && (
         <div className="space-y-6">
@@ -664,13 +699,17 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
             </div>
             
             {partants && partants.length > 0 ? (
-              <div className="overflow-x-auto border border-slate-700/80 rounded-2xl shadow-lg">
-                <table className="w-full text-left border-collapse border border-slate-700/80">
+              <TableScrollWrapper
+                title="Déplacement horizontal du tableau de synthèse"
+                description="Glissez vers la droite ou la gauche pour afficher le score IA, la cote et le % de succès"
+                className="my-1"
+              >
+                <table className="w-full min-w-[760px] text-left border-collapse border border-slate-700/80">
                   <thead>
                     <tr className="border-b-2 border-slate-700 bg-slate-950 text-[11px] font-black uppercase tracking-wider text-slate-200">
                       <th className="py-5 px-4 w-20 border-r border-slate-700">Rang</th>
                       <th className="py-5 px-4 min-w-[150px] border-r border-slate-700">N° / Nom</th>
-                      <th className="py-5 px-4 min-w-[100px] border-r border-slate-700">Musique (5)</th>
+                      <th className="py-5 px-4 min-w-[100px] border-r border-slate-700 text-left">Musique (5)</th>
                       <th className="py-5 px-4 min-w-[120px] border-r border-slate-700">Jockey / Driver</th>
                       <th className="py-5 px-4 text-center w-20 border-r border-slate-700">Vict. Q+</th>
                       <th className="py-5 px-4 text-center w-24 border-r border-slate-700">Cote PMU</th>
@@ -751,12 +790,12 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                                 </div>
                               </div>
                             </td>
-                            <td className="py-4 px-4 font-mono text-xs opacity-90 border-r border-slate-700/60">
+                            <td className="py-4 px-4 font-mono text-xs opacity-90 border-r border-slate-700/60 text-left">
                               {onOpenMusiqueDecoder && p.musique && p.musique !== '?' && p.musique !== 'Inconnu' && p.musique.trim() !== '' ? (
                                 <button
                                   type="button"
                                   onClick={() => onOpenMusiqueDecoder(p.musique, p.nom)}
-                                  className="text-amber-300 hover:text-amber-200 underline cursor-pointer font-mono"
+                                  className="text-amber-300 hover:text-amber-200 underline cursor-pointer font-mono text-left"
                                   title="Cliquez pour décrypter cette musique"
                                 >
                                   {p.musique}
@@ -773,25 +812,25 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                             </td>
                             <td className="py-4 px-4 text-center border-r border-slate-700/60">
                               <div className="inline-flex items-center gap-1 justify-center flex-wrap">
-                                {p.cotePrecedente && Number(p.cotePrecedente) !== Number(p.coteProbable) && (
+                                {!isRaceFinished && p.cotePrecedente && Number(p.cotePrecedente) !== Number(p.coteProbable) && (
                                   <span className="text-[10px] font-mono text-slate-500 line-through bg-slate-950 px-1 py-0.5 rounded border border-slate-800" title={`Cote précédente : ${p.cotePrecedente}/1`}>
                                     {p.cotePrecedente}
                                   </span>
                                 )}
-                                {p.evolutionCote === 'baisse' && (
+                                {!isRaceFinished && p.evolutionCote === 'baisse' && (
                                   <span className="text-[9px] font-black text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded border border-emerald-500/30" title="Cote en baisse">
                                     ↓
                                   </span>
                                 )}
-                                {p.evolutionCote === 'hausse' && (
+                                {!isRaceFinished && p.evolutionCote === 'hausse' && (
                                   <span className="text-[9px] font-black text-rose-300 bg-rose-500/20 px-1 py-0.5 rounded border border-rose-500/30" title="Cote en hausse">
                                     ↑
                                   </span>
                                 )}
                                 <span className={`font-mono text-sm px-2 py-1 rounded-lg border font-bold ${
-                                  p.evolutionCote === 'baisse'
+                                  !isRaceFinished && p.evolutionCote === 'baisse'
                                     ? 'text-emerald-300 bg-emerald-950/60 border-emerald-500/40'
-                                    : p.evolutionCote === 'hausse'
+                                    : !isRaceFinished && p.evolutionCote === 'hausse'
                                     ? 'text-rose-300 bg-rose-950/60 border-rose-500/40'
                                     : 'text-amber-400 bg-amber-400/10 border-amber-400/20'
                                 }`}>
@@ -800,7 +839,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                               </div>
                             </td>
                             <td className="py-4 px-4 text-center border-r border-slate-700/60">
-                              <span className="font-mono font-black text-sm sm:text-base text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-1 rounded-xl shadow-xs" title={`Score X = (73 + ${p.numero}) - ${getHorseGenyOdds(p).toFixed(1)}`}>
+                              <span className={`font-mono font-black text-sm sm:text-base border px-2.5 py-1 rounded-xl shadow-xs ${currentScoreX < 20 ? 'text-red-400 bg-red-950/80 border-red-500/60 shadow-sm' : 'text-cyan-300 bg-cyan-950/80 border-cyan-500/40'}`} title={`Score X = (73 + ${p.numero}) - ${getHorseGenyOdds(p).toFixed(1)}`}>
                                 {currentScoreX.toFixed(1).replace('.', ',')}
                               </span>
                             </td>
@@ -828,7 +867,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                       })}
                   </tbody>
                 </table>
-              </div>
+              </TableScrollWrapper>
             ) : <div className="py-12 text-center text-slate-500 font-bold">Aucune donnée disponible.</div>}
           </div>
           <div className="h-1.5 bg-slate-800/80 rounded-full w-full" />
@@ -851,8 +890,12 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
             </div>
             
             {partants && partants.length > 0 ? (
-              <div className="overflow-x-auto border border-slate-700/80 rounded-2xl shadow-lg">
-                <table className="w-full text-left border-collapse border border-slate-700/80">
+              <TableScrollWrapper
+                title="Déplacement horizontal du classement par valeur"
+                description="Glissez vers la droite pour visualiser le score X, score IA, cote PMU et index valeur"
+                className="my-1"
+              >
+                <table className="w-full min-w-[700px] text-left border-collapse border border-slate-700/80">
                   <thead>
                     <tr className="border-b-2 border-slate-700 bg-slate-950 text-[11px] font-black uppercase tracking-wider text-slate-200">
                       <th className="py-5 px-4 w-16 border-r border-slate-700">Rang</th>
@@ -913,7 +956,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                               </div>
                             </td>
                             <td className="py-4 px-4 text-center border-r border-slate-700/60">
-                              <span className="font-mono font-black text-sm sm:text-base text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-2.5 py-1 rounded-xl shadow-xs" title={`Score X = (73 + ${p.numero}) - ${getHorseGenyOdds(p).toFixed(1)}`}>
+                              <span className={`font-mono font-black text-sm sm:text-base border px-2.5 py-1 rounded-xl shadow-xs ${currentScoreX < 20 ? 'text-red-400 bg-red-950/80 border-red-500/60 shadow-sm' : 'text-cyan-300 bg-cyan-950/80 border-cyan-500/40'}`} title={`Score X = (73 + ${p.numero}) - ${getHorseGenyOdds(p).toFixed(1)}`}>
                                 {currentScoreX.toFixed(1).replace('.', ',')}
                               </span>
                             </td>
@@ -922,17 +965,17 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                             </td>
                             <td className="py-4 px-4 text-center border-r border-slate-700/60">
                               <div className="inline-flex items-center gap-1 justify-center flex-wrap">
-                                {p.cotePrecedente && Number(p.cotePrecedente) !== Number(p.coteProbable) && (
+                                {!isRaceFinished && p.cotePrecedente && Number(p.cotePrecedente) !== Number(p.coteProbable) && (
                                   <span className="text-[10px] font-mono text-slate-500 line-through bg-slate-950 px-1 py-0.5 rounded border border-slate-800">
                                     {p.cotePrecedente}
                                   </span>
                                 )}
-                                {p.evolutionCote === 'baisse' && (
+                                {!isRaceFinished && p.evolutionCote === 'baisse' && (
                                   <span className="text-[9px] font-black text-emerald-300 bg-emerald-500/20 px-1 py-0.5 rounded border border-emerald-500/30">
                                     ↓
                                   </span>
                                 )}
-                                {p.evolutionCote === 'hausse' && (
+                                {!isRaceFinished && p.evolutionCote === 'hausse' && (
                                   <span className="text-[9px] font-black text-rose-300 bg-rose-500/20 px-1 py-0.5 rounded border border-rose-500/30">
                                     ↑
                                   </span>
@@ -952,7 +995,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                       })}
                   </tbody>
                 </table>
-              </div>
+              </TableScrollWrapper>
             ) : (
               <div className="py-12 text-center text-slate-500 font-bold">Aucune donnée disponible.</div>
             )}
@@ -1197,7 +1240,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                       <div className="text-left">
                         <div className="font-black text-lg flex items-center gap-1.5">
                           <span>N°{num}</span>
-                          <span className="text-[10px] font-mono font-black px-1.5 py-0.5 rounded bg-slate-900 text-cyan-300 border border-cyan-500/30">
+                          <span className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded border ${scoreX < 20 ? 'bg-red-950/90 text-red-400 border-red-500/60 shadow-sm' : 'bg-slate-900 text-cyan-300 border-cyan-500/30'}`}>
                             X={scoreX.toFixed(1).replace('.', ',')}
                           </span>
                         </div>
@@ -1732,10 +1775,19 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                       </span>
                     </div>
 
-                    {/* N° et Nom du Cheval */}
+                    {/* N° et Nom du Cheval avec dégradé 3D modulé par Score X */}
                     <div className="flex items-start gap-2.5 pt-1">
-                      <div className={`w-9 h-9 rounded-xl font-mono font-black text-base flex items-center justify-center shrink-0 ${h.numBadgeClass}`}>
-                        {h.numero}
+                      <div 
+                        className={`w-9 h-9 rounded-xl font-mono font-black text-base flex items-center justify-center shrink-0 border-2 ${h.badgeTheme?.textColor || h.numBadgeClass} relative overflow-hidden`}
+                        style={{
+                          background: h.badgeTheme?.background,
+                          borderColor: h.badgeTheme?.borderColor,
+                          boxShadow: h.badgeTheme?.boxShadow,
+                          textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                        }}
+                      >
+                        <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t" />
+                        <span className="z-10">{h.numero}</span>
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="text-sm font-black text-white truncate" title={h.nom}>
@@ -1763,7 +1815,7 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
                           {h.musique || '—'}
                         </span>
                       )}
-                      <span className="font-mono font-black text-cyan-300 bg-slate-950 border border-cyan-500/30 px-1.5 py-0.5 rounded text-[10px]" title={`Score X = (73 + ${h.numero}) - ${h.coteProbable}`}>
+                      <span className={`font-mono font-black border px-1.5 py-0.5 rounded text-[10px] ${h.scoreX < 20 ? 'text-red-400 bg-red-950/90 border-red-500/60' : 'text-cyan-300 bg-slate-950 border-cyan-500/30'}`} title={`Score X = (73 + ${h.numero}) - ${h.coteProbable}`}>
                         X={h.scoreX.toFixed(1).replace('.', ',')}
                       </span>
                       <span className="font-black text-amber-300">
@@ -1811,10 +1863,22 @@ export const SyntheseHippoAnalyse: React.FC<SyntheseHippoAnalyseProps> = ({
             <div className="flex items-center gap-3">
               {[...partantsParValeur.slice(9, 12)].sort((a, b) => b.scoreX - a.scoreX).map((p, idx) => {
                 const scoreX = p.scoreX ?? Math.round(((73 + Number(p.numero)) - getHorseGenyOdds(p)) * 10) / 10;
+                const surpBadge = getHorseBadgeTheme(Number(p.numero), course, 'surprises', scoreX, p.coteProbable);
                 return (
-                  <div key={`surprise-ui-${p.numero}-${idx}`} className="flex flex-col items-center gap-1 min-w-[70px] p-2 rounded-xl bg-slate-950 border border-rose-500/30 shadow-md">
-                    <span className="text-lg font-black text-white font-mono">N°{p.numero}</span>
-                    <span className="text-[10px] font-mono font-black text-cyan-300 bg-cyan-950/60 px-1.5 py-0.5 rounded border border-cyan-500/30">
+                  <div key={`surprise-ui-${p.numero}-${idx}`} className="flex flex-col items-center gap-1.5 min-w-[75px] p-2 rounded-xl bg-slate-950 border border-rose-500/30 shadow-md">
+                    <span 
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black font-mono border-2 ${surpBadge.textColor} relative overflow-hidden`}
+                      style={{
+                        background: surpBadge.background,
+                        borderColor: surpBadge.borderColor,
+                        boxShadow: surpBadge.boxShadow,
+                        textShadow: '0 1px 2px rgba(0,0,0,0.85)'
+                      }}
+                    >
+                      <div className="absolute top-0 inset-x-0 h-1/2 bg-gradient-to-b from-white/35 to-transparent pointer-events-none rounded-t" />
+                      <span className="z-10">{p.numero}</span>
+                    </span>
+                    <span className={`text-[10px] font-mono font-black px-1.5 py-0.5 rounded border ${scoreX < 20 ? 'bg-red-950/90 text-red-400 border-red-500/60 shadow-sm' : 'text-cyan-300 bg-cyan-950/60 border-cyan-500/30'}`}>
                       X={scoreX.toFixed(1).replace('.', ',')}
                     </span>
                     <span className={`text-[11px] font-black ${p.coteProbable && p.coteProbable > 18 ? 'text-red-500' : 'text-rose-400'}`}>
